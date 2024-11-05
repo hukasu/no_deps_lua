@@ -16,9 +16,9 @@ impl State {
         match self.machine {
             StateMachine::Start => match token {
                 Token::Name(name) => {
-                    self.constants.push(Value::String(name.clone()));
+                    let name_position = self.push_constant(Value::String(name.clone()));
                     self.byte_codes
-                        .push(ByteCode::GetGlobal(0, (self.constants.len() - 1) as u8));
+                        .push(ByteCode::GetGlobal(0, name_position as u8));
                     self.machine = StateMachine::SeenName;
                     Ok(())
                 }
@@ -26,9 +26,9 @@ impl State {
             },
             StateMachine::SeenName => match token {
                 Token::String(string) => {
-                    self.constants.push(Value::String(string.clone()));
+                    let string_position = self.push_constant(Value::String(string.clone()));
                     self.byte_codes
-                        .push(ByteCode::LoadConstant(1, (self.constants.len() - 1) as u8));
+                        .push(ByteCode::LoadConstant(1, string_position as u8));
                     self.byte_codes.push(ByteCode::Call(0, 1));
                     self.machine = StateMachine::Start;
                     Ok(())
@@ -36,6 +36,16 @@ impl State {
                 _ => Err(Error::Unimplemented),
             },
         }
+    }
+
+    fn push_constant(&mut self, value: Value) -> usize {
+        self.constants
+            .iter()
+            .position(|inserted| inserted == &value)
+            .unwrap_or_else(|| {
+                self.constants.push(value);
+                self.constants.len() - 1
+            })
     }
 }
 

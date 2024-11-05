@@ -53,7 +53,6 @@ mod tests {
             &[
                 Value::String("print".to_owned()),
                 Value::String("hello world".to_owned()),
-                Value::String("print".to_owned()),
                 Value::String("hello again...".to_owned())
             ]
         );
@@ -63,8 +62,8 @@ mod tests {
                 ByteCode::GetGlobal(0, 0),
                 ByteCode::LoadConstant(1, 1),
                 ByteCode::Call(0, 1),
-                ByteCode::GetGlobal(0, 2),
-                ByteCode::LoadConstant(1, 3),
+                ByteCode::GetGlobal(0, 0),
+                ByteCode::LoadConstant(1, 2),
                 ByteCode::Call(0, 1),
             ]
         );
