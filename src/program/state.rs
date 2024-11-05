@@ -1,8 +1,8 @@
-use alloc::{borrow::ToOwned, string::String, vec::Vec};
+use alloc::vec::Vec;
 
 use crate::{lex::Token, value::Value};
 
-use super::ByteCode;
+use super::{ByteCode, Error};
 
 #[derive(Debug)]
 pub struct State {
@@ -12,7 +12,7 @@ pub struct State {
 }
 
 impl State {
-    pub fn process(&mut self, token: &Token) -> Result<(), String> {
+    pub fn process(&mut self, token: &Token) -> Result<(), Error> {
         match self.machine {
             StateMachine::Start => match token {
                 Token::Name(name) => {
@@ -22,7 +22,7 @@ impl State {
                     self.machine = StateMachine::SeenName;
                     Ok(())
                 }
-                _ => Err("Unimplemented".to_owned()),
+                _ => Err(Error::Unimplemented),
             },
             StateMachine::SeenName => match token {
                 Token::String(string) => {
@@ -33,7 +33,7 @@ impl State {
                     self.machine = StateMachine::Start;
                     Ok(())
                 }
-                _ => Err("Unimplemented".to_owned()),
+                _ => Err(Error::Unimplemented),
             },
         }
     }
