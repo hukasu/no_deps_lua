@@ -1,18 +1,19 @@
 #![no_std]
 
-extern crate alloc;
-
+mod error;
 mod lex;
 mod program;
 mod std;
 mod value;
+
+extern crate alloc;
 
 use alloc::{borrow::ToOwned, string::String, vec::Vec};
 
 use program::ByteCode;
 use value::Value;
 
-pub use program::Program;
+pub use {error::Error, program::Program};
 
 pub struct Lua {
     globals: Vec<(String, Value)>,
@@ -24,7 +25,7 @@ impl Lua {
         Self::default()
     }
 
-    pub fn execute(&mut self, program: &Program) -> Result<(), String> {
+    pub fn execute(&mut self, program: &Program) -> Result<(), Error> {
         for code in program.byte_codes.iter() {
             match code {
                 ByteCode::GetGlobal(dst, name) => {
@@ -38,7 +39,7 @@ impl Lua {
                             self.stack.insert(*dst as usize, Value::Nil);
                         }
                     } else {
-                        return Err("invalid global key: {name:?}".to_owned());
+                        return Err(Error::InvalidGlobalKey(name.clone()));
                     }
                 }
                 ByteCode::LoadConstant(dst, key) => {
@@ -50,7 +51,7 @@ impl Lua {
                     if let Value::Function(f) = func {
                         f(self);
                     } else {
-                        return Err("invalid function: {func:?}".to_owned());
+                        return Err(Error::InvalidFunction(func.clone()));
                     }
                 }
             }
