@@ -15,6 +15,8 @@ impl State {
         program: &'a str,
         c: char,
     ) -> Option<Result<(Token<'a>, Option<Token<'a>>), Error>> {
+        #[cfg(test)]
+        log::trace!(target: "lua_lex", "{c}");
         let processed = match (&self.machine, c) {
             // Processing end of file
             (StateMachine::Start | StateMachine::Comment | StateMachine::ShortComment, '\0') => {
@@ -23,8 +25,7 @@ impl State {
             }
             (StateMachine::Name, '\0') => {
                 self.machine = StateMachine::End;
-                self.finish_name(program)
-                    .map(|token_res| token_res.map(|token| (token, None)))
+                Some(self.finish_name(program).map(|token| (token, None)))
             }
             (StateMachine::String, '\0') => Some(Err(Error {
                 kind: ErrorKind::EofAtString,
@@ -37,21 +38,40 @@ impl State {
             (StateMachine::Start, ' ' | '\r' | '\n' | '\t') => None,
             (StateMachine::Name, ' ' | '\r' | '\n' | '\t') => {
                 self.machine = StateMachine::Start;
-                self.finish_name(program)
-                    .map(|token_res| token_res.map(|token| (token, None)))
+                Some(self.finish_name(program).map(|token| (token, None)))
             }
             (StateMachine::SeenMinus, ' ' | '\r' | '\n' | '\t') => {
                 self.machine = StateMachine::Start;
                 Some(Ok((self.finish_token(TokenType::Sub, 1), None)))
             }
 
+            // Processing digits
+            (StateMachine::Start | StateMachine::Number, '0'..='9') => {
+                self.machine = StateMachine::Number;
+                self.buffer_len += 1;
+                None
+            }
+            (StateMachine::Float, '0'..='9') => {
+                self.machine = StateMachine::Float;
+                self.buffer_len += 1;
+                None
+            }
+
             // Processing `+`
             (StateMachine::Start, '+') => Some(Ok((self.finish_token(TokenType::Add, 0), None))),
             (StateMachine::Name, '+') => {
                 self.machine = StateMachine::Start;
-                self.finish_name(program).map(|token_res| {
-                    token_res.map(|token| (token, Some(self.finish_token(TokenType::Sub, 0))))
-                })
+                Some(
+                    self.finish_name(program)
+                        .map(|token| (token, Some(self.finish_token(TokenType::Sub, 0)))),
+                )
+            }
+            (StateMachine::Number, '+') => {
+                self.machine = StateMachine::Start;
+                Some(
+                    self.finish_integer(program)
+                        .map(|token| (token, Some(self.finish_token(TokenType::Add, 0)))),
+                )
             }
             (StateMachine::SeenMinus, '+') => Some(Ok((
                 self.finish_token(TokenType::Sub, 1),
@@ -73,8 +93,7 @@ impl State {
             }
             (StateMachine::Name, '-') => {
                 self.machine = StateMachine::SeenMinus;
-                self.finish_name(program)
-                    .map(|token_res| token_res.map(|token| (token, None)))
+                Some(self.finish_name(program).map(|token| (token, None)))
             }
             (StateMachine::SeenMinus, '-') => {
                 self.machine = StateMachine::Comment;
@@ -93,9 +112,10 @@ impl State {
             (StateMachine::Start, '*') => Some(Ok((self.finish_token(TokenType::Mul, 0), None))),
             (StateMachine::Name, '*') => {
                 self.machine = StateMachine::Start;
-                self.finish_name(program).map(|token_res| {
-                    token_res.map(|token| (token, Some(self.finish_token(TokenType::Mul, 0))))
-                })
+                Some(
+                    self.finish_name(program)
+                        .map(|token| (token, Some(self.finish_token(TokenType::Mul, 0)))),
+                )
             }
             (StateMachine::SeenMinus, '*') => {
                 self.machine = StateMachine::Start;
@@ -126,8 +146,7 @@ impl State {
             }
             (StateMachine::Name, '/') => {
                 self.machine = StateMachine::SeenSlash;
-                self.finish_name(program)
-                    .map(|token_res| token_res.map(|token| (token, None)))
+                Some(self.finish_name(program).map(|token| (token, None)))
             }
             (StateMachine::SeenMinus, '/') => {
                 self.machine = StateMachine::SeenSlash;
@@ -164,7 +183,31 @@ impl State {
                 None
             }
             (StateMachine::Start, '(') => Some(Ok((self.finish_token(TokenType::LParen, 0), None))),
+
+            // Processing `)`
             (StateMachine::Start, ')') => Some(Ok((self.finish_token(TokenType::RParen, 0), None))),
+            (StateMachine::Name, ')') => {
+                self.machine = StateMachine::Start;
+                Some(
+                    self.finish_name(program)
+                        .map(|token| (token, Some(self.finish_token(TokenType::RParen, 0)))),
+                )
+            }
+            (StateMachine::Number, ')') => {
+                self.machine = StateMachine::Start;
+                Some(
+                    self.finish_integer(program)
+                        .map(|token| (token, Some(self.finish_token(TokenType::RParen, 0)))),
+                )
+            }
+            (StateMachine::Float, ')') => {
+                self.machine = StateMachine::Start;
+                Some(
+                    self.finish_float(program)
+                        .map(|token| (token, Some(self.finish_token(TokenType::RParen, 0)))),
+                )
+            }
+
             (StateMachine::Start, '{') => Some(Ok((self.finish_token(TokenType::LCurly, 0), None))),
             (StateMachine::Start, '}') => Some(Ok((self.finish_token(TokenType::RCurly, 0), None))),
             (StateMachine::Start, '[') => {
@@ -181,10 +224,18 @@ impl State {
                 Some(Ok((self.finish_token(TokenType::SemiColon, 0), None)))
             }
             (StateMachine::Start, ',') => Some(Ok((self.finish_token(TokenType::Comma, 0), None))),
+
+            // Processing `.`
             (StateMachine::Start, '.') => {
                 self.machine = StateMachine::SeenDot;
                 None
             }
+            (StateMachine::Number, '.') => {
+                self.machine = StateMachine::Float;
+                self.buffer_len += 1;
+                None
+            }
+
             (StateMachine::Start | StateMachine::SeenMinus, 'A'..='Z' | 'a'..='z' | '_') => {
                 self.buffer_len += 1;
                 self.machine = StateMachine::Name;
@@ -197,9 +248,10 @@ impl State {
 
             (StateMachine::Name, '(') => {
                 self.machine = StateMachine::Start;
-                self.finish_name(program).map(|token_res| {
-                    token_res.map(|token| (token, Some(self.finish_token(TokenType::LParen, 0))))
-                })
+                Some(
+                    self.finish_name(program)
+                        .map(|token| (token, Some(self.finish_token(TokenType::LParen, 0)))),
+                )
             }
             (StateMachine::Name, 'A'..='Z' | 'a'..='z' | '_' | '0'..='9') => {
                 self.buffer_len += 1;
@@ -238,6 +290,8 @@ impl State {
             (
                 StateMachine::Start
                 | StateMachine::Name
+                | StateMachine::Number
+                | StateMachine::Float
                 | StateMachine::SeenMinus
                 | StateMachine::SeenSlash
                 | StateMachine::SeenTilde
@@ -279,34 +333,34 @@ impl State {
         processed
     }
 
-    fn finish_name<'a>(&mut self, program: &'a str) -> Option<Result<Token<'a>, Error>> {
+    fn finish_name<'a>(&mut self, program: &'a str) -> Result<Token<'a>, Error> {
         let buffer = self.buffer(program);
         let buffer_len = self.buffer_len;
         self.buffer_len = 0;
         match buffer {
-            "and" => Some(Ok(self.finish_token(TokenType::And, 3))),
-            "break" => Some(Ok(self.finish_token(TokenType::Break, 5))),
-            "do" => Some(Ok(self.finish_token(TokenType::Do, 2))),
-            "else" => Some(Ok(self.finish_token(TokenType::Else, 4))),
-            "elseif" => Some(Ok(self.finish_token(TokenType::Elseif, 6))),
-            "end" => Some(Ok(self.finish_token(TokenType::End, 3))),
-            "false" => Some(Ok(self.finish_token(TokenType::False, 5))),
-            "for" => Some(Ok(self.finish_token(TokenType::For, 3))),
-            "function" => Some(Ok(self.finish_token(TokenType::Function, 8))),
-            "goto" => Some(Ok(self.finish_token(TokenType::Goto, 4))),
-            "if" => Some(Ok(self.finish_token(TokenType::If, 2))),
-            "in" => Some(Ok(self.finish_token(TokenType::In, 2))),
-            "local" => Some(Ok(self.finish_token(TokenType::Local, 5))),
-            "nil" => Some(Ok(self.finish_token(TokenType::Nil, 3))),
-            "not" => Some(Ok(self.finish_token(TokenType::Not, 3))),
-            "or" => Some(Ok(self.finish_token(TokenType::Or, 2))),
-            "repeat" => Some(Ok(self.finish_token(TokenType::Repeat, 6))),
-            "return" => Some(Ok(self.finish_token(TokenType::Return, 6))),
-            "then" => Some(Ok(self.finish_token(TokenType::Then, 4))),
-            "true" => Some(Ok(self.finish_token(TokenType::True, 4))),
-            "until" => Some(Ok(self.finish_token(TokenType::Until, 5))),
-            "while" => Some(Ok(self.finish_token(TokenType::While, 5))),
-            data => Some(Ok(self.finish_token(TokenType::Name(data), buffer_len))),
+            "and" => Ok(self.finish_token(TokenType::And, 3)),
+            "break" => Ok(self.finish_token(TokenType::Break, 5)),
+            "do" => Ok(self.finish_token(TokenType::Do, 2)),
+            "else" => Ok(self.finish_token(TokenType::Else, 4)),
+            "elseif" => Ok(self.finish_token(TokenType::Elseif, 6)),
+            "end" => Ok(self.finish_token(TokenType::End, 3)),
+            "false" => Ok(self.finish_token(TokenType::False, 5)),
+            "for" => Ok(self.finish_token(TokenType::For, 3)),
+            "function" => Ok(self.finish_token(TokenType::Function, 8)),
+            "goto" => Ok(self.finish_token(TokenType::Goto, 4)),
+            "if" => Ok(self.finish_token(TokenType::If, 2)),
+            "in" => Ok(self.finish_token(TokenType::In, 2)),
+            "local" => Ok(self.finish_token(TokenType::Local, 5)),
+            "nil" => Ok(self.finish_token(TokenType::Nil, 3)),
+            "not" => Ok(self.finish_token(TokenType::Not, 3)),
+            "or" => Ok(self.finish_token(TokenType::Or, 2)),
+            "repeat" => Ok(self.finish_token(TokenType::Repeat, 6)),
+            "return" => Ok(self.finish_token(TokenType::Return, 6)),
+            "then" => Ok(self.finish_token(TokenType::Then, 4)),
+            "true" => Ok(self.finish_token(TokenType::True, 4)),
+            "until" => Ok(self.finish_token(TokenType::Until, 5)),
+            "while" => Ok(self.finish_token(TokenType::While, 5)),
+            data => Ok(self.finish_token(TokenType::Name(data), buffer_len)),
         }
     }
 
@@ -319,6 +373,54 @@ impl State {
         }
     }
 
+    fn finish_integer<'a>(&mut self, program: &'a str) -> Result<Token<'a>, Error> {
+        let buffer = self.buffer(program);
+        let buffer_len = self.buffer_len;
+        self.buffer_len = 0;
+
+        let Ok(int) = buffer
+            .parse()
+            .inspect_err(|err| log::error!(target: "lua_lex", "{err}"))
+        else {
+            return Err(Error {
+                kind: ErrorKind::ParseInt,
+                line: self.line,
+                column: self.column,
+            });
+        };
+
+        Ok(Token {
+            token: TokenType::Integer(int),
+            line: self.line,
+            column: self.column,
+            start_offset: buffer_len,
+        })
+    }
+
+    fn finish_float<'a>(&mut self, program: &'a str) -> Result<Token<'a>, Error> {
+        let buffer = self.buffer(program);
+        let buffer_len = self.buffer_len;
+        self.buffer_len = 0;
+
+        let Ok(float) = buffer
+            .parse()
+            .inspect_err(|err| log::error!(target: "lua_lex", "{err}"))
+        else {
+            return Err(Error {
+                kind: ErrorKind::ParseFloat,
+                line: self.line,
+                column: self.column,
+            });
+        };
+
+        Ok(Token {
+            token: TokenType::Float(float),
+            line: self.line,
+            column: self.column,
+            start_offset: buffer_len,
+        })
+    }
+
     fn buffer<'a>(&self, program: &'a str) -> &'a str {
         &program[(self.seek - self.buffer_len)..self.seek]
     }
@@ -329,15 +431,17 @@ pub enum StateMachine {
     Start,
     Name,
     String,
+    Number,
+    Float,
     SeenMinus,
     SeenSlash,
     SeenTilde,
-    Comment,
-    ShortComment,
-    End,
     SeenLess,
     SeenGreater,
     SeenEquals,
     SeenColon,
     SeenDot,
+    Comment,
+    ShortComment,
+    End,
 }

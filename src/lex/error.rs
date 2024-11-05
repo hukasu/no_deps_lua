@@ -10,6 +10,8 @@ pub struct Error {
 #[derive(Debug, PartialEq)]
 pub enum ErrorKind {
     EofAtString,
+    ParseInt,
+    ParseFloat,
     ProhibtedControlCharacterOnComment,
     CharacterAfterEof,
     Uninmplemented,
@@ -20,6 +22,12 @@ impl Display for Error {
         match self.kind {
             ErrorKind::EofAtString => {
                 write!(f, "Reached End of File while reading a String.",)
+            }
+            ErrorKind::ParseInt => {
+                write!(f, "Could not parse an number into an integer.",)
+            }
+            ErrorKind::ParseFloat => {
+                write!(f, "Could not parse an number into an float.",)
             }
             ErrorKind::ProhibtedControlCharacterOnComment => {
                 write!(f, "A control character was found in a comment.",)

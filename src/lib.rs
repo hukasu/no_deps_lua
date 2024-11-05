@@ -48,6 +48,15 @@ impl<'a> Lua<'a> {
                         return Err(Error::InvalidGlobalKey(name.clone()));
                     }
                 }
+                ByteCode::LoadNil(dst) => {
+                    vm.stack.insert(*dst as usize, Value::Nil);
+                }
+                ByteCode::LoadBool(dst, value) => {
+                    vm.stack.insert(*dst as usize, Value::Boolean(*value));
+                }
+                ByteCode::LoadInt(dst, value) => vm
+                    .stack
+                    .insert(*dst as usize, Value::Integer(i64::from(*value))),
                 ByteCode::LoadConstant(dst, key) => {
                     vm.stack
                         .insert(*dst as usize, program.constants[*key as usize].clone());
