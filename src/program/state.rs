@@ -1,22 +1,25 @@
 use alloc::vec::Vec;
 
-use crate::{lex::Token, value::Value};
+use crate::{
+    lex::{Token, TokenType},
+    value::Value,
+};
 
 use super::{ByteCode, Error};
 
 #[derive(Debug)]
-pub struct State {
-    pub(super) constants: Vec<Value>,
+pub struct State<'a> {
+    pub(super) constants: Vec<Value<'a>>,
     pub(super) byte_codes: Vec<ByteCode>,
     pub(super) machine: StateMachine,
 }
 
-impl State {
-    pub fn process(&mut self, token: &Token) -> Result<(), Error> {
+impl<'a> State<'a> {
+    pub fn process(&mut self, token: &Token<'a>) -> Result<(), Error<'a>> {
         match self.machine {
-            StateMachine::Start => match token {
-                Token::Name(name) => {
-                    let name_position = self.push_constant(Value::String(name.clone()));
+            StateMachine::Start => match &token.token {
+                TokenType::Name(name) => {
+                    let name_position = self.push_constant(Value::String(name));
                     self.byte_codes
                         .push(ByteCode::GetGlobal(0, name_position as u8));
                     self.machine = StateMachine::SeenName;
@@ -24,21 +27,24 @@ impl State {
                 }
                 _ => Err(Error::Unimplemented),
             },
-            StateMachine::SeenName => match token {
-                Token::String(string) => {
-                    let string_position = self.push_constant(Value::String(string.clone()));
-                    self.byte_codes
-                        .push(ByteCode::LoadConstant(1, string_position as u8));
-                    self.byte_codes.push(ByteCode::Call(0, 1));
+            StateMachine::SeenName => match &token.token {
+                TokenType::LParen => {
                     self.machine = StateMachine::Start;
                     Ok(())
                 }
-                _ => Err(Error::Unimplemented),
+                TokenType::String(string) => {
+                    let string_position = self.push_constant(Value::String(string));
+                    self.push_byte_code(ByteCode::LoadConstant(1, string_position as u8));
+                    self.push_byte_code(ByteCode::Call(0, 1));
+                    self.machine = StateMachine::Start;
+                    Ok(())
+                }
+                _ => Err(Error::InvalidTokenAfterName(token.clone())),
             },
         }
     }
 
-    fn push_constant(&mut self, value: Value) -> usize {
+    fn push_constant(&mut self, value: Value<'a>) -> usize {
         self.constants
             .iter()
             .position(|inserted| inserted == &value)
@@ -46,6 +52,10 @@ impl State {
                 self.constants.push(value);
                 self.constants.len() - 1
             })
+    }
+
+    fn push_byte_code(&mut self, byte_code: ByteCode) {
+        self.byte_codes.push(byte_code);
     }
 }
 
