@@ -1,7 +1,8 @@
 use super::*;
 
 #[test]
-fn hello_world() {
+fn chapter1() {
+    simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default()).unwrap();
     let program = Program::parse(
         r#"
 print "hello world"
@@ -36,11 +37,11 @@ print "hello again...
 "#,
     )
     .expect_err("This program should fail");
-    assert_eq!(err, Error::LexFailure);
+    assert_eq!(err, Error::Parse);
 }
 
 #[test]
-fn print_numbers() {
+fn chapter2_1() {
     let program = Program::parse(
         r#"
 print(nil)

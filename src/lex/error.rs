@@ -12,9 +12,11 @@ pub enum ErrorKind {
     EofAtString,
     ParseInt,
     ParseFloat,
-    ProhibtedControlCharacterOnComment,
-    CharacterAfterEof,
+    ProhibtedControlCharacterOnString,
     Uninmplemented,
+    OctalNotSupported,
+    LeadingZero,
+    MalformedFloat,
 }
 
 impl Display for Error {
@@ -29,11 +31,17 @@ impl Display for Error {
             ErrorKind::ParseFloat => {
                 write!(f, "Could not parse an number into an float.",)
             }
-            ErrorKind::ProhibtedControlCharacterOnComment => {
-                write!(f, "A control character was found in a comment.",)
+            ErrorKind::LeadingZero => {
+                write!(f, "Non hexadecimal numbers can't start with leading zeros.",)
             }
-            ErrorKind::CharacterAfterEof => {
-                write!(f, "Lexer received a character after Eof.")
+            ErrorKind::OctalNotSupported => {
+                write!(f, "Octal numbers are not supported.",)
+            }
+            ErrorKind::MalformedFloat => {
+                write!(f, "Floating-point number was malformed.",)
+            }
+            ErrorKind::ProhibtedControlCharacterOnString => {
+                write!(f, "A control character was found in a comment.",)
             }
             ErrorKind::Uninmplemented => {
                 write!(f, "Unimplemented")

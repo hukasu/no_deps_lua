@@ -1,28 +1,16 @@
 use core::fmt::Display;
 
-use log::error;
-
-use crate::lex::Token;
-
 #[derive(Debug, PartialEq)]
-pub enum Error<'a> {
-    LexFailure,
-    InvalidTokenAfterName(Token<'a>),
+pub enum Error {
+    Parse,
     Unimplemented,
 }
 
-impl<'a> Display for Error<'a> {
+impl Display for Error {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Self::LexFailure => {
-                write!(f, "Could not parse program due to lexical error.")
-            }
-            Self::InvalidTokenAfterName(token) => {
-                write!(
-                    f,
-                    "Found invalid token {:?} at line {}, column {}.",
-                    token.token, token.line, token.column
-                )
+            Self::Parse => {
+                write!(f, "Could not parse program.")
             }
             Self::Unimplemented => {
                 write!(f, "Feature is not implemented.")
@@ -31,11 +19,11 @@ impl<'a> Display for Error<'a> {
     }
 }
 
-impl<'a> core::error::Error for Error<'a> {}
+impl core::error::Error for Error {}
 
-impl<'a> From<crate::lex::Error> for Error<'a> {
-    fn from(value: crate::lex::Error) -> Self {
-        error!(target: "lua_program", "{:?}", value);
-        Self::LexFailure
+impl From<crate::parser::Error> for Error {
+    fn from(value: crate::parser::Error) -> Self {
+        log::error!(target: "no_deps_lua::parser", "{:?}", value);
+        Self::Parse
     }
 }

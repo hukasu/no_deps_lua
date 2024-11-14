@@ -2,6 +2,7 @@
 
 mod error;
 mod lex;
+mod parser;
 mod program;
 mod std;
 mod value;
@@ -10,8 +11,7 @@ extern crate alloc;
 
 use alloc::vec::Vec;
 
-use program::ByteCode;
-use value::Value;
+use self::{program::ByteCode, value::Value};
 
 pub use {error::Error, program::Program};
 

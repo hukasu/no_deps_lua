@@ -1,16 +1,16 @@
 #[derive(Debug, Clone, PartialEq)]
-pub struct Token<'a> {
+pub struct Lexeme<'a> {
     pub(crate) line: usize,
     pub(crate) column: usize,
     /// How many bytes where read while processing this token.
     ///
     /// This might be across multiple lines
     pub(crate) start_offset: usize,
-    pub(crate) token: TokenType<'a>,
+    pub(crate) lexeme_type: LexemeType<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum TokenType<'a> {
+pub enum LexemeType<'a> {
     // Keywords
     And,
     Break,
@@ -51,11 +51,11 @@ pub enum TokenType<'a> {
     Len,
     /// Bitwise and (`&`)
     BitAnd,
-    /// Bitwise xor (`~`)
-    BitXor,
     /// Bitwise or (`|`)
     BitOr,
-    /// Left shift (`>>`)
+    /// Bitwise xor (`~`)
+    BitXor,
+    /// Left shift (`<<`)
     ShiftL,
     /// Right shift (`>>`)
     ShiftR,
@@ -87,19 +87,19 @@ pub enum TokenType<'a> {
     LSquare,
     /// Right square brackets (`]`)
     RSquare,
-    /// Double Colon (`::`)
-    DoubleColon,
     /// Semi Colon (`;`)
     SemiColon,
     /// Colon (`:`)
     Colon,
+    /// Double Colon (`::`)
+    DoubleColon,
     /// Comma (`,`)
     Comma,
     /// Dot (`.`)
     Dot,
     /// Concatenation (`..`)
     Concat,
-    /// Dots (`..`)
+    /// Dots (`...`)
     Dots,
 
     /// Integer
@@ -111,4 +111,7 @@ pub enum TokenType<'a> {
 
     /// Name of value or table key
     Name(&'a str),
+
+    /// End of file
+    Eof,
 }
