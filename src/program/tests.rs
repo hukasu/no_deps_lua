@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn chapter1() {
-    simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default()).unwrap();
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
     let program = Program::parse(
         r#"
 print "hello world"
@@ -42,6 +42,7 @@ print "hello again...
 
 #[test]
 fn chapter2_1() {
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
     let program = Program::parse(
         r#"
 print(nil)

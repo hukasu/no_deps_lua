@@ -2,6 +2,7 @@ use super::*;
 
 #[test]
 fn empty_input() {
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
     let mut lex = Lex::new("");
     assert_eq!(
         lex.next(),
@@ -31,6 +32,7 @@ fn empty_input() {
 
 #[test]
 fn keywords() {
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
     let mut lex = Lex::new(
         r#"
 and       break     do        else      elseif    end
@@ -261,6 +263,7 @@ then      true      until     while     keyword
 
 #[test]
 fn short_comment() {
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
     let mut lex = Lex::new("-- abc");
     assert_eq!(
         lex.next(),
@@ -316,6 +319,7 @@ fn short_comment() {
 
 #[test]
 fn hello_world() {
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
     let mut lex = Lex::new(r#"print "hello world""#);
     assert_eq!(
         lex.next(),
