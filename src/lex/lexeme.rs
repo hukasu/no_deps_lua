@@ -2,10 +2,8 @@
 pub struct Lexeme<'a> {
     pub(crate) line: usize,
     pub(crate) column: usize,
-    /// How many bytes where read while processing this token.
-    ///
-    /// This might be across multiple lines
-    pub(crate) start_offset: usize,
+    /// The position of the first byte on the lexeme.
+    pub(crate) start: usize,
     pub(crate) lexeme_type: LexemeType<'a>,
 }
 

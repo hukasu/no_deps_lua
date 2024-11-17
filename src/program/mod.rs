@@ -141,6 +141,108 @@ impl<'a> Program<'a> {
         }
     }
 
+    fn explist(&mut self, explist: &Token<'a>) -> Result<(), Error> {
+        match explist.tokens.as_slice() {
+            [exp @ Token {
+                tokens: _,
+                token_type: TokenType::Exp,
+            }, explist_cont @ Token {
+                tokens: _,
+                token_type: TokenType::ExplistCont,
+            }] => self.exp(exp).and_then(|()| self.explist_cont(explist_cont)),
+            _ => {
+                unreachable!(
+                    "Explist did not match any of the productions. Had {:#?}.",
+                    explist
+                );
+            }
+        }
+    }
+
+    fn explist_cont(&mut self, explist_cont: &Token<'a>) -> Result<(), Error> {
+        match explist_cont.tokens.as_slice() {
+            [] => Ok(()),
+            [_comman @ Token {
+                tokens: _,
+                token_type: TokenType::Comma,
+            }, exp @ Token {
+                tokens: _,
+                token_type: TokenType::Exp,
+            }, explist_cont @ Token {
+                tokens: _,
+                token_type: TokenType::ExplistCont,
+            }] => self.exp(exp).and_then(|()| self.explist_cont(explist_cont)),
+            _ => {
+                unreachable!(
+                    "ExplistCont did not match any of the productions. Had {:#?}.",
+                    explist_cont
+                );
+            }
+        }
+    }
+
+    fn exp(&mut self, exp: &Token<'a>) -> Result<(), Error> {
+        match exp.tokens.as_slice() {
+            [_nil @ Token {
+                tokens: _,
+                token_type: TokenType::Nil,
+            }] => {
+                self.byte_codes.push(ByteCode::LoadNil(1));
+                Ok(())
+            }
+            [_false @ Token {
+                tokens: _,
+                token_type: TokenType::False,
+            }] => {
+                self.byte_codes.push(ByteCode::LoadBool(1, false));
+                Ok(())
+            }
+            [_true @ Token {
+                tokens: _,
+                token_type: TokenType::True,
+            }] => {
+                self.byte_codes.push(ByteCode::LoadBool(1, true));
+                Ok(())
+            }
+            [Token {
+                tokens: _,
+                token_type: TokenType::Integer(int),
+            }] => {
+                if let Ok(ii) = i16::try_from(*int) {
+                    self.byte_codes.push(ByteCode::LoadInt(1, ii));
+                } else {
+                    let position = self.push_constant(Value::Integer(*int));
+                    let byte_code = self.load_constant(1, position);
+                    self.byte_codes.push(byte_code);
+                }
+                Ok(())
+            }
+            [Token {
+                tokens: _,
+                token_type: TokenType::Float(float),
+            }] => {
+                let position = self.push_constant(Value::Float(*float));
+                let byte_code = self.load_constant(1, position);
+                self.byte_codes.push(byte_code);
+
+                Ok(())
+            }
+            [Token {
+                tokens: _,
+                token_type: TokenType::String(string),
+            }] => {
+                let position = self.push_constant(Value::String(string));
+                let byte_code = self.load_constant(1, position);
+                self.byte_codes.push(byte_code);
+
+                Ok(())
+            }
+            _ => {
+                unreachable!("Exp did not match any of the productions. Had {:#?}.", exp);
+            }
+        }
+    }
+
     fn prefixexp(&mut self, prefixexp: &Token<'a>) -> Result<(), Error> {
         match prefixexp.tokens.as_slice() {
             [var @ Token {
@@ -181,6 +283,16 @@ impl<'a> Program<'a> {
 
     fn args(&mut self, args: &Token<'a>) -> Result<(), Error> {
         match args.tokens.as_slice() {
+            [_lparen @ Token {
+                tokens: _,
+                token_type: TokenType::LParen,
+            }, args_explist @ Token {
+                tokens: _,
+                token_type: TokenType::ArgsExplist,
+            }, _rparen @ Token {
+                tokens: _,
+                token_type: TokenType::RParen,
+            }] => self.args_explist(args_explist),
             [string @ Token {
                 tokens: _,
                 token_type: TokenType::String(_),
@@ -189,6 +301,22 @@ impl<'a> Program<'a> {
                 unreachable!(
                     "Args did not match any of the productions. Had {:#?}.",
                     args
+                );
+            }
+        }
+    }
+
+    fn args_explist(&mut self, args_explist: &Token<'a>) -> Result<(), Error> {
+        match args_explist.tokens.as_slice() {
+            [] => Ok(()),
+            [explist @ Token {
+                tokens: _,
+                token_type: TokenType::Explist,
+            }] => self.explist(explist),
+            _ => {
+                unreachable!(
+                    "ArgsExplist did not match any of the productions. Had {:#?}.",
+                    args_explist
                 );
             }
         }

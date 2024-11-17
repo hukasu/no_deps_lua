@@ -52,19 +52,18 @@ impl<'a> Iterator for Lex<'a> {
             }
 
             let Some(char) = self.chars.next() else {
-                let start = self.start;
                 self.start = usize::MAX;
 
                 break Some(Ok(Lexeme {
                     line: self.line,
                     column: self.column,
-                    start_offset: start,
+                    start: self.seek,
                     lexeme_type: LexemeType::Eof,
                 }));
             };
 
             self.seek += 1;
-            self.start = self.seek;
+            self.start = self.seek - 1;
             self.column += 1;
 
             match char {
@@ -72,7 +71,7 @@ impl<'a> Iterator for Lex<'a> {
                     break Some(Ok(Lexeme {
                         line: self.line,
                         column: self.column,
-                        start_offset: self.start,
+                        start: self.start,
                         lexeme_type: LexemeType::Add,
                     }));
                 }
@@ -92,7 +91,7 @@ impl<'a> Iterator for Lex<'a> {
                         break Some(Ok(Lexeme {
                             line: self.line,
                             column: self.column,
-                            start_offset: self.start,
+                            start: self.start,
                             lexeme_type: LexemeType::Sub,
                         }));
                     }
@@ -101,7 +100,7 @@ impl<'a> Iterator for Lex<'a> {
                     break Some(Ok(Lexeme {
                         line: self.line,
                         column: self.column,
-                        start_offset: self.start,
+                        start: self.start,
                         lexeme_type: LexemeType::Mul,
                     }));
                 }
@@ -114,7 +113,7 @@ impl<'a> Iterator for Lex<'a> {
                         break Some(Ok(Lexeme {
                             line: self.line,
                             column: self.column - 1,
-                            start_offset: self.start - 1,
+                            start: self.start,
                             lexeme_type: LexemeType::Idiv,
                         }));
                     }
@@ -122,7 +121,7 @@ impl<'a> Iterator for Lex<'a> {
                         break Some(Ok(Lexeme {
                             line: self.line,
                             column: self.column,
-                            start_offset: self.start,
+                            start: self.start,
                             lexeme_type: LexemeType::Div,
                         }));
                     }
@@ -131,7 +130,7 @@ impl<'a> Iterator for Lex<'a> {
                     break Some(Ok(Lexeme {
                         line: self.line,
                         column: self.column,
-                        start_offset: self.start,
+                        start: self.start,
                         lexeme_type: LexemeType::Mod,
                     }));
                 }
@@ -139,7 +138,7 @@ impl<'a> Iterator for Lex<'a> {
                     break Some(Ok(Lexeme {
                         line: self.line,
                         column: self.column,
-                        start_offset: self.start,
+                        start: self.start,
                         lexeme_type: LexemeType::Pow,
                     }));
                 }
@@ -147,7 +146,7 @@ impl<'a> Iterator for Lex<'a> {
                     break Some(Ok(Lexeme {
                         line: self.line,
                         column: self.column,
-                        start_offset: self.start,
+                        start: self.start,
                         lexeme_type: LexemeType::Len,
                     }));
                 }
@@ -155,7 +154,7 @@ impl<'a> Iterator for Lex<'a> {
                     break Some(Ok(Lexeme {
                         line: self.line,
                         column: self.column,
-                        start_offset: self.start,
+                        start: self.start,
                         lexeme_type: LexemeType::BitAnd,
                     }));
                 }
@@ -163,7 +162,7 @@ impl<'a> Iterator for Lex<'a> {
                     break Some(Ok(Lexeme {
                         line: self.line,
                         column: self.column,
-                        start_offset: self.start,
+                        start: self.start,
                         lexeme_type: LexemeType::BitOr,
                     }));
                 }
@@ -176,7 +175,7 @@ impl<'a> Iterator for Lex<'a> {
                         break Some(Ok(Lexeme {
                             line: self.line,
                             column: self.column - 1,
-                            start_offset: self.start - 1,
+                            start: self.start,
                             lexeme_type: LexemeType::Neq,
                         }));
                     }
@@ -184,7 +183,7 @@ impl<'a> Iterator for Lex<'a> {
                         break Some(Ok(Lexeme {
                             line: self.line,
                             column: self.column,
-                            start_offset: self.start,
+                            start: self.start,
                             lexeme_type: LexemeType::BitXor,
                         }));
                     }
@@ -198,7 +197,7 @@ impl<'a> Iterator for Lex<'a> {
                         break Some(Ok(Lexeme {
                             line: self.line,
                             column: self.column - 1,
-                            start_offset: self.start - 1,
+                            start: self.start,
                             lexeme_type: LexemeType::ShiftL,
                         }));
                     }
@@ -210,7 +209,7 @@ impl<'a> Iterator for Lex<'a> {
                         break Some(Ok(Lexeme {
                             line: self.line,
                             column: self.column - 1,
-                            start_offset: self.start - 1,
+                            start: self.start,
                             lexeme_type: LexemeType::Leq,
                         }));
                     }
@@ -218,7 +217,7 @@ impl<'a> Iterator for Lex<'a> {
                         break Some(Ok(Lexeme {
                             line: self.line,
                             column: self.column,
-                            start_offset: self.start,
+                            start: self.start,
                             lexeme_type: LexemeType::Less,
                         }));
                     }
@@ -232,7 +231,7 @@ impl<'a> Iterator for Lex<'a> {
                         break Some(Ok(Lexeme {
                             line: self.line,
                             column: self.column - 1,
-                            start_offset: self.start - 1,
+                            start: self.start,
                             lexeme_type: LexemeType::ShiftR,
                         }));
                     }
@@ -244,7 +243,7 @@ impl<'a> Iterator for Lex<'a> {
                         break Some(Ok(Lexeme {
                             line: self.line,
                             column: self.column - 1,
-                            start_offset: self.start - 1,
+                            start: self.start,
                             lexeme_type: LexemeType::Geq,
                         }));
                     }
@@ -252,7 +251,7 @@ impl<'a> Iterator for Lex<'a> {
                         break Some(Ok(Lexeme {
                             line: self.line,
                             column: self.column,
-                            start_offset: self.start,
+                            start: self.start,
                             lexeme_type: LexemeType::Greater,
                         }));
                     }
@@ -266,7 +265,7 @@ impl<'a> Iterator for Lex<'a> {
                         break Some(Ok(Lexeme {
                             line: self.line,
                             column: self.column - 1,
-                            start_offset: self.start - 1,
+                            start: self.start,
                             lexeme_type: LexemeType::Eq,
                         }));
                     }
@@ -274,7 +273,7 @@ impl<'a> Iterator for Lex<'a> {
                         break Some(Ok(Lexeme {
                             line: self.line,
                             column: self.column,
-                            start_offset: self.start,
+                            start: self.start,
                             lexeme_type: LexemeType::Assign,
                         }));
                     }
@@ -283,7 +282,7 @@ impl<'a> Iterator for Lex<'a> {
                     break Some(Ok(Lexeme {
                         line: self.line,
                         column: self.column,
-                        start_offset: self.start,
+                        start: self.start,
                         lexeme_type: LexemeType::LParen,
                     }));
                 }
@@ -291,7 +290,7 @@ impl<'a> Iterator for Lex<'a> {
                     break Some(Ok(Lexeme {
                         line: self.line,
                         column: self.column,
-                        start_offset: self.start,
+                        start: self.start,
                         lexeme_type: LexemeType::RParen,
                     }));
                 }
@@ -299,7 +298,7 @@ impl<'a> Iterator for Lex<'a> {
                     break Some(Ok(Lexeme {
                         line: self.line,
                         column: self.column,
-                        start_offset: self.start,
+                        start: self.start,
                         lexeme_type: LexemeType::LSquare,
                     }));
                 }
@@ -307,7 +306,7 @@ impl<'a> Iterator for Lex<'a> {
                     break Some(Ok(Lexeme {
                         line: self.line,
                         column: self.column,
-                        start_offset: self.start,
+                        start: self.start,
                         lexeme_type: LexemeType::RSquare,
                     }));
                 }
@@ -315,7 +314,7 @@ impl<'a> Iterator for Lex<'a> {
                     break Some(Ok(Lexeme {
                         line: self.line,
                         column: self.column,
-                        start_offset: self.start,
+                        start: self.start,
                         lexeme_type: LexemeType::LCurly,
                     }));
                 }
@@ -323,7 +322,7 @@ impl<'a> Iterator for Lex<'a> {
                     break Some(Ok(Lexeme {
                         line: self.line,
                         column: self.column,
-                        start_offset: self.start,
+                        start: self.start,
                         lexeme_type: LexemeType::RCurly,
                     }));
                 }
@@ -331,7 +330,7 @@ impl<'a> Iterator for Lex<'a> {
                     break Some(Ok(Lexeme {
                         line: self.line,
                         column: self.column,
-                        start_offset: self.start,
+                        start: self.start,
                         lexeme_type: LexemeType::SemiColon,
                     }));
                 }
@@ -344,7 +343,7 @@ impl<'a> Iterator for Lex<'a> {
                         break Some(Ok(Lexeme {
                             line: self.line,
                             column: self.column - 1,
-                            start_offset: self.start - 1,
+                            start: self.start,
                             lexeme_type: LexemeType::DoubleColon,
                         }));
                     }
@@ -352,7 +351,7 @@ impl<'a> Iterator for Lex<'a> {
                         break Some(Ok(Lexeme {
                             line: self.line,
                             column: self.column,
-                            start_offset: self.start,
+                            start: self.start,
                             lexeme_type: LexemeType::Colon,
                         }));
                     }
@@ -361,7 +360,7 @@ impl<'a> Iterator for Lex<'a> {
                     break Some(Ok(Lexeme {
                         line: self.line,
                         column: self.column,
-                        start_offset: self.start,
+                        start: self.start,
                         lexeme_type: LexemeType::Comma,
                     }));
                 }
@@ -377,7 +376,7 @@ impl<'a> Iterator for Lex<'a> {
                                 break Some(Ok(Lexeme {
                                     line: self.line,
                                     column: self.column - 2,
-                                    start_offset: self.start - 2,
+                                    start: self.start - 1,
                                     lexeme_type: LexemeType::Dots,
                                 }));
                             }
@@ -385,7 +384,7 @@ impl<'a> Iterator for Lex<'a> {
                                 break Some(Ok(Lexeme {
                                     line: self.line,
                                     column: self.column - 1,
-                                    start_offset: self.start - 1,
+                                    start: self.start,
                                     lexeme_type: LexemeType::Concat,
                                 }));
                             }
@@ -395,7 +394,7 @@ impl<'a> Iterator for Lex<'a> {
                         break Some(Ok(Lexeme {
                             line: self.line,
                             column: self.column,
-                            start_offset: self.start,
+                            start: self.start,
                             lexeme_type: LexemeType::Dot,
                         }));
                     }
@@ -409,13 +408,16 @@ impl<'a> Iterator for Lex<'a> {
 
                                 self.chars.next();
                                 self.seek += 1;
-                                self.start = self.seek;
+                                self.start = self.seek - 1;
                                 self.column += 1;
                                 break 'lexer Some(Ok(Lexeme {
                                     line: self.line,
                                     column: self.column,
-                                    start_offset: start - 1,
-                                    lexeme_type: LexemeType::String(&self.program[start..end]),
+                                    start,
+                                    // Skipping the start " or '
+                                    lexeme_type: LexemeType::String(
+                                        &self.program[(start + 1)..end],
+                                    ),
                                 }));
                             }
                             '\\' => match self.chars.peek().copied() {
@@ -461,14 +463,14 @@ impl<'a> Iterator for Lex<'a> {
                                 self.column += 1;
                             }
                             _ => {
-                                let start = self.start - 1;
+                                let start = self.start;
                                 let name = &self.program[start..self.seek];
                                 match name {
                                     "and" => {
                                         break 'lexer Some(Ok(Lexeme {
                                             line: self.line,
                                             column: self.column,
-                                            start_offset: start,
+                                            start,
                                             lexeme_type: LexemeType::And,
                                         }));
                                     }
@@ -476,7 +478,7 @@ impl<'a> Iterator for Lex<'a> {
                                         break 'lexer Some(Ok(Lexeme {
                                             line: self.line,
                                             column: self.column,
-                                            start_offset: start,
+                                            start,
                                             lexeme_type: LexemeType::Break,
                                         }));
                                     }
@@ -484,7 +486,7 @@ impl<'a> Iterator for Lex<'a> {
                                         break 'lexer Some(Ok(Lexeme {
                                             line: self.line,
                                             column: self.column,
-                                            start_offset: start,
+                                            start,
                                             lexeme_type: LexemeType::Do,
                                         }));
                                     }
@@ -492,7 +494,7 @@ impl<'a> Iterator for Lex<'a> {
                                         break 'lexer Some(Ok(Lexeme {
                                             line: self.line,
                                             column: self.column,
-                                            start_offset: start,
+                                            start,
                                             lexeme_type: LexemeType::Else,
                                         }));
                                     }
@@ -500,7 +502,7 @@ impl<'a> Iterator for Lex<'a> {
                                         break 'lexer Some(Ok(Lexeme {
                                             line: self.line,
                                             column: self.column,
-                                            start_offset: start,
+                                            start,
                                             lexeme_type: LexemeType::Elseif,
                                         }));
                                     }
@@ -509,7 +511,7 @@ impl<'a> Iterator for Lex<'a> {
                                         break 'lexer Some(Ok(Lexeme {
                                             line: self.line,
                                             column: self.column,
-                                            start_offset: start,
+                                            start,
                                             lexeme_type: LexemeType::End,
                                         }));
                                     }
@@ -517,7 +519,7 @@ impl<'a> Iterator for Lex<'a> {
                                         break 'lexer Some(Ok(Lexeme {
                                             line: self.line,
                                             column: self.column,
-                                            start_offset: start,
+                                            start,
                                             lexeme_type: LexemeType::False,
                                         }));
                                     }
@@ -525,7 +527,7 @@ impl<'a> Iterator for Lex<'a> {
                                         break 'lexer Some(Ok(Lexeme {
                                             line: self.line,
                                             column: self.column,
-                                            start_offset: start,
+                                            start,
                                             lexeme_type: LexemeType::For,
                                         }));
                                     }
@@ -533,7 +535,7 @@ impl<'a> Iterator for Lex<'a> {
                                         break 'lexer Some(Ok(Lexeme {
                                             line: self.line,
                                             column: self.column,
-                                            start_offset: start,
+                                            start,
                                             lexeme_type: LexemeType::Function,
                                         }));
                                     }
@@ -541,7 +543,7 @@ impl<'a> Iterator for Lex<'a> {
                                         break 'lexer Some(Ok(Lexeme {
                                             line: self.line,
                                             column: self.column,
-                                            start_offset: start,
+                                            start,
                                             lexeme_type: LexemeType::Goto,
                                         }));
                                     }
@@ -549,7 +551,7 @@ impl<'a> Iterator for Lex<'a> {
                                         break 'lexer Some(Ok(Lexeme {
                                             line: self.line,
                                             column: self.column,
-                                            start_offset: start,
+                                            start,
                                             lexeme_type: LexemeType::If,
                                         }));
                                     }
@@ -557,7 +559,7 @@ impl<'a> Iterator for Lex<'a> {
                                         break 'lexer Some(Ok(Lexeme {
                                             line: self.line,
                                             column: self.column,
-                                            start_offset: start,
+                                            start,
                                             lexeme_type: LexemeType::In,
                                         }));
                                     }
@@ -565,7 +567,7 @@ impl<'a> Iterator for Lex<'a> {
                                         break 'lexer Some(Ok(Lexeme {
                                             line: self.line,
                                             column: self.column,
-                                            start_offset: start,
+                                            start,
                                             lexeme_type: LexemeType::Local,
                                         }));
                                     }
@@ -573,7 +575,7 @@ impl<'a> Iterator for Lex<'a> {
                                         break 'lexer Some(Ok(Lexeme {
                                             line: self.line,
                                             column: self.column,
-                                            start_offset: start,
+                                            start,
                                             lexeme_type: LexemeType::Nil,
                                         }));
                                     }
@@ -581,7 +583,7 @@ impl<'a> Iterator for Lex<'a> {
                                         break 'lexer Some(Ok(Lexeme {
                                             line: self.line,
                                             column: self.column,
-                                            start_offset: start,
+                                            start,
                                             lexeme_type: LexemeType::Not,
                                         }));
                                     }
@@ -589,7 +591,7 @@ impl<'a> Iterator for Lex<'a> {
                                         break 'lexer Some(Ok(Lexeme {
                                             line: self.line,
                                             column: self.column,
-                                            start_offset: start,
+                                            start,
                                             lexeme_type: LexemeType::Or,
                                         }));
                                     }
@@ -597,7 +599,7 @@ impl<'a> Iterator for Lex<'a> {
                                         break 'lexer Some(Ok(Lexeme {
                                             line: self.line,
                                             column: self.column,
-                                            start_offset: start,
+                                            start,
                                             lexeme_type: LexemeType::Repeat,
                                         }));
                                     }
@@ -605,7 +607,7 @@ impl<'a> Iterator for Lex<'a> {
                                         break 'lexer Some(Ok(Lexeme {
                                             line: self.line,
                                             column: self.column,
-                                            start_offset: start,
+                                            start,
                                             lexeme_type: LexemeType::Return,
                                         }));
                                     }
@@ -613,7 +615,7 @@ impl<'a> Iterator for Lex<'a> {
                                         break 'lexer Some(Ok(Lexeme {
                                             line: self.line,
                                             column: self.column,
-                                            start_offset: start,
+                                            start,
                                             lexeme_type: LexemeType::Then,
                                         }));
                                     }
@@ -621,7 +623,7 @@ impl<'a> Iterator for Lex<'a> {
                                         break 'lexer Some(Ok(Lexeme {
                                             line: self.line,
                                             column: self.column,
-                                            start_offset: start,
+                                            start,
                                             lexeme_type: LexemeType::True,
                                         }));
                                     }
@@ -629,7 +631,7 @@ impl<'a> Iterator for Lex<'a> {
                                         break 'lexer Some(Ok(Lexeme {
                                             line: self.line,
                                             column: self.column,
-                                            start_offset: start,
+                                            start,
                                             lexeme_type: LexemeType::Until,
                                         }));
                                     }
@@ -637,7 +639,7 @@ impl<'a> Iterator for Lex<'a> {
                                         break 'lexer Some(Ok(Lexeme {
                                             line: self.line,
                                             column: self.column,
-                                            start_offset: start,
+                                            start,
                                             lexeme_type: LexemeType::While,
                                         }));
                                     }
@@ -645,7 +647,7 @@ impl<'a> Iterator for Lex<'a> {
                                         break 'lexer Some(Ok(Lexeme {
                                             line: self.line,
                                             column: self.column,
-                                            start_offset: start,
+                                            start,
                                             lexeme_type: LexemeType::Name(other),
                                         }));
                                     }
@@ -683,7 +685,7 @@ impl<'a> Iterator for Lex<'a> {
                                 .map(|i| Lexeme {
                                     line: self.line,
                                     column: self.column,
-                                    start_offset: self.start,
+                                    start: self.start,
                                     lexeme_type: LexemeType::Integer(i),
                                 })
                                 .map_err(|_err| Error {
@@ -732,7 +734,7 @@ impl<'a> Iterator for Lex<'a> {
                                             .map(|i| Lexeme {
                                                 line: self.line,
                                                 column: self.column,
-                                                start_offset: self.start,
+                                                start: self.start,
                                                 lexeme_type: LexemeType::Float(i),
                                             })
                                             .map_err(|_err| Error {
@@ -748,7 +750,7 @@ impl<'a> Iterator for Lex<'a> {
                                             .map(|i| Lexeme {
                                                 line: self.line,
                                                 column: self.column,
-                                                start_offset: self.start,
+                                                start: self.start,
                                                 lexeme_type: LexemeType::Integer(i),
                                             })
                                             .map_err(|_err| Error {

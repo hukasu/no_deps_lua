@@ -8,7 +8,7 @@ fn empty_input() {
         Some(Ok(Lexeme {
             line: 0,
             column: 0,
-            start_offset: 0,
+            start: 0,
             lexeme_type: LexemeType::Eof
         }))
     );
@@ -21,7 +21,7 @@ fn empty_input() {
         Some(Ok(Lexeme {
             line: 4,
             column: 8,
-            start_offset: 20,
+            start: 20,
             lexeme_type: LexemeType::Eof
         }))
     );
@@ -44,7 +44,7 @@ then      true      until     while     keyword
         Some(Ok(Lexeme {
             line: 1,
             column: 3,
-            start_offset: 1,
+            start: 1,
             lexeme_type: LexemeType::And
         }))
     );
@@ -53,7 +53,7 @@ then      true      until     while     keyword
         Some(Ok(Lexeme {
             line: 1,
             column: 15,
-            start_offset: 11,
+            start: 11,
             lexeme_type: LexemeType::Break
         }))
     );
@@ -62,7 +62,7 @@ then      true      until     while     keyword
         Some(Ok(Lexeme {
             line: 1,
             column: 22,
-            start_offset: 21,
+            start: 21,
             lexeme_type: LexemeType::Do
         }))
     );
@@ -71,7 +71,7 @@ then      true      until     while     keyword
         Some(Ok(Lexeme {
             line: 1,
             column: 34,
-            start_offset: 31,
+            start: 31,
             lexeme_type: LexemeType::Else
         }))
     );
@@ -80,7 +80,7 @@ then      true      until     while     keyword
         Some(Ok(Lexeme {
             line: 1,
             column: 46,
-            start_offset: 41,
+            start: 41,
             lexeme_type: LexemeType::Elseif
         }))
     );
@@ -89,7 +89,7 @@ then      true      until     while     keyword
         Some(Ok(Lexeme {
             line: 1,
             column: 53,
-            start_offset: 51,
+            start: 51,
             lexeme_type: LexemeType::End
         }))
     );
@@ -98,7 +98,7 @@ then      true      until     while     keyword
         Some(Ok(Lexeme {
             line: 2,
             column: 5,
-            start_offset: 55,
+            start: 55,
             lexeme_type: LexemeType::False
         }))
     );
@@ -107,7 +107,7 @@ then      true      until     while     keyword
         Some(Ok(Lexeme {
             line: 2,
             column: 13,
-            start_offset: 65,
+            start: 65,
             lexeme_type: LexemeType::For
         }))
     );
@@ -116,7 +116,7 @@ then      true      until     while     keyword
         Some(Ok(Lexeme {
             line: 2,
             column: 28,
-            start_offset: 75,
+            start: 75,
             lexeme_type: LexemeType::Function
         }))
     );
@@ -125,7 +125,7 @@ then      true      until     while     keyword
         Some(Ok(Lexeme {
             line: 2,
             column: 34,
-            start_offset: 85,
+            start: 85,
             lexeme_type: LexemeType::Goto
         }))
     );
@@ -134,7 +134,7 @@ then      true      until     while     keyword
         Some(Ok(Lexeme {
             line: 2,
             column: 42,
-            start_offset: 95,
+            start: 95,
             lexeme_type: LexemeType::If
         }))
     );
@@ -143,7 +143,7 @@ then      true      until     while     keyword
         Some(Ok(Lexeme {
             line: 2,
             column: 52,
-            start_offset: 105,
+            start: 105,
             lexeme_type: LexemeType::In
         }))
     );
@@ -152,7 +152,7 @@ then      true      until     while     keyword
         Some(Ok(Lexeme {
             line: 3,
             column: 5,
-            start_offset: 108,
+            start: 108,
             lexeme_type: LexemeType::Local
         }))
     );
@@ -161,7 +161,7 @@ then      true      until     while     keyword
         Some(Ok(Lexeme {
             line: 3,
             column: 13,
-            start_offset: 118,
+            start: 118,
             lexeme_type: LexemeType::Nil
         }))
     );
@@ -170,7 +170,7 @@ then      true      until     while     keyword
         Some(Ok(Lexeme {
             line: 3,
             column: 23,
-            start_offset: 128,
+            start: 128,
             lexeme_type: LexemeType::Not
         }))
     );
@@ -179,7 +179,7 @@ then      true      until     while     keyword
         Some(Ok(Lexeme {
             line: 3,
             column: 32,
-            start_offset: 138,
+            start: 138,
             lexeme_type: LexemeType::Or
         }))
     );
@@ -188,7 +188,7 @@ then      true      until     while     keyword
         Some(Ok(Lexeme {
             line: 3,
             column: 46,
-            start_offset: 148,
+            start: 148,
             lexeme_type: LexemeType::Repeat
         }))
     );
@@ -197,7 +197,7 @@ then      true      until     while     keyword
         Some(Ok(Lexeme {
             line: 3,
             column: 56,
-            start_offset: 158,
+            start: 158,
             lexeme_type: LexemeType::Return
         }))
     );
@@ -206,7 +206,7 @@ then      true      until     while     keyword
         Some(Ok(Lexeme {
             line: 4,
             column: 4,
-            start_offset: 165,
+            start: 165,
             lexeme_type: LexemeType::Then
         }))
     );
@@ -215,7 +215,7 @@ then      true      until     while     keyword
         Some(Ok(Lexeme {
             line: 4,
             column: 14,
-            start_offset: 175,
+            start: 175,
             lexeme_type: LexemeType::True
         }))
     );
@@ -224,7 +224,7 @@ then      true      until     while     keyword
         Some(Ok(Lexeme {
             line: 4,
             column: 25,
-            start_offset: 185,
+            start: 185,
             lexeme_type: LexemeType::Until
         }))
     );
@@ -233,7 +233,7 @@ then      true      until     while     keyword
         Some(Ok(Lexeme {
             line: 4,
             column: 35,
-            start_offset: 195,
+            start: 195,
             lexeme_type: LexemeType::While
         }))
     );
@@ -242,7 +242,7 @@ then      true      until     while     keyword
         Some(Ok(Lexeme {
             line: 4,
             column: 47,
-            start_offset: 205,
+            start: 205,
             lexeme_type: LexemeType::Name("keyword")
         }))
     );
@@ -251,7 +251,7 @@ then      true      until     while     keyword
         Some(Ok(Lexeme {
             line: 5,
             column: 0,
-            start_offset: 213,
+            start: 213,
             lexeme_type: LexemeType::Eof
         }))
     );
@@ -267,7 +267,7 @@ fn short_comment() {
         Some(Ok(Lexeme {
             line: 0,
             column: 6,
-            start_offset: 6,
+            start: 6,
             lexeme_type: LexemeType::Eof
         }))
     );
@@ -280,7 +280,7 @@ fn short_comment() {
         Some(Ok(Lexeme {
             line: 0,
             column: 59,
-            start_offset: 59,
+            start: 59,
             lexeme_type: LexemeType::Eof
         }))
     );
@@ -293,7 +293,7 @@ fn short_comment() {
         Some(Ok(Lexeme {
             line: 0,
             column: 3,
-            start_offset: 3,
+            start: 3,
             lexeme_type: LexemeType::Eof
         }))
     );
@@ -306,7 +306,7 @@ fn short_comment() {
         Some(Ok(Lexeme {
             line: 0,
             column: 59,
-            start_offset: 59,
+            start: 59,
             lexeme_type: LexemeType::Eof
         }))
     );
@@ -322,7 +322,7 @@ fn hello_world() {
         Some(Ok(Lexeme {
             line: 0,
             column: 5,
-            start_offset: 0,
+            start: 0,
             lexeme_type: LexemeType::Name("print")
         }))
     );
@@ -331,7 +331,7 @@ fn hello_world() {
         Some(Ok(Lexeme {
             line: 0,
             column: 19,
-            start_offset: 6,
+            start: 6,
             lexeme_type: LexemeType::String("hello world")
         }))
     );
@@ -340,7 +340,7 @@ fn hello_world() {
         Some(Ok(Lexeme {
             line: 0,
             column: 19,
-            start_offset: 19,
+            start: 19,
             lexeme_type: LexemeType::Eof
         }))
     );
@@ -356,7 +356,7 @@ print "hello again...""#,
         Some(Ok(Lexeme {
             line: 0,
             column: 5,
-            start_offset: 0,
+            start: 0,
             lexeme_type: LexemeType::Name("print")
         }))
     );
@@ -367,7 +367,7 @@ print "hello again...""#,
         Some(Ok(Lexeme {
             line: 0,
             column: 19,
-            start_offset: 6,
+            start: 6,
             lexeme_type: LexemeType::String("hello world")
         }))
     );
@@ -378,7 +378,7 @@ print "hello again...""#,
         Some(Ok(Lexeme {
             line: 1,
             column: 5,
-            start_offset: 20,
+            start: 20,
             lexeme_type: LexemeType::Name("print")
         }))
     );
@@ -389,7 +389,7 @@ print "hello again...""#,
         Some(Ok(Lexeme {
             line: 1,
             column: 22,
-            start_offset: 26,
+            start: 26,
             lexeme_type: LexemeType::String("hello again...")
         }))
     );
@@ -398,7 +398,7 @@ print "hello again...""#,
         Some(Ok(Lexeme {
             line: 1,
             column: 22,
-            start_offset: 42,
+            start: 42,
             lexeme_type: LexemeType::Eof
         }))
     );
@@ -413,7 +413,7 @@ print "hello again...""#,
         Some(Ok(Lexeme {
             line: 0,
             column: 5,
-            start_offset: 0,
+            start: 0,
             lexeme_type: LexemeType::Name("print")
         }))
     );
