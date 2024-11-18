@@ -82,3 +82,44 @@ print(123456.0)
         ]
     );
 }
+
+#[test]
+fn chapter2_2() {
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
+    let program = Program::parse(
+        r#"
+local a = "hello, local!" -- define a local by string
+local b = a -- define a local by another local
+print(b) -- print local variable
+print(print) -- print global variable
+local print = print --define a local by global variable with same name
+print "I'm local-print!" -- call local function
+"#,
+    )
+    .unwrap();
+    assert_eq!(
+        &program.constants,
+        &[
+            Value::String("hello, local!"),
+            Value::String("print"),
+            Value::String("I'm local-print!")
+        ]
+    );
+    assert_eq!(
+        &program.byte_codes,
+        &[
+            ByteCode::LoadConstant(0, 0),
+            ByteCode::Move(1, 0),
+            ByteCode::GetGlobal(2, 1),
+            ByteCode::Move(3, 1),
+            ByteCode::Call(2, 1),
+            ByteCode::GetGlobal(2, 1),
+            ByteCode::GetGlobal(3, 1),
+            ByteCode::Call(2, 1),
+            ByteCode::GetGlobal(2, 1),
+            ByteCode::Move(3, 2),
+            ByteCode::LoadConstant(4, 2),
+            ByteCode::Call(3, 1),
+        ]
+    );
+}

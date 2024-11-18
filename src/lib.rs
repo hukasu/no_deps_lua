@@ -16,6 +16,7 @@ use self::{program::ByteCode, value::Value};
 pub use {error::Error, program::Program};
 
 pub struct Lua<'a> {
+    func_index: usize,
     globals: Vec<(&'static str, Value<'a>)>,
     stack: Vec<Value<'a>>,
 }
@@ -25,6 +26,7 @@ impl<'a> Lua<'a> {
         let globals = Vec::from([("print", Value::Function(std::lib_print))]);
 
         Self {
+            func_index: 0,
             globals,
             stack: Vec::new(),
         }
@@ -61,8 +63,12 @@ impl<'a> Lua<'a> {
                     vm.stack
                         .insert(*dst as usize, program.constants[*key as usize].clone());
                 }
+                ByteCode::Move(dst, src) => vm
+                    .stack
+                    .insert(*dst as usize, vm.stack[*src as usize].clone()),
                 ByteCode::Call(func, _) => {
-                    let func = &vm.stack[*func as usize];
+                    vm.func_index = *func as usize;
+                    let func = &vm.stack[vm.func_index];
                     if let Value::Function(f) = func {
                         f(&mut vm);
                     } else {

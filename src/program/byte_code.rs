@@ -5,5 +5,6 @@ pub enum ByteCode {
     LoadBool(u8, bool),
     LoadInt(u8, i16),
     LoadConstant(u8, u8),
+    Move(u8, u8),
     Call(u8, u8),
 }
