@@ -38,6 +38,7 @@ print "hello again...
     )
     .expect_err("This program should fail");
     assert_eq!(err, Error::Parse);
+    crate::Lua::execute(&program).unwrap();
 }
 
 #[test]
@@ -77,6 +78,7 @@ print(123456.0)
             ByteCode::Call(0, 1),
         ]
     );
+    crate::Lua::execute(&program).unwrap();
 }
 
 #[test]
@@ -118,6 +120,7 @@ print "I'm local-print!" -- call local function
             ByteCode::Call(3, 1),
         ]
     );
+    crate::Lua::execute(&program).unwrap();
 }
 
 #[test]
@@ -181,4 +184,5 @@ print(g)
             ByteCode::Call(1, 1),
         ]
     );
+    crate::Lua::execute(&program).unwrap();
 }

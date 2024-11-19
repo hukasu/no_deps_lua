@@ -10,15 +10,16 @@ mod value;
 
 extern crate alloc;
 
-use alloc::{rc::Rc, vec::Vec};
+use alloc::vec::Vec;
 
 use self::{program::ByteCode, value::Value};
 
 pub use {error::Error, program::Program};
 
+#[derive(Debug)]
 pub struct Lua {
     func_index: usize,
-    globals: Vec<(Rc<str>, Value)>,
+    globals: Vec<(Value, Value)>,
     stack: Vec<Value>,
 }
 
@@ -39,72 +40,49 @@ impl Lua {
         for code in program.byte_codes.iter() {
             match code {
                 ByteCode::GetGlobal(dst, name) => {
-                    let name = &program.constants[*name as usize];
-                    if let Value::String(key) = name {
-                        if let Some(index) = vm.globals.iter().position(|global| global.0.eq(key)) {
-                            vm.stack.insert(*dst as usize, vm.globals[index].1.clone());
-                        } else {
-                            vm.stack.insert(*dst as usize, Value::Nil);
-                        }
+                    let key = &program.constants[*name as usize];
+                    if let Some(index) = vm.globals.iter().position(|global| global.0.eq(key)) {
+                        vm.stack.insert(*dst as usize, vm.globals[index].1.clone());
                     } else {
-                        return Err(Error::InvalidGlobalKey(name.clone()));
+                        vm.stack.insert(*dst as usize, Value::Nil);
                     }
                 }
                 ByteCode::SetGlobal(dst, src) => {
-                    let name = &program.constants[*dst as usize];
-                    if let Value::String(global_name) = name {
-                        let value = vm.stack[*src as usize].clone();
-                        if let Some(global) = vm
-                            .globals
-                            .iter_mut()
-                            .find(|global| global.0.eq(global_name))
-                        {
-                            global.1 = value;
-                        } else {
-                            vm.globals.push((global_name.clone(), value));
-                        }
+                    let key = &program.constants[*dst as usize];
+                    let value = vm.stack[*src as usize].clone();
+                    if let Some(global) = vm.globals.iter_mut().find(|global| global.0.eq(key)) {
+                        global.1 = value;
+                    } else if matches!(key, Value::String(_) | Value::ShortString(_)) {
+                        vm.globals.push((key.clone(), value));
                     } else {
                         return Err(Error::ExpectedName);
                     }
                 }
                 ByteCode::SetGlobalConstant(dst, src) => {
-                    let name = &program.constants[*dst as usize];
-                    if let Value::String(global_name) = name {
-                        let value = program.constants[*src as usize].clone();
-                        if let Some(global) = vm
-                            .globals
-                            .iter_mut()
-                            .find(|global| global.0.eq(global_name))
-                        {
-                            global.1 = value;
-                        } else {
-                            vm.globals.push((global_name.clone(), value));
-                        }
+                    let key = &program.constants[*dst as usize];
+                    let value = program.constants[*src as usize].clone();
+                    if let Some(global) = vm.globals.iter_mut().find(|global| global.0.eq(key)) {
+                        global.1 = value;
+                    } else if matches!(key, Value::String(_) | Value::ShortString(_)) {
+                        vm.globals.push((key.clone(), value));
                     } else {
                         return Err(Error::ExpectedName);
                     }
                 }
                 ByteCode::SetGlobalGlobal(dst, src) => {
-                    let name = &program.constants[*dst as usize];
-                    if let Value::String(global_name) = name {
-                        let value = &program.constants[*src as usize];
-                        if let Value::String(src_global_name) = value {
-                            let value = vm
-                                .globals
-                                .iter()
-                                .find(|global| global.0.eq(src_global_name))
-                                .map(|global| global.1.clone())
-                                .unwrap_or(Value::Nil);
-                            if let Some(global) = vm
-                                .globals
-                                .iter_mut()
-                                .find(|global| global.0.eq(global_name))
-                            {
-                                global.1 = value;
-                            } else {
-                                vm.globals.push((global_name.clone(), value));
-                            }
-                        }
+                    let dst_key = &program.constants[*dst as usize];
+                    let src_key = &program.constants[*src as usize];
+                    let value = vm
+                        .globals
+                        .iter()
+                        .find(|global| global.0.eq(src_key))
+                        .map(|global| global.1.clone())
+                        .unwrap_or(Value::Nil);
+                    if let Some(global) = vm.globals.iter_mut().find(|global| global.0.eq(dst_key))
+                    {
+                        global.1 = value;
+                    } else if matches!(dst_key, Value::String(_) | Value::ShortString(_)) {
+                        vm.globals.push((dst_key.clone(), value));
                     } else {
                         return Err(Error::ExpectedName);
                     }
