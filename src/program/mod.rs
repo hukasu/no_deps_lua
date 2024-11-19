@@ -145,32 +145,9 @@ impl<'a> Program<'a> {
             }, explist @ Token {
                 tokens: _,
                 token_type: TokenType::Explist,
-            }] => {
-                let var @ Token {
-                    tokens: _,
-                    token_type: TokenType::Var,
-                } = &varlist.tokens[0]
-                else {
-                    panic!();
-                };
-                let Token {
-                    tokens: _,
-                    token_type: TokenType::Name(var_name),
-                } = &var.tokens[0]
-                else {
-                    panic!();
-                };
-                if let Some(var_dst) = locals.iter().rposition(|name| name.eq(var_name)) {
-                    self.explist(explist, locals, dst)?;
-                    self.byte_codes.push(ByteCode::Move(var_dst as u8, dst));
-                    Ok(())
-                } else {
-                    self.explist(explist, locals, dst)?;
-                    let global_pos = self.push_constant(Value::String(var_name));
-                    self.byte_codes.push(ByteCode::SetGlobal(global_pos, dst));
-                    Ok(())
-                }
-            }
+            }] => self
+                .explist(explist, locals, dst)
+                .and_then(|()| self.varlist(varlist, locals, dst)),
             [functioncall @ Token {
                 tokens: _,
                 token_type: TokenType::Functioncall,
@@ -295,7 +272,12 @@ impl<'a> Program<'a> {
         }
     }
 
-    fn varlist(&mut self, varlist: &Token<'a>, locals: &mut Vec<String>) -> Result<(), Error> {
+    fn varlist(
+        &mut self,
+        varlist: &Token<'a>,
+        locals: &mut Vec<String>,
+        dst: u8,
+    ) -> Result<(), Error> {
         match varlist.tokens.as_slice() {
             [var @ Token {
                 tokens: _,
@@ -304,8 +286,8 @@ impl<'a> Program<'a> {
                 tokens: _,
                 token_type: TokenType::VarlistCont,
             }] => self
-                .var_assign(var, locals)
-                .and_then(|()| self.varlist_cont(varlist_cont, locals)),
+                .var_assign(var, locals, dst)
+                .and_then(|()| self.varlist_cont(varlist_cont, locals, dst + 1)),
             _ => {
                 unreachable!(
                     "Varlist did not match any of the productions. Had {:#?}.",
@@ -323,6 +305,7 @@ impl<'a> Program<'a> {
         &mut self,
         varlist_cont: &Token<'a>,
         locals: &mut Vec<String>,
+        dst: u8,
     ) -> Result<(), Error> {
         match varlist_cont.tokens.as_slice() {
             [] => Ok(()),
@@ -336,8 +319,8 @@ impl<'a> Program<'a> {
                 tokens: _,
                 token_type: TokenType::VarlistCont,
             }] => self
-                .var_assign(var, locals)
-                .and_then(|()| self.varlist_cont(varlist_cont, locals)),
+                .var_assign(var, locals, dst)
+                .and_then(|()| self.varlist_cont(varlist_cont, locals, dst + 1)),
             _ => {
                 unreachable!(
                     "VarlistCont did not match any of the productions. Had {:#?}.",
@@ -366,13 +349,20 @@ impl<'a> Program<'a> {
         }
     }
 
-    fn var_assign(&mut self, var: &Token<'a>, locals: &[String]) -> Result<(), Error> {
+    fn var_assign(&mut self, var: &Token<'a>, locals: &[String], dst: u8) -> Result<(), Error> {
         match var.tokens.as_slice() {
-            [name @ Token {
+            [Token {
                 tokens: _,
                 token_type: TokenType::Name(var_name),
             }] => {
-                todo!()
+                if let Some(var_dst) = locals.iter().rposition(|name| name.eq(var_name)) {
+                    self.byte_codes.push(ByteCode::Move(var_dst as u8, dst));
+                    Ok(())
+                } else {
+                    let global_pos = self.push_constant(Value::String(var_name));
+                    self.byte_codes.push(ByteCode::SetGlobal(global_pos, dst));
+                    Ok(())
+                }
             }
             _ => {
                 unreachable!(
