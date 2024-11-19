@@ -123,3 +123,70 @@ print "I'm local-print!" -- call local function
         ]
     );
 }
+
+#[test]
+fn chapter2_3() {
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
+    let program = Program::parse(
+        r#"
+local a = 456
+a = 123
+print(a)
+a = a
+print(a)
+a = g
+print(a)
+g = 123
+print(g)
+g = a
+print(g)
+g = g2
+print(g)
+"#,
+    )
+    .unwrap();
+    assert_eq!(
+        &program.constants,
+        &[
+            Value::String("print"),
+            Value::String("g"),
+            Value::String("g2")
+        ]
+    );
+    assert_eq!(
+        &program.byte_codes,
+        &[
+            ByteCode::LoadInt(0, 456),
+            ByteCode::LoadInt(1, 123),
+            ByteCode::Move(0, 1),
+            ByteCode::GetGlobal(1, 0),
+            ByteCode::Move(2, 0),
+            ByteCode::Call(1, 1),
+            ByteCode::Move(1, 0),
+            ByteCode::Move(0, 1),
+            ByteCode::GetGlobal(1, 0),
+            ByteCode::Move(2, 0),
+            ByteCode::Call(1, 1),
+            ByteCode::GetGlobal(1, 1),
+            ByteCode::Move(0, 1),
+            ByteCode::GetGlobal(1, 0),
+            ByteCode::Move(2, 0),
+            ByteCode::Call(1, 1),
+            ByteCode::LoadInt(1, 123),
+            ByteCode::SetGlobal(1, 1),
+            ByteCode::GetGlobal(1, 0),
+            ByteCode::GetGlobal(2, 1),
+            ByteCode::Call(1, 1),
+            ByteCode::Move(1, 0),
+            ByteCode::SetGlobal(1, 1),
+            ByteCode::GetGlobal(1, 0),
+            ByteCode::GetGlobal(2, 1),
+            ByteCode::Call(1, 1),
+            ByteCode::GetGlobal(1, 2),
+            ByteCode::SetGlobal(1, 1),
+            ByteCode::GetGlobal(1, 0),
+            ByteCode::GetGlobal(2, 1),
+            ByteCode::Call(1, 1),
+        ]
+    );
+}

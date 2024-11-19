@@ -9,7 +9,7 @@ mod value;
 
 extern crate alloc;
 
-use alloc::vec::Vec;
+use alloc::{borrow::ToOwned, string::String, vec::Vec};
 
 use self::{program::ByteCode, value::Value};
 
@@ -17,13 +17,13 @@ pub use {error::Error, program::Program};
 
 pub struct Lua<'a> {
     func_index: usize,
-    globals: Vec<(&'static str, Value<'a>)>,
+    globals: Vec<(String, Value<'a>)>,
     stack: Vec<Value<'a>>,
 }
 
 impl<'a> Lua<'a> {
     fn new() -> Self {
-        let globals = Vec::from([("print", Value::Function(std::lib_print))]);
+        let globals = Vec::from([("print".to_owned(), Value::Function(std::lib_print))]);
 
         Self {
             func_index: 0,
@@ -40,14 +40,72 @@ impl<'a> Lua<'a> {
                 ByteCode::GetGlobal(dst, name) => {
                     let name = &program.constants[*name as usize];
                     if let Value::String(key) = name {
-                        let bin_search = vm.globals.binary_search_by(|(a, _)| a.cmp(key));
-                        if let Ok(index) = bin_search {
+                        if let Some(index) = vm.globals.iter().position(|global| global.0.eq(key)) {
                             vm.stack.insert(*dst as usize, vm.globals[index].1.clone());
                         } else {
                             vm.stack.insert(*dst as usize, Value::Nil);
                         }
                     } else {
                         return Err(Error::InvalidGlobalKey(name.clone()));
+                    }
+                }
+                ByteCode::SetGlobal(dst, src) => {
+                    let name = &program.constants[*dst as usize];
+                    if let Value::String(global_name) = name {
+                        let value = vm.stack[*src as usize].clone();
+                        if let Some(global) = vm
+                            .globals
+                            .iter_mut()
+                            .find(|global| global.0.eq(global_name))
+                        {
+                            global.1 = value;
+                        } else {
+                            vm.globals.push(((*global_name).to_owned(), value));
+                        }
+                    } else {
+                        return Err(Error::ExpectedName);
+                    }
+                }
+                ByteCode::SetGlobalConstant(dst, src) => {
+                    let name = &program.constants[*dst as usize];
+                    if let Value::String(global_name) = name {
+                        let value = program.constants[*src as usize].clone();
+                        if let Some(global) = vm
+                            .globals
+                            .iter_mut()
+                            .find(|global| global.0.eq(global_name))
+                        {
+                            global.1 = value;
+                        } else {
+                            vm.globals.push(((*global_name).to_owned(), value));
+                        }
+                    } else {
+                        return Err(Error::ExpectedName);
+                    }
+                }
+                ByteCode::SetGlobalGlobal(dst, src) => {
+                    let name = &program.constants[*dst as usize];
+                    if let Value::String(global_name) = name {
+                        let value = &program.constants[*src as usize];
+                        if let Value::String(src_global_name) = value {
+                            let value = vm
+                                .globals
+                                .iter()
+                                .find(|global| global.0.eq(src_global_name))
+                                .map(|global| global.1.clone())
+                                .unwrap_or(Value::Nil);
+                            if let Some(global) = vm
+                                .globals
+                                .iter_mut()
+                                .find(|global| global.0.eq(global_name))
+                            {
+                                global.1 = value;
+                            } else {
+                                vm.globals.push(((*global_name).to_owned(), value));
+                            }
+                        }
+                    } else {
+                        return Err(Error::ExpectedName);
                     }
                 }
                 ByteCode::LoadNil(dst) => {

@@ -1,10 +1,13 @@
 #[derive(Debug, PartialEq)]
 pub enum ByteCode {
     GetGlobal(u8, u8),
+    SetGlobal(u8, u8),
+    SetGlobalConstant(u8, u8),
+    SetGlobalGlobal(u8, u8),
+    LoadConstant(u8, u8),
     LoadNil(u8),
     LoadBool(u8, bool),
     LoadInt(u8, i16),
-    LoadConstant(u8, u8),
     Move(u8, u8),
     Call(u8, u8),
 }

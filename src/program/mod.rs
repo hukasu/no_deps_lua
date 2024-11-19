@@ -61,7 +61,7 @@ impl<'a> Program<'a> {
             [block @ Token {
                 tokens: _,
                 token_type: TokenType::Block,
-            }] => self.block(block, locals, 0),
+            }] => self.block(block, locals),
             _ => {
                 unreachable!(
                     "Chunk did not match any of the productions. Had {:#?}.",
@@ -75,7 +75,7 @@ impl<'a> Program<'a> {
         }
     }
 
-    fn block(&mut self, block: &Token<'a>, locals: &mut Vec<String>, dst: u8) -> Result<(), Error> {
+    fn block(&mut self, block: &Token<'a>, locals: &mut Vec<String>) -> Result<(), Error> {
         match block.tokens.as_slice() {
             [blockstat @ Token {
                 tokens: _,
@@ -84,7 +84,7 @@ impl<'a> Program<'a> {
                 tokens: _,
                 token_type: TokenType::BlockRetstat,
             }] => {
-                self.block_stat(blockstat, locals, dst)?;
+                self.block_stat(blockstat, locals)?;
                 // TODO retstat
             }
             _ => {
@@ -102,12 +102,7 @@ impl<'a> Program<'a> {
         Ok(())
     }
 
-    fn block_stat(
-        &mut self,
-        block: &Token<'a>,
-        locals: &mut Vec<String>,
-        dst: u8,
-    ) -> Result<(), Error> {
+    fn block_stat(&mut self, block: &Token<'a>, locals: &mut Vec<String>) -> Result<(), Error> {
         match block.tokens.as_slice() {
             [] => {}
             [stat @ Token {
@@ -117,8 +112,8 @@ impl<'a> Program<'a> {
                 tokens: _,
                 token_type: TokenType::BlockStat,
             }] => {
-                self.stat(stat, locals, dst)?;
-                self.block_stat(blockstat, locals, locals.len() as u8)?;
+                self.stat(stat, locals, locals.len() as u8)?;
+                self.block_stat(blockstat, locals)?;
             }
             _ => {
                 unreachable!(
@@ -141,6 +136,41 @@ impl<'a> Program<'a> {
                 tokens: _,
                 token_type: TokenType::SemiColon,
             }] => Ok(()),
+            [varlist @ Token {
+                tokens: _,
+                token_type: TokenType::Varlist,
+            }, Token {
+                tokens: _,
+                token_type: TokenType::Assign,
+            }, explist @ Token {
+                tokens: _,
+                token_type: TokenType::Explist,
+            }] => {
+                let var @ Token {
+                    tokens: _,
+                    token_type: TokenType::Var,
+                } = &varlist.tokens[0]
+                else {
+                    panic!();
+                };
+                let Token {
+                    tokens: _,
+                    token_type: TokenType::Name(var_name),
+                } = &var.tokens[0]
+                else {
+                    panic!();
+                };
+                if let Some(var_dst) = locals.iter().rposition(|name| name.eq(var_name)) {
+                    self.explist(explist, locals, dst)?;
+                    self.byte_codes.push(ByteCode::Move(var_dst as u8, dst));
+                    Ok(())
+                } else {
+                    self.explist(explist, locals, dst)?;
+                    let global_pos = self.push_constant(Value::String(var_name));
+                    self.byte_codes.push(ByteCode::SetGlobal(global_pos, dst));
+                    Ok(())
+                }
+            }
             [functioncall @ Token {
                 tokens: _,
                 token_type: TokenType::Functioncall,
@@ -156,7 +186,7 @@ impl<'a> Program<'a> {
                 token_type: TokenType::StatAttexplist,
             }] => self
                 .stat_attexplist(stat_attexplist, locals, dst)
-                .and_then(|()| self.attnamelist(attnamelist, locals, dst)),
+                .and_then(|()| self.attnamelist(attnamelist, locals)),
             _ => {
                 unreachable!(
                     "Stat did not match any of the productions. Had {:#?}.",
@@ -177,7 +207,7 @@ impl<'a> Program<'a> {
     ) -> Result<(), Error> {
         match stat_attexplist.tokens.as_slice() {
             [] => Ok(()),
-            [_assign @ Token {
+            [Token {
                 tokens: _,
                 token_type: TokenType::Assign,
             }, explist @ Token {
@@ -201,7 +231,6 @@ impl<'a> Program<'a> {
         &mut self,
         attnamelist: &Token<'a>,
         locals: &mut Vec<String>,
-        dst: u8,
     ) -> Result<(), Error> {
         match attnamelist.tokens.as_slice() {
             [Token {
@@ -215,12 +244,104 @@ impl<'a> Program<'a> {
                 token_type: TokenType::AttnamelistCont,
             }] => {
                 locals.push(name.to_string());
-                Ok(())
+                self.attnamelist_cont(attnamelist_cont, locals)
             }
             _ => {
                 unreachable!(
-                    "Stat did not match any of the productions. Had {:#?}.",
+                    "Attnamelist did not match any of the productions. Had {:#?}.",
                     attnamelist
+                        .tokens
+                        .iter()
+                        .map(|t| &t.token_type)
+                        .collect::<Vec<_>>()
+                );
+            }
+        }
+    }
+
+    fn attnamelist_cont(
+        &mut self,
+        attnamelist_cont: &Token<'a>,
+        locals: &mut Vec<String>,
+    ) -> Result<(), Error> {
+        match attnamelist_cont.tokens.as_slice() {
+            [] => Ok(()),
+            [Token {
+                tokens: _,
+                token_type: TokenType::Comma,
+            }, Token {
+                tokens: _,
+                token_type: TokenType::Name(name),
+            }, attrib @ Token {
+                tokens: _,
+                token_type: TokenType::Attrib,
+            }, attnamelist_cont @ Token {
+                tokens: _,
+                token_type: TokenType::AttnamelistCont,
+            }] => {
+                locals.push(name.to_string());
+                self.attnamelist_cont(attnamelist_cont, locals)
+            }
+            _ => {
+                unreachable!(
+                    "AttnamelistCont did not match any of the productions. Had {:#?}.",
+                    attnamelist_cont
+                        .tokens
+                        .iter()
+                        .map(|t| &t.token_type)
+                        .collect::<Vec<_>>()
+                );
+            }
+        }
+    }
+
+    fn varlist(&mut self, varlist: &Token<'a>, locals: &mut Vec<String>) -> Result<(), Error> {
+        match varlist.tokens.as_slice() {
+            [var @ Token {
+                tokens: _,
+                token_type: TokenType::Var,
+            }, varlist_cont @ Token {
+                tokens: _,
+                token_type: TokenType::VarlistCont,
+            }] => self
+                .var_assign(var, locals)
+                .and_then(|()| self.varlist_cont(varlist_cont, locals)),
+            _ => {
+                unreachable!(
+                    "Varlist did not match any of the productions. Had {:#?}.",
+                    varlist
+                        .tokens
+                        .iter()
+                        .map(|t| &t.token_type)
+                        .collect::<Vec<_>>()
+                );
+            }
+        }
+    }
+
+    fn varlist_cont(
+        &mut self,
+        varlist_cont: &Token<'a>,
+        locals: &mut Vec<String>,
+    ) -> Result<(), Error> {
+        match varlist_cont.tokens.as_slice() {
+            [] => Ok(()),
+            [Token {
+                tokens: _,
+                token_type: TokenType::Comma,
+            }, var @ Token {
+                tokens: _,
+                token_type: TokenType::VarlistCont,
+            }, varlist_cont @ Token {
+                tokens: _,
+                token_type: TokenType::VarlistCont,
+            }] => self
+                .var_assign(var, locals)
+                .and_then(|()| self.varlist_cont(varlist_cont, locals)),
+            _ => {
+                unreachable!(
+                    "VarlistCont did not match any of the productions. Had {:#?}.",
+                    varlist_cont
                         .tokens
                         .iter()
                         .map(|t| &t.token_type)
@@ -236,6 +357,23 @@ impl<'a> Program<'a> {
                 tokens: _,
                 token_type: TokenType::Name(_),
             }] => self.name(name, locals, dst),
+            _ => {
+                unreachable!(
+                    "Var did not match any of the productions. Had {:#?}.",
+                    var.tokens.iter().map(|t| &t.token_type).collect::<Vec<_>>()
+                );
+            }
+        }
+    }
+
+    fn var_assign(&mut self, var: &Token<'a>, locals: &[String]) -> Result<(), Error> {
+        match var.tokens.as_slice() {
+            [name @ Token {
+                tokens: _,
+                token_type: TokenType::Name(var_name),
+            }] => {
+                todo!()
+            }
             _ => {
                 unreachable!(
                     "Var did not match any of the productions. Had {:#?}.",
@@ -293,7 +431,7 @@ impl<'a> Program<'a> {
                 token_type: TokenType::ExplistCont,
             }] => self
                 .exp(exp, locals, dst)
-                .and_then(|()| self.explist_cont(explist_cont, locals, dst + 1)),
+                .and_then(|()| self.explist_cont(explist_cont, locals, dst)),
             _ => {
                 unreachable!(
                     "ExplistCont did not match any of the productions. Had {:#?}.",

@@ -6,6 +6,7 @@ use crate::value::Value;
 pub enum Error<'a> {
     InvalidGlobalKey(Value<'a>),
     InvalidFunction(Value<'a>),
+    ExpectedName,
 }
 
 impl<'a> Display for Error<'a> {
@@ -13,6 +14,7 @@ impl<'a> Display for Error<'a> {
         match self {
             Self::InvalidGlobalKey(value) => write!(f, "Global {:?} is not a String.", value),
             Self::InvalidFunction(value) => write!(f, "Value {:?} is not a function.", value),
+            Self::ExpectedName => write!(f, "Expected global or local name."),
         }
     }
 }
