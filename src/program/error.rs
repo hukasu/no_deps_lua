@@ -3,6 +3,7 @@ use core::{fmt::Display, num::TryFromIntError};
 #[derive(Debug, PartialEq)]
 pub enum Error {
     Parse,
+    StringDecode,
     StackOverflow,
     Unimplemented,
 }
@@ -12,6 +13,9 @@ impl Display for Error {
         match self {
             Self::Parse => {
                 write!(f, "Could not parse program.")
+            }
+            Self::StringDecode => {
+                write!(f, "Failed to decode string.")
             }
             Error::StackOverflow => {
                 write!(f, "Tried accessing index outside stack bounds.")
@@ -29,6 +33,13 @@ impl From<crate::parser::Error> for Error {
     fn from(value: crate::parser::Error) -> Self {
         log::error!(target: "no_deps_lua::parser", "{:?}", value);
         Self::Parse
+    }
+}
+
+impl From<crate::ext::UnescapeError> for Error {
+    fn from(value: crate::ext::UnescapeError) -> Self {
+        log::error!(target: "no_deps_lua::parser", "{:?}", value);
+        Self::StringDecode
     }
 }
 

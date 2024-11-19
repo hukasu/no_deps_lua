@@ -8,7 +8,10 @@ use alloc::{
     vec::Vec,
 };
 
-use crate::parser::{Parser, Token, TokenType};
+use crate::{
+    ext::Unescape,
+    parser::{Parser, Token, TokenType},
+};
 
 use super::value::Value;
 
@@ -609,7 +612,7 @@ impl Program {
         else {
             unreachable!("String should be String token type.");
         };
-        let constant = self.push_constant(*string)?;
+        let constant = self.push_constant(string.unescape()?.as_str())?;
         let bytecode = Self::load_constant(dst, constant);
         self.byte_codes.push(bytecode);
         Ok(())

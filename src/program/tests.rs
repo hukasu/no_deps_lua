@@ -186,3 +186,19 @@ print(g)
     );
     crate::Lua::execute(&program).unwrap();
 }
+
+#[test]
+fn chapter3_4() {
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
+    let program = Program::parse(
+        r#"
+print "tab:\thi" -- tab
+print "\xE4\xBD\xA0\xE5\xA5\xBD" -- 你好
+print "\xE4\xBD" -- invalid UTF-8
+print "\72\101\108\108\111" -- Hello
+print "null: \0." -- '\0'
+"#,
+    )
+    .unwrap();
+    crate::Lua::execute(&program).unwrap();
+}
