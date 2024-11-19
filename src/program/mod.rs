@@ -15,13 +15,13 @@ use super::value::Value;
 pub use {byte_code::ByteCode, error::Error};
 
 #[derive(Debug)]
-pub struct Program<'a> {
-    pub(super) constants: Vec<Value<'a>>,
+pub struct Program {
+    pub(super) constants: Vec<Value>,
     pub(super) byte_codes: Vec<ByteCode>,
 }
 
-impl<'a> Program<'a> {
-    pub fn parse(program: &'a str) -> Result<Self, Error> {
+impl Program {
+    pub fn parse(program: &str) -> Result<Self, Error> {
         let chunk = Parser::parse(program)?;
 
         let mut program = Program {
@@ -35,7 +35,7 @@ impl<'a> Program<'a> {
         Ok(program)
     }
 
-    fn push_constant(&mut self, value: Value<'a>) -> u8 {
+    fn push_constant(&mut self, value: Value) -> u8 {
         self.constants
             .iter()
             .position(|v| v == &value)
@@ -56,7 +56,7 @@ impl<'a> Program<'a> {
     }
 
     // Non-terminals
-    fn chunk(&mut self, chunk: &Token<'a>, locals: &mut Vec<String>) -> Result<(), Error> {
+    fn chunk(&mut self, chunk: &Token, locals: &mut Vec<String>) -> Result<(), Error> {
         match chunk.tokens.as_slice() {
             [block @ Token {
                 tokens: _,
@@ -75,7 +75,7 @@ impl<'a> Program<'a> {
         }
     }
 
-    fn block(&mut self, block: &Token<'a>, locals: &mut Vec<String>) -> Result<(), Error> {
+    fn block(&mut self, block: &Token, locals: &mut Vec<String>) -> Result<(), Error> {
         match block.tokens.as_slice() {
             [blockstat @ Token {
                 tokens: _,
@@ -102,7 +102,7 @@ impl<'a> Program<'a> {
         Ok(())
     }
 
-    fn block_stat(&mut self, block: &Token<'a>, locals: &mut Vec<String>) -> Result<(), Error> {
+    fn block_stat(&mut self, block: &Token, locals: &mut Vec<String>) -> Result<(), Error> {
         match block.tokens.as_slice() {
             [] => {}
             [stat @ Token {
@@ -130,7 +130,7 @@ impl<'a> Program<'a> {
         Ok(())
     }
 
-    fn stat(&mut self, stat: &Token<'a>, locals: &mut Vec<String>, dst: u8) -> Result<(), Error> {
+    fn stat(&mut self, stat: &Token, locals: &mut Vec<String>, dst: u8) -> Result<(), Error> {
         match stat.tokens.as_slice() {
             [Token {
                 tokens: _,
@@ -178,7 +178,7 @@ impl<'a> Program<'a> {
 
     fn stat_attexplist(
         &mut self,
-        stat_attexplist: &Token<'a>,
+        stat_attexplist: &Token,
         locals: &mut Vec<String>,
         dst: u8,
     ) -> Result<(), Error> {
@@ -204,11 +204,7 @@ impl<'a> Program<'a> {
         }
     }
 
-    fn attnamelist(
-        &mut self,
-        attnamelist: &Token<'a>,
-        locals: &mut Vec<String>,
-    ) -> Result<(), Error> {
+    fn attnamelist(&mut self, attnamelist: &Token, locals: &mut Vec<String>) -> Result<(), Error> {
         match attnamelist.tokens.as_slice() {
             [Token {
                 tokens: _,
@@ -238,7 +234,7 @@ impl<'a> Program<'a> {
 
     fn attnamelist_cont(
         &mut self,
-        attnamelist_cont: &Token<'a>,
+        attnamelist_cont: &Token,
         locals: &mut Vec<String>,
     ) -> Result<(), Error> {
         match attnamelist_cont.tokens.as_slice() {
@@ -272,12 +268,7 @@ impl<'a> Program<'a> {
         }
     }
 
-    fn varlist(
-        &mut self,
-        varlist: &Token<'a>,
-        locals: &mut Vec<String>,
-        dst: u8,
-    ) -> Result<(), Error> {
+    fn varlist(&mut self, varlist: &Token, locals: &mut Vec<String>, dst: u8) -> Result<(), Error> {
         match varlist.tokens.as_slice() {
             [var @ Token {
                 tokens: _,
@@ -303,7 +294,7 @@ impl<'a> Program<'a> {
 
     fn varlist_cont(
         &mut self,
-        varlist_cont: &Token<'a>,
+        varlist_cont: &Token,
         locals: &mut Vec<String>,
         dst: u8,
     ) -> Result<(), Error> {
@@ -334,7 +325,7 @@ impl<'a> Program<'a> {
         }
     }
 
-    fn var(&mut self, var: &Token<'a>, locals: &mut Vec<String>, dst: u8) -> Result<(), Error> {
+    fn var(&mut self, var: &Token, locals: &mut Vec<String>, dst: u8) -> Result<(), Error> {
         match var.tokens.as_slice() {
             [name @ Token {
                 tokens: _,
@@ -349,7 +340,7 @@ impl<'a> Program<'a> {
         }
     }
 
-    fn var_assign(&mut self, var: &Token<'a>, locals: &[String], dst: u8) -> Result<(), Error> {
+    fn var_assign(&mut self, var: &Token, locals: &[String], dst: u8) -> Result<(), Error> {
         match var.tokens.as_slice() {
             [Token {
                 tokens: _,
@@ -359,7 +350,7 @@ impl<'a> Program<'a> {
                     self.byte_codes.push(ByteCode::Move(var_dst as u8, dst));
                     Ok(())
                 } else {
-                    let global_pos = self.push_constant(Value::String(var_name));
+                    let global_pos = self.push_constant(Value::new_string(*var_name));
                     self.byte_codes.push(ByteCode::SetGlobal(global_pos, dst));
                     Ok(())
                 }
@@ -373,12 +364,7 @@ impl<'a> Program<'a> {
         }
     }
 
-    fn explist(
-        &mut self,
-        explist: &Token<'a>,
-        locals: &mut Vec<String>,
-        dst: u8,
-    ) -> Result<(), Error> {
+    fn explist(&mut self, explist: &Token, locals: &mut Vec<String>, dst: u8) -> Result<(), Error> {
         match explist.tokens.as_slice() {
             [exp @ Token {
                 tokens: _,
@@ -404,7 +390,7 @@ impl<'a> Program<'a> {
 
     fn explist_cont(
         &mut self,
-        explist_cont: &Token<'a>,
+        explist_cont: &Token,
         locals: &mut Vec<String>,
         dst: u8,
     ) -> Result<(), Error> {
@@ -435,7 +421,7 @@ impl<'a> Program<'a> {
         }
     }
 
-    fn exp(&mut self, exp: &Token<'a>, locals: &mut Vec<String>, dst: u8) -> Result<(), Error> {
+    fn exp(&mut self, exp: &Token, locals: &mut Vec<String>, dst: u8) -> Result<(), Error> {
         match exp.tokens.as_slice() {
             [nil @ Token {
                 tokens: _,
@@ -476,7 +462,7 @@ impl<'a> Program<'a> {
 
     fn prefixexp(
         &mut self,
-        prefixexp: &Token<'a>,
+        prefixexp: &Token,
         locals: &mut Vec<String>,
         dst: u8,
     ) -> Result<(), Error> {
@@ -500,7 +486,7 @@ impl<'a> Program<'a> {
 
     fn functioncall(
         &mut self,
-        functioncall: &Token<'a>,
+        functioncall: &Token,
         locals: &mut Vec<String>,
         dst: u8,
     ) -> Result<(), Error> {
@@ -530,7 +516,7 @@ impl<'a> Program<'a> {
         }
     }
 
-    fn args(&mut self, args: &Token<'a>, locals: &mut Vec<String>, dst: u8) -> Result<(), Error> {
+    fn args(&mut self, args: &Token, locals: &mut Vec<String>, dst: u8) -> Result<(), Error> {
         match args.tokens.as_slice() {
             [_lparen @ Token {
                 tokens: _,
@@ -560,7 +546,7 @@ impl<'a> Program<'a> {
 
     fn args_explist(
         &mut self,
-        args_explist: &Token<'a>,
+        args_explist: &Token,
         locals: &mut Vec<String>,
         dst: u8,
     ) -> Result<(), Error> {
@@ -584,7 +570,7 @@ impl<'a> Program<'a> {
     }
 
     // Terminals
-    fn name(&mut self, name: &Token<'a>, locals: &[String], dst: u8) -> Result<(), Error> {
+    fn name(&mut self, name: &Token, locals: &[String], dst: u8) -> Result<(), Error> {
         let Token {
             tokens: _,
             token_type: TokenType::Name(name),
@@ -596,14 +582,14 @@ impl<'a> Program<'a> {
             self.byte_codes.push(ByteCode::Move(dst, i as u8));
             Ok(())
         } else {
-            let constant = self.push_constant(Value::String(name));
+            let constant = self.push_constant(Value::new_string(*name));
             let bytecode = self.get_global(dst, constant);
             self.byte_codes.push(bytecode);
             Ok(())
         }
     }
 
-    fn string(&mut self, string: &Token<'a>, dst: u8) -> Result<(), Error> {
+    fn string(&mut self, string: &Token, dst: u8) -> Result<(), Error> {
         let Token {
             tokens: _,
             token_type: TokenType::String(string),
@@ -611,13 +597,13 @@ impl<'a> Program<'a> {
         else {
             unreachable!("String should be String token type.");
         };
-        let constant = self.push_constant(Value::String(string));
+        let constant = self.push_constant(Value::new_string(*string));
         let bytecode = self.load_constant(dst, constant);
         self.byte_codes.push(bytecode);
         Ok(())
     }
 
-    fn integer(&mut self, integer: &Token<'a>, dst: u8) -> Result<(), Error> {
+    fn integer(&mut self, integer: &Token, dst: u8) -> Result<(), Error> {
         let Token {
             tokens: _,
             token_type: TokenType::Integer(int),
@@ -635,7 +621,7 @@ impl<'a> Program<'a> {
         Ok(())
     }
 
-    fn float(&mut self, float: &Token<'a>, dst: u8) -> Result<(), Error> {
+    fn float(&mut self, float: &Token, dst: u8) -> Result<(), Error> {
         let Token {
             tokens: _,
             token_type: TokenType::Float(float),
@@ -649,7 +635,7 @@ impl<'a> Program<'a> {
         Ok(())
     }
 
-    fn false_token(&mut self, false_token: &Token<'a>, dst: u8) -> Result<(), Error> {
+    fn false_token(&mut self, false_token: &Token, dst: u8) -> Result<(), Error> {
         let Token {
             tokens: _,
             token_type: TokenType::False,
@@ -661,7 +647,7 @@ impl<'a> Program<'a> {
         Ok(())
     }
 
-    fn nil(&mut self, nil: &Token<'a>, dst: u8) -> Result<(), Error> {
+    fn nil(&mut self, nil: &Token, dst: u8) -> Result<(), Error> {
         let Token {
             tokens: _,
             token_type: TokenType::Nil,
@@ -673,7 +659,7 @@ impl<'a> Program<'a> {
         Ok(())
     }
 
-    fn true_token(&mut self, true_token: &Token<'a>, dst: u8) -> Result<(), Error> {
+    fn true_token(&mut self, true_token: &Token, dst: u8) -> Result<(), Error> {
         let Token {
             tokens: _,
             token_type: TokenType::True,

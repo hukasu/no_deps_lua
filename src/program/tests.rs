@@ -13,9 +13,9 @@ print "hello again..."
     assert_eq!(
         &program.constants,
         &[
-            Value::String("print"),
-            Value::String("hello world"),
-            Value::String("hello again...")
+            Value::new_string("print"),
+            Value::new_string("hello world"),
+            Value::new_string("hello again...")
         ]
     );
     assert_eq!(
@@ -56,7 +56,7 @@ print(123456.0)
     assert_eq!(
         &program.constants,
         &[
-            Value::String("print"),
+            Value::new_string("print"),
             Value::Integer(123456),
             Value::Float(123456.0)
         ]
@@ -100,9 +100,9 @@ print "I'm local-print!" -- call local function
     assert_eq!(
         &program.constants,
         &[
-            Value::String("hello, local!"),
-            Value::String("print"),
-            Value::String("I'm local-print!")
+            Value::new_string("hello, local!"),
+            Value::new_string("print"),
+            Value::new_string("I'm local-print!")
         ]
     );
     assert_eq!(
@@ -148,9 +148,9 @@ print(g)
     assert_eq!(
         &program.constants,
         &[
-            Value::String("print"),
-            Value::String("g"),
-            Value::String("g2")
+            Value::new_string("print"),
+            Value::new_string("g"),
+            Value::new_string("g2")
         ]
     );
     assert_eq!(

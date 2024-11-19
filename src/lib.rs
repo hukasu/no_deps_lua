@@ -4,26 +4,27 @@ mod error;
 mod lex;
 mod parser;
 mod program;
+mod stack_str;
 mod std;
 mod value;
 
 extern crate alloc;
 
-use alloc::{borrow::ToOwned, string::String, vec::Vec};
+use alloc::{rc::Rc, vec::Vec};
 
 use self::{program::ByteCode, value::Value};
 
 pub use {error::Error, program::Program};
 
-pub struct Lua<'a> {
+pub struct Lua {
     func_index: usize,
-    globals: Vec<(String, Value<'a>)>,
-    stack: Vec<Value<'a>>,
+    globals: Vec<(Rc<str>, Value)>,
+    stack: Vec<Value>,
 }
 
-impl<'a> Lua<'a> {
+impl Lua {
     fn new() -> Self {
-        let globals = Vec::from([("print".to_owned(), Value::Function(std::lib_print))]);
+        let globals = Vec::from([("print".into(), Value::Function(std::lib_print))]);
 
         Self {
             func_index: 0,
@@ -32,7 +33,7 @@ impl<'a> Lua<'a> {
         }
     }
 
-    pub fn execute(program: &Program<'a>) -> Result<(), Error<'a>> {
+    pub fn execute(program: &Program) -> Result<(), Error> {
         let mut vm = Self::new();
 
         for code in program.byte_codes.iter() {
@@ -60,7 +61,7 @@ impl<'a> Lua<'a> {
                         {
                             global.1 = value;
                         } else {
-                            vm.globals.push(((*global_name).to_owned(), value));
+                            vm.globals.push((global_name.clone(), value));
                         }
                     } else {
                         return Err(Error::ExpectedName);
@@ -77,7 +78,7 @@ impl<'a> Lua<'a> {
                         {
                             global.1 = value;
                         } else {
-                            vm.globals.push(((*global_name).to_owned(), value));
+                            vm.globals.push((global_name.clone(), value));
                         }
                     } else {
                         return Err(Error::ExpectedName);
@@ -101,7 +102,7 @@ impl<'a> Lua<'a> {
                             {
                                 global.1 = value;
                             } else {
-                                vm.globals.push(((*global_name).to_owned(), value));
+                                vm.globals.push((global_name.clone(), value));
                             }
                         }
                     } else {
