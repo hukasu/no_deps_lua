@@ -1,4 +1,4 @@
-use core::{fmt::Debug, ops::Deref};
+use core::fmt::Debug;
 
 use alloc::rc::Rc;
 
@@ -17,11 +17,29 @@ pub enum Value {
     Function(fn(&mut Lua) -> i32),
 }
 
-impl Value {
-    pub fn new_string<T: Deref<Target = str>>(string: T) -> Value {
-        match StackStr::new(string.deref()) {
+impl From<i64> for Value {
+    fn from(value: i64) -> Self {
+        Value::Integer(value)
+    }
+}
+
+impl From<f64> for Value {
+    fn from(value: f64) -> Self {
+        Value::Float(value)
+    }
+}
+
+impl From<bool> for Value {
+    fn from(value: bool) -> Self {
+        Value::Boolean(value)
+    }
+}
+
+impl From<&str> for Value {
+    fn from(string: &str) -> Self {
+        match StackStr::new(string) {
             Ok(stack_str) => Value::ShortString(stack_str),
-            Err(_) => Value::String(string.deref().into()),
+            Err(_) => Value::String(string.into()),
         }
     }
 }

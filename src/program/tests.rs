@@ -13,9 +13,9 @@ print "hello again..."
     assert_eq!(
         &program.constants,
         &[
-            Value::new_string("print"),
-            Value::new_string("hello world"),
-            Value::new_string("hello again...")
+            "print".into(),
+            "hello world".into(),
+            "hello again...".into()
         ]
     );
     assert_eq!(
@@ -55,11 +55,7 @@ print(123456.0)
     .unwrap();
     assert_eq!(
         &program.constants,
-        &[
-            Value::new_string("print"),
-            Value::Integer(123456),
-            Value::Float(123456.0)
-        ]
+        &["print".into(), 123456.into(), 123456.0.into(),]
     );
     assert_eq!(
         &program.byte_codes,
@@ -100,9 +96,9 @@ print "I'm local-print!" -- call local function
     assert_eq!(
         &program.constants,
         &[
-            Value::new_string("hello, local!"),
-            Value::new_string("print"),
-            Value::new_string("I'm local-print!")
+            "hello, local!".into(),
+            "print".into(),
+            "I'm local-print!".into()
         ]
     );
     assert_eq!(
@@ -147,11 +143,7 @@ print(g)
     .unwrap();
     assert_eq!(
         &program.constants,
-        &[
-            Value::new_string("print"),
-            Value::new_string("g"),
-            Value::new_string("g2")
-        ]
+        &["print".into(), "g".into(), "g2".into(),]
     );
     assert_eq!(
         &program.byte_codes,

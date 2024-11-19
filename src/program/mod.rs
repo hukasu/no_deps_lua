@@ -35,7 +35,8 @@ impl Program {
         Ok(program)
     }
 
-    fn push_constant(&mut self, value: Value) -> u8 {
+    fn push_constant(&mut self, value: impl Into<Value>) -> u8 {
+        let value = value.into();
         self.constants
             .iter()
             .position(|v| v == &value)
@@ -325,7 +326,7 @@ impl Program {
         }
     }
 
-    fn var(&mut self, var: &Token, locals: &mut Vec<String>, dst: u8) -> Result<(), Error> {
+    fn var(&mut self, var: &Token, locals: &[String], dst: u8) -> Result<(), Error> {
         match var.tokens.as_slice() {
             [name @ Token {
                 tokens: _,
@@ -350,7 +351,7 @@ impl Program {
                     self.byte_codes.push(ByteCode::Move(var_dst as u8, dst));
                     Ok(())
                 } else {
-                    let global_pos = self.push_constant(Value::new_string(*var_name));
+                    let global_pos = self.push_constant(*var_name);
                     self.byte_codes.push(ByteCode::SetGlobal(global_pos, dst));
                     Ok(())
                 }
@@ -421,7 +422,7 @@ impl Program {
         }
     }
 
-    fn exp(&mut self, exp: &Token, locals: &mut Vec<String>, dst: u8) -> Result<(), Error> {
+    fn exp(&mut self, exp: &Token, locals: &[String], dst: u8) -> Result<(), Error> {
         match exp.tokens.as_slice() {
             [nil @ Token {
                 tokens: _,
@@ -460,12 +461,7 @@ impl Program {
         }
     }
 
-    fn prefixexp(
-        &mut self,
-        prefixexp: &Token,
-        locals: &mut Vec<String>,
-        dst: u8,
-    ) -> Result<(), Error> {
+    fn prefixexp(&mut self, prefixexp: &Token, locals: &[String], dst: u8) -> Result<(), Error> {
         match prefixexp.tokens.as_slice() {
             [var @ Token {
                 tokens: _,
@@ -582,7 +578,7 @@ impl Program {
             self.byte_codes.push(ByteCode::Move(dst, i as u8));
             Ok(())
         } else {
-            let constant = self.push_constant(Value::new_string(*name));
+            let constant = self.push_constant(*name);
             let bytecode = self.get_global(dst, constant);
             self.byte_codes.push(bytecode);
             Ok(())
@@ -597,7 +593,7 @@ impl Program {
         else {
             unreachable!("String should be String token type.");
         };
-        let constant = self.push_constant(Value::new_string(*string));
+        let constant = self.push_constant(*string);
         let bytecode = self.load_constant(dst, constant);
         self.byte_codes.push(bytecode);
         Ok(())
@@ -614,7 +610,7 @@ impl Program {
         if let Ok(ii) = i16::try_from(*int) {
             self.byte_codes.push(ByteCode::LoadInt(dst, ii));
         } else {
-            let position = self.push_constant(Value::Integer(*int));
+            let position = self.push_constant(*int);
             let byte_code = self.load_constant(dst, position);
             self.byte_codes.push(byte_code);
         }
@@ -629,7 +625,7 @@ impl Program {
         else {
             unreachable!("Float should be Float token type.");
         };
-        let position = self.push_constant(Value::Float(*float));
+        let position = self.push_constant(*float);
         let byte_code = self.load_constant(dst, position);
         self.byte_codes.push(byte_code);
         Ok(())
