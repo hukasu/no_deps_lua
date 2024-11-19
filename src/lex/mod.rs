@@ -62,7 +62,7 @@ impl<'a> Iterator for Lex<'a> {
                 }));
             };
 
-            self.seek += 1;
+            self.seek += char.len_utf8();
             self.start = self.seek - 1;
             self.column += 1;
 
@@ -82,8 +82,8 @@ impl<'a> Iterator for Lex<'a> {
                                 break;
                             }
                             self.chars.next();
-                            self.seek += 1;
-                            self.start += 1;
+                            self.seek += c.len_utf8();
+                            self.start += c.len_utf8();
                             self.column += 1;
                         }
                     }
@@ -410,14 +410,13 @@ impl<'a> Iterator for Lex<'a> {
                                 self.seek += 1;
                                 self.start = self.seek - 1;
                                 self.column += 1;
+                                let output_str = &self.program[(start + 1)..end];
                                 break 'lexer Some(Ok(Lexeme {
                                     line: self.line,
                                     column: self.column,
                                     start,
                                     // Skipping the start " or '
-                                    lexeme_type: LexemeType::String(
-                                        &self.program[(start + 1)..end],
-                                    ),
+                                    lexeme_type: LexemeType::String(output_str),
                                 }));
                             }
                             '\\' => match self.chars.peek().copied() {
@@ -441,8 +440,8 @@ impl<'a> Iterator for Lex<'a> {
                                     }));
                                 }
                             },
-                            _ => {
-                                self.seek += 1;
+                            c => {
+                                self.seek += c.len_utf8();
                                 self.column += 1;
                                 self.chars.next();
                             }
