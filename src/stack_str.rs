@@ -38,7 +38,7 @@ impl<const N: usize> StackStr<N> {
 
 impl<const N: usize> Display for StackStr<N> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", String::from_utf8(self.buffer.to_vec()).unwrap())
+        write!(f, "{}", String::from_utf8_lossy(&self.buffer))
     }
 }
 
