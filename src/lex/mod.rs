@@ -42,6 +42,7 @@ impl<'a> Lex<'a> {
 impl<'a> Iterator for Lex<'a> {
     type Item = Result<Lexeme<'a>, Error>;
 
+    #[allow(clippy::too_many_lines)]
     fn next(&mut self) -> Option<Self::Item>
     where
         Self: 'a,

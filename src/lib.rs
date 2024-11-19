@@ -37,7 +37,7 @@ impl Lua {
     pub fn execute(program: &Program) -> Result<(), Error> {
         let mut vm = Self::new();
 
-        for code in program.byte_codes.iter() {
+        for code in &program.byte_codes {
             match code {
                 ByteCode::GetGlobal(dst, name) => {
                     let key = &program.constants[*name as usize];
@@ -76,8 +76,7 @@ impl Lua {
                         .globals
                         .iter()
                         .find(|global| global.0.eq(src_key))
-                        .map(|global| global.1.clone())
-                        .unwrap_or(Value::Nil);
+                        .map_or(Value::Nil, |global| global.1.clone());
                     if let Some(global) = vm.globals.iter_mut().find(|global| global.0.eq(dst_key))
                     {
                         global.1 = value;

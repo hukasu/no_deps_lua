@@ -107,6 +107,7 @@ pub struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
+    #[allow(clippy::too_many_lines)]
     pub fn parse(program: &'a str) -> Result<Token<'a>, Error> {
         let map: LexemeResToTokenRes =
             &|res: Result<Lexeme, crate::lex::Error>| res.map(Token::from);
@@ -695,13 +696,18 @@ impl<'a> Parser<'a> {
     fn accept(mut self) -> Result<Token<'a>, Error> {
         let stack_pop = self.stack_pop(1);
 
-        if !matches!(
+        if matches!(
             stack_pop.as_slice(),
             [Token {
                 tokens: _,
                 token_type: TokenType::Block
             }]
         ) {
+            Ok(Token {
+                tokens: stack_pop,
+                token_type: TokenType::Chunk,
+            })
+        } else {
             log::error!(
                 "Failed to accept.\n\tExpected: Block\n\tGot: {:?}",
                 stack_pop
@@ -710,11 +716,6 @@ impl<'a> Parser<'a> {
                     .collect::<Vec<_>>()
             );
             Err(Error::Accept)
-        } else {
-            Ok(Token {
-                tokens: stack_pop,
-                token_type: TokenType::Chunk,
-            })
         }
     }
 
@@ -743,6 +744,7 @@ impl<'a> Parser<'a> {
         self.stack.push(token);
     }
 
+    #[allow(clippy::too_many_lines)]
     fn reduce<const PRODUCTION: usize>(&mut self) -> Result<(), Error> {
         match PRODUCTION {
             1 => make_reduction_push!(self, 2, Block, BlockStat, BlockRetstat),

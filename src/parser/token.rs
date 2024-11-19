@@ -282,6 +282,7 @@ pub enum TokenType<'a> {
 }
 
 impl<'a> Display for TokenType<'a> {
+    #[allow(clippy::too_many_lines)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             // Terminals
@@ -393,6 +394,7 @@ impl<'a> Display for TokenType<'a> {
 }
 
 impl<'a, T: Borrow<Lexeme<'a>>> From<T> for Token<'a> {
+    #[allow(clippy::too_many_lines)]
     fn from(value: T) -> Self {
         match value.borrow().lexeme_type {
             LexemeType::And => Token {

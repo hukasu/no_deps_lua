@@ -35,24 +35,27 @@ impl Program {
         Ok(program)
     }
 
-    fn push_constant(&mut self, value: impl Into<Value>) -> u8 {
+    fn push_constant(&mut self, value: impl Into<Value>) -> Result<u8, Error> {
         let value = value.into();
-        self.constants
-            .iter()
-            .position(|v| v == &value)
-            .unwrap_or_else(|| {
-                self.constants.push(value);
-                self.constants.len() - 1
-            }) as u8
+        u8::try_from(
+            self.constants
+                .iter()
+                .position(|v| v == &value)
+                .unwrap_or_else(|| {
+                    self.constants.push(value);
+                    self.constants.len() - 1
+                }),
+        )
+        .map_err(Error::from)
     }
 
     #[must_use]
-    fn load_constant(&mut self, dst: u8, src: u8) -> ByteCode {
+    fn load_constant(dst: u8, src: u8) -> ByteCode {
         ByteCode::LoadConstant(dst, src)
     }
 
     #[must_use]
-    fn get_global(&mut self, dst: u8, src: u8) -> ByteCode {
+    fn get_global(dst: u8, src: u8) -> ByteCode {
         ByteCode::GetGlobal(dst, src)
     }
 
@@ -113,7 +116,9 @@ impl Program {
                 tokens: _,
                 token_type: TokenType::BlockStat,
             }] => {
-                self.stat(stat, locals, locals.len() as u8)?;
+                u8::try_from(locals.len())
+                    .map_err(Error::from)
+                    .and_then(|i| self.stat(stat, locals, i))?;
                 self.block_stat(blockstat, locals)?;
             }
             _ => {
@@ -217,7 +222,7 @@ impl Program {
                 tokens: _,
                 token_type: TokenType::AttnamelistCont,
             }] => {
-                locals.push(name.to_string());
+                locals.push((*name).to_string());
                 self.attnamelist_cont(attnamelist_cont, locals)
             }
             _ => {
@@ -253,7 +258,7 @@ impl Program {
                 tokens: _,
                 token_type: TokenType::AttnamelistCont,
             }] => {
-                locals.push(name.to_string());
+                locals.push((*name).to_string());
                 self.attnamelist_cont(attnamelist_cont, locals)
             }
             _ => {
@@ -348,10 +353,11 @@ impl Program {
                 token_type: TokenType::Name(var_name),
             }] => {
                 if let Some(var_dst) = locals.iter().rposition(|name| name.eq(var_name)) {
-                    self.byte_codes.push(ByteCode::Move(var_dst as u8, dst));
-                    Ok(())
+                    u8::try_from(var_dst).map_err(Error::from).map(|var_dst| {
+                        self.byte_codes.push(ByteCode::Move(var_dst, dst));
+                    })
                 } else {
-                    let global_pos = self.push_constant(*var_name);
+                    let global_pos = self.push_constant(*var_name)?;
                     self.byte_codes.push(ByteCode::SetGlobal(global_pos, dst));
                     Ok(())
                 }
@@ -427,15 +433,24 @@ impl Program {
             [nil @ Token {
                 tokens: _,
                 token_type: TokenType::Nil,
-            }] => self.nil(nil, dst),
+            }] => {
+                self.nil(nil, dst);
+                Ok(())
+            }
             [false_token @ Token {
                 tokens: _,
                 token_type: TokenType::False,
-            }] => self.false_token(false_token, dst),
+            }] => {
+                self.false_token(false_token, dst);
+                Ok(())
+            }
             [true_token @ Token {
                 tokens: _,
                 token_type: TokenType::True,
-            }] => self.true_token(true_token, dst),
+            }] => {
+                self.true_token(true_token, dst);
+                Ok(())
+            }
             [string @ Token {
                 tokens: _,
                 token_type: TokenType::String(_),
@@ -575,11 +590,12 @@ impl Program {
             unreachable!("Name should be Name token type.");
         };
         if let Some(i) = locals.iter().rposition(|v| v == name) {
-            self.byte_codes.push(ByteCode::Move(dst, i as u8));
-            Ok(())
+            u8::try_from(i).map_err(Error::from).map(|i| {
+                self.byte_codes.push(ByteCode::Move(dst, i));
+            })
         } else {
-            let constant = self.push_constant(*name);
-            let bytecode = self.get_global(dst, constant);
+            let constant = self.push_constant(*name)?;
+            let bytecode = Self::get_global(dst, constant);
             self.byte_codes.push(bytecode);
             Ok(())
         }
@@ -593,8 +609,8 @@ impl Program {
         else {
             unreachable!("String should be String token type.");
         };
-        let constant = self.push_constant(*string);
-        let bytecode = self.load_constant(dst, constant);
+        let constant = self.push_constant(*string)?;
+        let bytecode = Self::load_constant(dst, constant);
         self.byte_codes.push(bytecode);
         Ok(())
     }
@@ -610,8 +626,8 @@ impl Program {
         if let Ok(ii) = i16::try_from(*int) {
             self.byte_codes.push(ByteCode::LoadInt(dst, ii));
         } else {
-            let position = self.push_constant(*int);
-            let byte_code = self.load_constant(dst, position);
+            let position = self.push_constant(*int)?;
+            let byte_code = Self::load_constant(dst, position);
             self.byte_codes.push(byte_code);
         }
         Ok(())
@@ -625,13 +641,13 @@ impl Program {
         else {
             unreachable!("Float should be Float token type.");
         };
-        let position = self.push_constant(*float);
-        let byte_code = self.load_constant(dst, position);
+        let position = self.push_constant(*float)?;
+        let byte_code = Self::load_constant(dst, position);
         self.byte_codes.push(byte_code);
         Ok(())
     }
 
-    fn false_token(&mut self, false_token: &Token, dst: u8) -> Result<(), Error> {
+    fn false_token(&mut self, false_token: &Token, dst: u8) {
         let Token {
             tokens: _,
             token_type: TokenType::False,
@@ -640,10 +656,9 @@ impl Program {
             unreachable!("Float should be Float token type.");
         };
         self.byte_codes.push(ByteCode::LoadBool(dst, false));
-        Ok(())
     }
 
-    fn nil(&mut self, nil: &Token, dst: u8) -> Result<(), Error> {
+    fn nil(&mut self, nil: &Token, dst: u8) {
         let Token {
             tokens: _,
             token_type: TokenType::Nil,
@@ -652,10 +667,9 @@ impl Program {
             unreachable!("Float should be Float token type.");
         };
         self.byte_codes.push(ByteCode::LoadNil(dst));
-        Ok(())
     }
 
-    fn true_token(&mut self, true_token: &Token, dst: u8) -> Result<(), Error> {
+    fn true_token(&mut self, true_token: &Token, dst: u8) {
         let Token {
             tokens: _,
             token_type: TokenType::True,
@@ -664,6 +678,5 @@ impl Program {
             unreachable!("Float should be Float token type.");
         };
         self.byte_codes.push(ByteCode::LoadBool(dst, true));
-        Ok(())
     }
 }
