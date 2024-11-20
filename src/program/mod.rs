@@ -782,10 +782,10 @@ impl Program {
 
     fn var(&mut self, var: &Token, locals: &[String], dst: u8) -> Result<(), Error> {
         match var.tokens.as_slice() {
-            [name @ Token {
+            [Token {
                 tokens: _,
-                token_type: TokenType::Name(_),
-            }] => self.name(name, locals, dst),
+                token_type: TokenType::Name(name),
+            }] => self.name(dst, name, locals),
             [Token {
                 tokens: _,
                 token_type: TokenType::Prefixexp,
@@ -954,39 +954,39 @@ impl Program {
 
     fn exp(&mut self, exp: &Token, locals: &[String], dst: u8) -> Result<(), Error> {
         match exp.tokens.as_slice() {
-            [nil @ Token {
+            [Token {
                 tokens: _,
                 token_type: TokenType::Nil,
             }] => {
-                self.nil(nil, dst);
+                self.nil(dst);
                 Ok(())
             }
-            [false_token @ Token {
+            [Token {
                 tokens: _,
                 token_type: TokenType::False,
             }] => {
-                self.false_token(false_token, dst);
+                self.boolean(dst, false);
                 Ok(())
             }
-            [true_token @ Token {
+            [Token {
                 tokens: _,
                 token_type: TokenType::True,
             }] => {
-                self.true_token(true_token, dst);
+                self.boolean(dst, true);
                 Ok(())
             }
-            [string @ Token {
+            [Token {
                 tokens: _,
-                token_type: TokenType::String(_),
-            }] => self.string(string, dst),
-            [integer @ Token {
+                token_type: TokenType::String(string),
+            }] => self.string(dst, string),
+            [Token {
                 tokens: _,
-                token_type: TokenType::Integer(_),
-            }] => self.integer(integer, dst),
-            [float @ Token {
+                token_type: TokenType::Integer(integer),
+            }] => self.integer(dst, *integer),
+            [Token {
                 tokens: _,
-                token_type: TokenType::Float(_),
-            }] => self.float(float, dst),
+                token_type: TokenType::Float(float),
+            }] => self.float(dst, *float),
             [prefixexp @ Token {
                 tokens: _,
                 token_type: TokenType::Prefixexp,
@@ -1332,10 +1332,10 @@ impl Program {
                 tokens: _,
                 token_type: TokenType::Tableconstructor,
             }] => Err(Error::Unimplemented),
-            [string @ Token {
+            [Token {
                 tokens: _,
-                token_type: TokenType::String(_),
-            }] => self.string(string, dst),
+                token_type: TokenType::String(string),
+            }] => self.string(dst, string),
             _ => {
                 unreachable!(
                     "Args did not match any of the productions. Had {:#?}.",
@@ -1636,102 +1636,49 @@ impl Program {
     }
 
     // Terminals
-    fn name(&mut self, name: &Token, locals: &[String], dst: u8) -> Result<(), Error> {
-        let Token {
-            tokens: _,
-            token_type: TokenType::Name(name),
-        } = name
-        else {
-            unreachable!("Name should be Name token type.");
-        };
+    fn name(&mut self, dst: u8, name: &str, locals: &[String]) -> Result<(), Error> {
         if let Some(i) = locals.iter().rposition(|v| v == name) {
             u8::try_from(i).map_err(Error::from).map(|i| {
                 self.byte_codes.push(ByteCode::Move(dst, i));
             })
         } else {
-            let constant = self.push_constant(*name)?;
+            let constant = self.push_constant(name)?;
             let bytecode = Self::get_global(dst, constant);
             self.byte_codes.push(bytecode);
             Ok(())
         }
     }
 
-    fn string(&mut self, string: &Token, dst: u8) -> Result<(), Error> {
-        let Token {
-            tokens: _,
-            token_type: TokenType::String(string),
-        } = string
-        else {
-            unreachable!("String should be String token type.");
-        };
+    fn string(&mut self, dst: u8, string: &str) -> Result<(), Error> {
         let constant = self.push_constant(string.unescape()?.as_str())?;
         let bytecode = Self::load_constant(dst, constant);
         self.byte_codes.push(bytecode);
         Ok(())
     }
 
-    fn integer(&mut self, integer: &Token, dst: u8) -> Result<(), Error> {
-        let Token {
-            tokens: _,
-            token_type: TokenType::Integer(int),
-        } = integer
-        else {
-            unreachable!("Integer should be Integer token type.");
-        };
-        if let Ok(ii) = i16::try_from(*int) {
+    fn integer(&mut self, dst: u8, integer: i64) -> Result<(), Error> {
+        if let Ok(ii) = i16::try_from(integer) {
             self.byte_codes.push(ByteCode::LoadInt(dst, ii));
         } else {
-            let position = self.push_constant(*int)?;
+            let position = self.push_constant(integer)?;
             let byte_code = Self::load_constant(dst, position);
             self.byte_codes.push(byte_code);
         }
         Ok(())
     }
 
-    fn float(&mut self, float: &Token, dst: u8) -> Result<(), Error> {
-        let Token {
-            tokens: _,
-            token_type: TokenType::Float(float),
-        } = float
-        else {
-            unreachable!("Float should be Float token type.");
-        };
-        let position = self.push_constant(*float)?;
+    fn float(&mut self, dst: u8, float: f64) -> Result<(), Error> {
+        let position = self.push_constant(float)?;
         let byte_code = Self::load_constant(dst, position);
         self.byte_codes.push(byte_code);
         Ok(())
     }
 
-    fn false_token(&mut self, false_token: &Token, dst: u8) {
-        let Token {
-            tokens: _,
-            token_type: TokenType::False,
-        } = false_token
-        else {
-            unreachable!("Float should be Float token type.");
-        };
-        self.byte_codes.push(ByteCode::LoadBool(dst, false));
-    }
-
-    fn nil(&mut self, nil: &Token, dst: u8) {
-        let Token {
-            tokens: _,
-            token_type: TokenType::Nil,
-        } = nil
-        else {
-            unreachable!("Float should be Float token type.");
-        };
+    fn nil(&mut self, dst: u8) {
         self.byte_codes.push(ByteCode::LoadNil(dst));
     }
 
-    fn true_token(&mut self, true_token: &Token, dst: u8) {
-        let Token {
-            tokens: _,
-            token_type: TokenType::True,
-        } = true_token
-        else {
-            unreachable!("Float should be Float token type.");
-        };
-        self.byte_codes.push(ByteCode::LoadBool(dst, true));
+    fn boolean(&mut self, dst: u8, boolean: bool) {
+        self.byte_codes.push(ByteCode::LoadBool(dst, boolean));
     }
 }
