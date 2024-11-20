@@ -7,6 +7,7 @@ mod parser;
 mod program;
 mod stack_str;
 mod std;
+mod table;
 mod value;
 
 extern crate alloc;
