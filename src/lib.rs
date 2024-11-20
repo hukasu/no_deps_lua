@@ -49,8 +49,8 @@ impl Lua {
                         vm.stack.insert(*dst as usize, Value::Nil);
                     }
                 }
-                ByteCode::SetGlobal(dst, src) => {
-                    let key = &program.constants[*dst as usize];
+                ByteCode::SetGlobal(name, src) => {
+                    let key = &program.constants[*name as usize];
                     let value = vm.stack[*src as usize].clone();
                     if let Some(global) = vm.globals.iter_mut().find(|global| global.0.eq(key)) {
                         global.1 = value;
@@ -60,8 +60,8 @@ impl Lua {
                         return Err(Error::ExpectedName);
                     }
                 }
-                ByteCode::SetGlobalConstant(dst, src) => {
-                    let key = &program.constants[*dst as usize];
+                ByteCode::SetGlobalConstant(name, src) => {
+                    let key = &program.constants[*name as usize];
                     let value = program.constants[*src as usize].clone();
                     if let Some(global) = vm.globals.iter_mut().find(|global| global.0.eq(key)) {
                         global.1 = value;
@@ -71,9 +71,9 @@ impl Lua {
                         return Err(Error::ExpectedName);
                     }
                 }
-                ByteCode::SetGlobalGlobal(dst, src) => {
-                    let dst_key = &program.constants[*dst as usize];
-                    let src_key = &program.constants[*src as usize];
+                ByteCode::SetGlobalGlobal(dst_name, src_name) => {
+                    let dst_key = &program.constants[*dst_name as usize];
+                    let src_key = &program.constants[*src_name as usize];
                     let value = vm
                         .globals
                         .iter()
@@ -104,7 +104,7 @@ impl Lua {
                 ByteCode::Move(dst, src) => vm
                     .stack
                     .insert(*dst as usize, vm.stack[*src as usize].clone()),
-                ByteCode::Call(func, _) => {
+                ByteCode::Call(func, _args) => {
                     vm.func_index = *func as usize;
                     let func = &vm.stack[vm.func_index];
                     if let Value::Function(f) = func {
