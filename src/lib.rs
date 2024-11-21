@@ -12,7 +12,10 @@ mod value;
 
 extern crate alloc;
 
-use alloc::vec::Vec;
+use core::cell::RefCell;
+
+use alloc::{rc::Rc, vec::Vec};
+use table::Table;
 
 use self::{program::ByteCode, value::Value};
 
@@ -88,6 +91,10 @@ impl Lua {
                         return Err(Error::ExpectedName);
                     }
                 }
+                ByteCode::LoadConstant(dst, key) => {
+                    vm.stack
+                        .insert(*dst as usize, program.constants[*key as usize].clone());
+                }
                 ByteCode::LoadNil(dst) => {
                     vm.stack.insert(*dst as usize, Value::Nil);
                 }
@@ -97,9 +104,63 @@ impl Lua {
                 ByteCode::LoadInt(dst, value) => vm
                     .stack
                     .insert(*dst as usize, Value::Integer(i64::from(*value))),
-                ByteCode::LoadConstant(dst, key) => {
-                    vm.stack
-                        .insert(*dst as usize, program.constants[*key as usize].clone());
+                ByteCode::NewTable(dst, array_initial_size, table_initial_size) => vm.stack.insert(
+                    usize::from(*dst),
+                    Value::Table(Rc::new(RefCell::new(Table::new(
+                        usize::from(*array_initial_size),
+                        usize::from(*table_initial_size),
+                    )))),
+                ),
+                ByteCode::SetTable(table, key, value) => {
+                    if let Value::Table(table) = vm.stack[usize::from(*table)].clone() {
+                        let key = vm.stack[usize::from(*key)].clone();
+                        let value = vm.stack[usize::from(*value)].clone();
+                        let binary_search =
+                            table.borrow().table.binary_search_by(|a| a.0.cmp(&key));
+                        match binary_search {
+                            Ok(i) => {
+                                let mut table_borrow = table.borrow_mut();
+                                let Some(table_value) = table_borrow.table.get_mut(i) else {
+                                    unreachable!("Already tested existence of table value");
+                                };
+                                table_value.1 = value;
+                            }
+                            Err(i) => table.borrow_mut().table.insert(i, (key, value)),
+                        }
+                    } else {
+                        return Err(Error::ExpectedTable);
+                    }
+                }
+                ByteCode::SetField(table, key, value) => {
+                    if let Value::Table(table) = vm.stack[usize::from(*table)].clone() {
+                        let key = program.constants[usize::from(*key)].clone();
+                        let value = vm.stack[usize::from(*value)].clone();
+                        let binary_search =
+                            table.borrow().table.binary_search_by(|a| a.0.cmp(&key));
+                        match binary_search {
+                            Ok(i) => {
+                                let mut table_borrow = table.borrow_mut();
+                                let Some(table_value) = table_borrow.table.get_mut(i) else {
+                                    unreachable!("Already tested existence of table value");
+                                };
+                                table_value.1 = value;
+                            }
+                            Err(i) => table.borrow_mut().table.insert(i, (key, value)),
+                        }
+                    } else {
+                        return Err(Error::ExpectedTable);
+                    }
+                }
+                ByteCode::SetList(table, array_len) => {
+                    let table_items_start = usize::from(*table) + 1;
+                    if let Value::Table(table) = vm.stack[usize::from(*table)].clone() {
+                        let values = vm.stack.drain(
+                            table_items_start..(table_items_start + usize::from(*array_len)),
+                        );
+                        table.borrow_mut().array.extend(values);
+                    } else {
+                        return Err(Error::ExpectedTable);
+                    }
                 }
                 ByteCode::Move(dst, src) => vm
                     .stack

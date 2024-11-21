@@ -28,3 +28,13 @@ impl Display for Error {
 }
 
 impl core::error::Error for Error {}
+
+impl From<crate::lex::Error> for Error {
+    fn from(value: crate::lex::Error) -> Self {
+        log::error!(
+            "{}",
+            value
+        );
+        Self::Lex
+    }
+}

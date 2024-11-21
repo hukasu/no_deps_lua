@@ -202,3 +202,20 @@ print "null: \0." -- '\0'
     .unwrap();
     crate::Lua::execute(&program).unwrap();
 }
+
+#[test]
+fn chapter4_2() {
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
+    let program = Program::parse(
+        r#"
+local key = "kkk"
+print {
+    100, 200, 300; -- list style
+    x="hello", y="world"; -- record style
+    [key]="vvv"; -- general style
+}
+"#,
+    )
+    .unwrap();
+    crate::Lua::execute(&program).unwrap();
+}

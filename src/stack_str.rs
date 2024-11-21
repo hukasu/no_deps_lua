@@ -2,7 +2,7 @@ use core::{fmt::Display, ops::Deref};
 
 use alloc::string::String;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct StackStr<const N: usize> {
     buffer: [u8; N],
 }

@@ -45,6 +45,30 @@ pub enum ByteCode {
     /// `value`: Integer value to load into stack, this is limited
     /// to a i16
     LoadInt(u8, i16),
+    /// Creates a new table value
+    ///
+    /// `dst`: Location on the stack to store the table
+    /// `array_len`: Amount of items to allocate on the list
+    /// `table_len`: Amount of items to allocate for the map
+    NewTable(u8, u8, u8),
+    /// Sets a table field to a value using a value
+    ///
+    /// `table`: Location of the table on the stack  
+    /// `key`: Location on the stack of the value that will be used
+    /// as key  
+    /// `value`: Location of the value on the stack  
+    SetTable(u8, u8, u8),
+    /// Sets a table field to a value using a name
+    ///
+    /// `table`: Location of the `table` on the stack
+    /// `key`: Location of the name on `constants`
+    /// `value`: Location of the value on the stack
+    SetField(u8, u8, u8),
+    /// Stores multiple values from the stack into the table
+    ///
+    /// `table`: Location of the `table` on the stack
+    /// `array_len`: Number of items on the stack to store
+    SetList(u8, u8),
     /// Moves a value from one location on the stack to another
     ///
     /// `dst`: Location on the stack to store the value  

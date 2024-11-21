@@ -1,13 +1,13 @@
 use core::fmt::Display;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Error {
-    pub(super) kind: ErrorKind,
-    pub(super) line: usize,
-    pub(super) column: usize,
+    pub(crate) kind: ErrorKind,
+    pub(crate) line: usize,
+    pub(crate) column: usize,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ErrorKind {
     EofAtString,
     ParseInt,

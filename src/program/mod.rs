@@ -1328,10 +1328,10 @@ impl Program {
                 tokens: _,
                 token_type: TokenType::RParen,
             }] => self.args_explist(args_explist, locals, dst),
-            [Token {
+            [tableconstructor @ Token {
                 tokens: _,
                 token_type: TokenType::Tableconstructor,
-            }] => Err(Error::Unimplemented),
+            }] => self.tableconstructor(tableconstructor, locals, dst),
             [Token {
                 tokens: _,
                 token_type: TokenType::String(string),
@@ -1506,19 +1506,36 @@ impl Program {
     fn tableconstructor(
         &mut self,
         tableconstructor: &Token,
-        locals: &mut Vec<String>,
+        locals: &[String],
+        dst: u8,
     ) -> Result<(), Error> {
         match tableconstructor.tokens.as_slice() {
             [Token {
                 tokens: _,
                 token_type: TokenType::LCurly,
-            }, Token {
+            }, tableconstructor_fieldlist @ Token {
                 tokens: _,
                 token_type: TokenType::TableconstructorFieldlist,
             }, Token {
                 tokens: _,
                 token_type: TokenType::RCurly,
-            }] => Err(Error::Unimplemented),
+            }] => {
+                let table_initialization_bytecode_position = self.byte_codes.len();
+                self.byte_codes.push(ByteCode::NewTable(0, 0, 0));
+
+                let (array_items, table_items) = self.tableconstructor_fieldlist(
+                    tableconstructor_fieldlist,
+                    locals,
+                    dst,
+                    dst + 1,
+                )?;
+
+                self.byte_codes[table_initialization_bytecode_position] =
+                    ByteCode::NewTable(dst, array_items, table_items);
+                self.byte_codes.push(ByteCode::SetList(dst, array_items));
+
+                Ok(())
+            }
             _ => {
                 unreachable!(
                     "Tableconstructor did not match any of the productions. Had {:#?}.",
@@ -1535,14 +1552,16 @@ impl Program {
     fn tableconstructor_fieldlist(
         &mut self,
         tableconstructor_fieldlist: &Token,
-        locals: &mut Vec<String>,
-    ) -> Result<(), Error> {
+        locals: &[String],
+        table: u8,
+        dst: u8,
+    ) -> Result<(u8, u8), Error> {
         match tableconstructor_fieldlist.tokens.as_slice() {
-            [] => Ok(()),
-            [Token {
+            [] => Ok((0, 0)),
+            [fieldlist @ Token {
                 tokens: _,
                 token_type: TokenType::Fieldlist,
-            }] => Err(Error::Unimplemented),
+            }] => self.fieldlist(fieldlist, locals, table, dst),
             _ => {
                 unreachable!(
                     "TableconstructorFieldlist did not match any of the productions. Had {:#?}.",
@@ -1556,15 +1575,28 @@ impl Program {
         }
     }
 
-    fn fieldlist(&mut self, fieldlist: &Token, locals: &mut Vec<String>) -> Result<(), Error> {
+    fn fieldlist(
+        &mut self,
+        fieldlist: &Token,
+        locals: &[String],
+        table: u8,
+        dst: u8,
+    ) -> Result<(u8, u8), Error> {
         match fieldlist.tokens.as_slice() {
-            [Token {
+            [field @ Token {
                 tokens: _,
                 token_type: TokenType::Field,
-            }, Token {
+            }, fieldlist_cont @ Token {
                 tokens: _,
                 token_type: TokenType::FieldlistCont,
-            }] => Err(Error::Unimplemented),
+            }] => self
+                .field(field, locals, table, dst)
+                .and_then(|(array_len, table_len)| {
+                    self.fieldlist_cont(fieldlist_cont, locals, table, dst + array_len)
+                        .map(|(array_items, table_items)| {
+                            (array_items + array_len, table_items + table_len)
+                        })
+                }),
             _ => {
                 unreachable!(
                     "Fieldlist did not match any of the productions. Had {:#?}.",
@@ -1580,29 +1612,39 @@ impl Program {
 
     fn fieldlist_cont(
         &mut self,
-        functiondef: &Token,
-        locals: &mut Vec<String>,
-    ) -> Result<(), Error> {
-        match functiondef.tokens.as_slice() {
-            [] => Ok(()),
-            [Token {
+        fieldlist_cont: &Token,
+        locals: &[String],
+        table: u8,
+        dst: u8,
+    ) -> Result<(u8, u8), Error> {
+        match fieldlist_cont.tokens.as_slice() {
+            [] => Ok((0, 0)),
+            [fieldsep @ Token {
                 tokens: _,
                 token_type: TokenType::Fieldsep,
-            }, Token {
+            }, field @ Token {
                 tokens: _,
                 token_type: TokenType::Field,
-            }, Token {
+            }, fieldlist_cont @ Token {
                 tokens: _,
                 token_type: TokenType::FieldlistCont,
-            }] => Err(Error::Unimplemented),
-            [Token {
+            }] => self
+                .fieldsep(fieldsep)
+                .and_then(|()| self.field(field, locals, table, dst))
+                .and_then(|(array_len, table_len)| {
+                    self.fieldlist_cont(fieldlist_cont, locals, table, dst + array_len)
+                        .map(|(array_len_cont, table_len_cont)| {
+                            (array_len_cont + array_len, table_len_cont + table_len)
+                        })
+                }),
+            [fieldsep @ Token {
                 tokens: _,
                 token_type: TokenType::Fieldsep,
-            }] => Err(Error::Unimplemented),
+            }] => self.fieldsep(fieldsep).map(|()| (0, 0)),
             _ => {
                 unreachable!(
                     "FieldlistCont did not match any of the productions. Had {:#?}.",
-                    functiondef
+                    fieldlist_cont
                         .tokens
                         .iter()
                         .map(|t| &t.token_type)
@@ -1612,7 +1654,74 @@ impl Program {
         }
     }
 
-    fn fieldsep(&mut self, fieldsep: &Token, locals: &mut Vec<String>) -> Result<(), Error> {
+    fn field(
+        &mut self,
+        field: &Token,
+        locals: &[String],
+        table: u8,
+        dst: u8,
+    ) -> Result<(u8, u8), Error> {
+        match field.tokens.as_slice() {
+            [Token {
+                tokens: _,
+                token_type: TokenType::LSquare,
+            }, key @ Token {
+                tokens: _,
+                token_type: TokenType::Exp,
+            }, Token {
+                tokens: _,
+                token_type: TokenType::RSquare,
+            }, Token {
+                tokens: _,
+                token_type: TokenType::Assign,
+            }, exp @ Token {
+                tokens: _,
+                token_type: TokenType::Exp,
+            }] => self
+                .exp(key, locals, dst)
+                .and_then(|()| self.exp(exp, locals, dst + 1))
+                .map(|()| {
+                    self.byte_codes
+                        .push(ByteCode::SetTable(table, dst, dst + 1));
+                    (0, 1)
+                }),
+            [Token {
+                tokens: _,
+                token_type: TokenType::Name(name),
+            }, Token {
+                tokens: _,
+                token_type: TokenType::Assign,
+            }, exp @ Token {
+                tokens: _,
+                token_type: TokenType::Exp,
+            }] => self
+                .exp(exp, locals, dst)
+                .and_then(|()| self.push_constant(*name))
+                .map(|constant_pos| {
+                    self.byte_codes
+                        .push(ByteCode::SetField(table, constant_pos, dst));
+                    (0, 1)
+                }),
+            [exp @ Token {
+                tokens: _,
+                token_type: TokenType::Exp,
+            }] => self.exp(exp, locals, dst).map(|()| (1, 0)),
+            _ => {
+                unreachable!(
+                    "Field did not match any of the productions. Had {:#?}.",
+                    field
+                        .tokens
+                        .iter()
+                        .map(|t| &t.token_type)
+                        .collect::<Vec<_>>()
+                );
+            }
+        }
+    }
+
+    /// Test against `Comma` and `SemiColon` to garantee
+    /// integrity of AST
+    fn fieldsep(&mut self, fieldsep: &Token) -> Result<(), Error> {
         match fieldsep.tokens.as_slice() {
             [Token {
                 tokens: _,

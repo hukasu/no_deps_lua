@@ -7,6 +7,7 @@ pub enum Error {
     InvalidGlobalKey(Value),
     InvalidFunction(Value),
     ExpectedName,
+    ExpectedTable,
 }
 
 impl Display for Error {
@@ -15,6 +16,7 @@ impl Display for Error {
             Self::InvalidGlobalKey(value) => write!(f, "Global {:?} is not a String.", value),
             Self::InvalidFunction(value) => write!(f, "Value {:?} is not a function.", value),
             Self::ExpectedName => write!(f, "Expected global or local name."),
+            Self::ExpectedTable => write!(f, "Tried accessing a value as a Table."),
         }
     }
 }

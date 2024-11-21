@@ -1,5 +1,6 @@
 use core::{
     cell::RefCell,
+    cmp::Ordering,
     fmt::{Debug, Display},
 };
 
@@ -19,6 +20,59 @@ pub enum Value {
     String(Rc<str>),
     Table(Rc<RefCell<Table>>),
     Function(fn(&mut Lua) -> i32),
+}
+
+impl PartialOrd for Value {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Value {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match (self, other) {
+            (Self::Nil, Self::Nil) => Ordering::Equal,
+            (Self::Nil, _) => Ordering::Less,
+            (Self::Boolean(_), Self::Nil) => Ordering::Greater,
+            (Self::Boolean(lhs), Self::Boolean(rhs)) => lhs.cmp(rhs),
+            (Self::Boolean(_), _) => Ordering::Less,
+            (Self::Integer(_), Self::Nil | Self::Boolean(_)) => Ordering::Greater,
+            (Self::Integer(lhs), Self::Integer(rhs)) => lhs.cmp(rhs),
+            (Self::Integer(_), _) => Ordering::Less,
+            (Self::Float(_), Self::Nil | Self::Boolean(_) | Self::Integer(_)) => Ordering::Greater,
+            (Self::Float(lhs), Self::Float(rhs)) => lhs.total_cmp(rhs),
+            (Self::Float(_), _) => Ordering::Less,
+            (
+                Self::ShortString(_),
+                Self::Nil | Self::Boolean(_) | Self::Integer(_) | Self::Float(_),
+            ) => Ordering::Greater,
+            (Self::ShortString(lhs), Self::ShortString(rhs)) => lhs.cmp(rhs),
+            (Self::ShortString(_), _) => Ordering::Less,
+            (
+                Self::String(_),
+                Self::Nil
+                | Self::Boolean(_)
+                | Self::Integer(_)
+                | Self::Float(_)
+                | Self::ShortString(_),
+            ) => Ordering::Greater,
+            (Self::String(lhs), Self::String(rhs)) => lhs.cmp(rhs),
+            (Self::String(_), _) => Ordering::Less,
+            (
+                Self::Table(_),
+                Self::Nil
+                | Self::Boolean(_)
+                | Self::Integer(_)
+                | Self::Float(_)
+                | Self::ShortString(_)
+                | Self::String(_),
+            ) => Ordering::Greater,
+            (Self::Table(lhs), Self::Table(rhs)) => lhs.as_ptr().cmp(&rhs.as_ptr()),
+            (Self::Table(_), _) => Ordering::Less,
+            (Self::Function(lhs), Self::Function(rhs)) => lhs.cmp(rhs),
+            (Self::Function(_), _) => Ordering::Greater,
+        }
+    }
 }
 
 impl From<i64> for Value {
@@ -97,6 +151,8 @@ impl PartialEq for Value {
         }
     }
 }
+
+impl Eq for Value {}
 
 #[cfg(test)]
 mod tests {
