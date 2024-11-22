@@ -1,12 +1,10 @@
 mod byte_code;
+mod compile_context;
 mod error;
 #[cfg(test)]
 mod tests;
 
-use alloc::{
-    string::{String, ToString},
-    vec::Vec,
-};
+use alloc::vec::Vec;
 
 use crate::{
     ext::Unescape,
@@ -15,6 +13,7 @@ use crate::{
 
 use super::value::Value;
 
+use compile_context::CompileContext;
 pub use {byte_code::ByteCode, error::Error};
 
 #[derive(Debug)]
@@ -31,9 +30,9 @@ impl Program {
             constants: Vec::new(),
             byte_codes: Vec::new(),
         };
-        let mut locals = Vec::new();
+        let mut compile_context = CompileContext { locals: Vec::new() };
 
-        program.chunk(&chunk, &mut locals)?;
+        program.chunk(&chunk, &mut compile_context)?;
 
         Ok(program)
     }
@@ -63,12 +62,12 @@ impl Program {
     }
 
     // Non-terminals
-    fn chunk(&mut self, chunk: &Token, locals: &mut Vec<String>) -> Result<(), Error> {
+    fn chunk(&mut self, chunk: &Token, compile_context: &mut CompileContext) -> Result<(), Error> {
         match chunk.tokens.as_slice() {
             [block @ Token {
                 tokens: _,
                 token_type: TokenType::Block,
-            }] => self.block(block, locals),
+            }] => self.block(block, compile_context),
             _ => {
                 unreachable!(
                     "Chunk did not match any of the productions. Had {:#?}.",
@@ -82,7 +81,7 @@ impl Program {
         }
     }
 
-    fn block(&mut self, block: &Token, locals: &mut Vec<String>) -> Result<(), Error> {
+    fn block(&mut self, block: &Token, compile_context: &mut CompileContext) -> Result<(), Error> {
         match block.tokens.as_slice() {
             [block_stat @ Token {
                 tokens: _,
@@ -91,8 +90,8 @@ impl Program {
                 tokens: _,
                 token_type: TokenType::BlockRetstat,
             }] => self
-                .block_stat(block_stat, locals)
-                .and_then(|()| self.block_retstat(block_retstat, locals)),
+                .block_stat(block_stat, compile_context)
+                .and_then(|()| self.block_retstat(block_retstat, compile_context)),
             _ => {
                 unreachable!(
                     "Block did not match any production. Had {:#?}.",
@@ -106,7 +105,11 @@ impl Program {
         }
     }
 
-    fn block_stat(&mut self, block: &Token, locals: &mut Vec<String>) -> Result<(), Error> {
+    fn block_stat(
+        &mut self,
+        block: &Token,
+        compile_context: &mut CompileContext,
+    ) -> Result<(), Error> {
         match block.tokens.as_slice() {
             [] => Ok(()),
             [stat @ Token {
@@ -115,10 +118,10 @@ impl Program {
             }, blockstat @ Token {
                 tokens: _,
                 token_type: TokenType::BlockStat,
-            }] => u8::try_from(locals.len())
+            }] => u8::try_from(compile_context.locals.len())
                 .map_err(Error::from)
-                .and_then(|i| self.stat(stat, locals, i))
-                .and_then(|()| self.block_stat(blockstat, locals)),
+                .and_then(|i| self.stat(stat, compile_context, i))
+                .and_then(|()| self.block_stat(blockstat, compile_context)),
             _ => {
                 unreachable!(
                     "BlockStat did not match any production. Had {:#?}.",
@@ -135,7 +138,7 @@ impl Program {
     fn block_retstat(
         &mut self,
         block_retstat: &Token,
-        locals: &mut Vec<String>,
+        _compile_context: &CompileContext,
     ) -> Result<(), Error> {
         match block_retstat.tokens.as_slice() {
             [] => Ok(()),
@@ -156,7 +159,12 @@ impl Program {
         }
     }
 
-    fn stat(&mut self, stat: &Token, locals: &mut Vec<String>, dst: u8) -> Result<(), Error> {
+    fn stat(
+        &mut self,
+        stat: &Token,
+        compile_context: &mut CompileContext,
+        dst: u8,
+    ) -> Result<(), Error> {
         match stat.tokens.as_slice() {
             [Token {
                 tokens: _,
@@ -172,12 +180,12 @@ impl Program {
                 tokens: _,
                 token_type: TokenType::Explist,
             }] => self
-                .explist(explist, locals, dst)
-                .and_then(|()| self.varlist(varlist, locals, dst)),
+                .explist(explist, compile_context, dst)
+                .and_then(|()| self.varlist(varlist, compile_context, dst)),
             [functioncall @ Token {
                 tokens: _,
                 token_type: TokenType::Functioncall,
-            }] => self.functioncall(functioncall, locals, dst),
+            }] => self.functioncall(functioncall, compile_context, dst),
             [Token {
                 tokens: _,
                 token_type: TokenType::Label,
@@ -340,8 +348,8 @@ impl Program {
                 tokens: _,
                 token_type: TokenType::StatAttexplist,
             }] => self
-                .stat_attexplist(stat_attexplist, locals, dst)
-                .and_then(|()| self.attnamelist(attnamelist, locals)),
+                .stat_attexplist(stat_attexplist, compile_context, dst)
+                .and_then(|()| self.attnamelist(attnamelist, compile_context)),
             _ => {
                 unreachable!(
                     "Stat did not match any of the productions. Had {:#?}.",
@@ -354,7 +362,11 @@ impl Program {
         }
     }
 
-    fn stat_elseif(&mut self, stat_elseif: &Token, locals: &mut Vec<String>) -> Result<(), Error> {
+    fn stat_elseif(
+        &mut self,
+        stat_elseif: &Token,
+        _compile_context: &CompileContext,
+    ) -> Result<(), Error> {
         match stat_elseif.tokens.as_slice() {
             [] => Ok(()),
             [Token {
@@ -386,7 +398,11 @@ impl Program {
         }
     }
 
-    fn stat_else(&mut self, stat_else: &Token, locals: &mut Vec<String>) -> Result<(), Error> {
+    fn stat_else(
+        &mut self,
+        stat_else: &Token,
+        _compile_context: &CompileContext,
+    ) -> Result<(), Error> {
         match stat_else.tokens.as_slice() {
             [] => Ok(()),
             [Token {
@@ -409,7 +425,11 @@ impl Program {
         }
     }
 
-    fn stat_forexp(&mut self, stat_else: &Token, locals: &mut Vec<String>) -> Result<(), Error> {
+    fn stat_forexp(
+        &mut self,
+        stat_else: &Token,
+        _compile_context: &CompileContext,
+    ) -> Result<(), Error> {
         match stat_else.tokens.as_slice() {
             [] => Ok(()),
             [Token {
@@ -435,7 +455,7 @@ impl Program {
     fn stat_attexplist(
         &mut self,
         stat_attexplist: &Token,
-        locals: &mut Vec<String>,
+        compile_context: &mut CompileContext,
         dst: u8,
     ) -> Result<(), Error> {
         match stat_attexplist.tokens.as_slice() {
@@ -446,7 +466,7 @@ impl Program {
             }, explist @ Token {
                 tokens: _,
                 token_type: TokenType::Explist,
-            }] => self.explist(explist, locals, dst),
+            }] => self.explist(explist, compile_context, dst),
             _ => {
                 unreachable!(
                     "StatAttexplist did not match any of the productions. Had {:#?}.",
@@ -460,7 +480,11 @@ impl Program {
         }
     }
 
-    fn attnamelist(&mut self, attnamelist: &Token, locals: &mut Vec<String>) -> Result<(), Error> {
+    fn attnamelist(
+        &mut self,
+        attnamelist: &Token,
+        compile_context: &mut CompileContext,
+    ) -> Result<(), Error> {
         match attnamelist.tokens.as_slice() {
             [Token {
                 tokens: _,
@@ -472,8 +496,8 @@ impl Program {
                 tokens: _,
                 token_type: TokenType::AttnamelistCont,
             }] => {
-                locals.push((*name).to_string());
-                self.attnamelist_cont(attnamelist_cont, locals)
+                compile_context.locals.push((*name).into());
+                self.attnamelist_cont(attnamelist_cont, compile_context)
             }
             _ => {
                 unreachable!(
@@ -491,7 +515,7 @@ impl Program {
     fn attnamelist_cont(
         &mut self,
         attnamelist_cont: &Token,
-        locals: &mut Vec<String>,
+        compile_context: &mut CompileContext,
     ) -> Result<(), Error> {
         match attnamelist_cont.tokens.as_slice() {
             [] => Ok(()),
@@ -508,8 +532,8 @@ impl Program {
                 tokens: _,
                 token_type: TokenType::AttnamelistCont,
             }] => {
-                locals.push((*name).to_string());
-                self.attnamelist_cont(attnamelist_cont, locals)
+                compile_context.locals.push((*name).into());
+                self.attnamelist_cont(attnamelist_cont, compile_context)
             }
             _ => {
                 unreachable!(
@@ -524,7 +548,7 @@ impl Program {
         }
     }
 
-    fn attrib(&mut self, attrib: &Token, locals: &mut Vec<String>) -> Result<(), Error> {
+    fn attrib(&mut self, attrib: &Token, _compile_context: &CompileContext) -> Result<(), Error> {
         match attrib.tokens.as_slice() {
             [] => Ok(()),
             [Token {
@@ -550,7 +574,7 @@ impl Program {
         }
     }
 
-    fn retstat(&mut self, retstat: &Token, locals: &mut Vec<String>) -> Result<(), Error> {
+    fn retstat(&mut self, retstat: &Token, _compile_context: &CompileContext) -> Result<(), Error> {
         match retstat.tokens.as_slice() {
             [Token {
                 tokens: _,
@@ -578,7 +602,7 @@ impl Program {
     fn retstat_explist(
         &mut self,
         retstat_explist: &Token,
-        locals: &mut Vec<String>,
+        _compile_context: &CompileContext,
     ) -> Result<(), Error> {
         match retstat_explist.tokens.as_slice() {
             [] => Ok(()),
@@ -599,7 +623,11 @@ impl Program {
         }
     }
 
-    fn retstat_end(&mut self, retstat_end: &Token, locals: &mut Vec<String>) -> Result<(), Error> {
+    fn retstat_end(
+        &mut self,
+        retstat_end: &Token,
+        _compile_context: &CompileContext,
+    ) -> Result<(), Error> {
         match retstat_end.tokens.as_slice() {
             [] => Ok(()),
             [Token {
@@ -619,7 +647,7 @@ impl Program {
         }
     }
 
-    fn label(&mut self, label: &Token, locals: &mut Vec<String>) -> Result<(), Error> {
+    fn label(&mut self, label: &Token, _compile_context: &CompileContext) -> Result<(), Error> {
         match label.tokens.as_slice() {
             [] => Ok(()),
             [Token {
@@ -645,7 +673,11 @@ impl Program {
         }
     }
 
-    fn funcname(&mut self, funcname: &Token, locals: &mut Vec<String>) -> Result<(), Error> {
+    fn funcname(
+        &mut self,
+        funcname: &Token,
+        _compile_context: &CompileContext,
+    ) -> Result<(), Error> {
         match funcname.tokens.as_slice() {
             [Token {
                 tokens: _,
@@ -670,7 +702,11 @@ impl Program {
         }
     }
 
-    fn funcname_cont(&mut self, attrib: &Token, locals: &mut Vec<String>) -> Result<(), Error> {
+    fn funcname_cont(
+        &mut self,
+        attrib: &Token,
+        _compile_context: &CompileContext,
+    ) -> Result<(), Error> {
         match attrib.tokens.as_slice() {
             [] => Ok(()),
             [Token {
@@ -699,7 +735,7 @@ impl Program {
     fn funcname_end(
         &mut self,
         funcname_end: &Token,
-        locals: &mut Vec<String>,
+        _compile_context: &CompileContext,
     ) -> Result<(), Error> {
         match funcname_end.tokens.as_slice() {
             [] => Ok(()),
@@ -723,7 +759,12 @@ impl Program {
         }
     }
 
-    fn varlist(&mut self, varlist: &Token, locals: &mut Vec<String>, dst: u8) -> Result<(), Error> {
+    fn varlist(
+        &mut self,
+        varlist: &Token,
+        compile_context: &CompileContext,
+        dst: u8,
+    ) -> Result<(), Error> {
         match varlist.tokens.as_slice() {
             [var @ Token {
                 tokens: _,
@@ -732,8 +773,8 @@ impl Program {
                 tokens: _,
                 token_type: TokenType::VarlistCont,
             }] => self
-                .var_assign(var, locals, dst)
-                .and_then(|()| self.varlist_cont(varlist_cont, locals, dst + 1)),
+                .var_assign(var, compile_context, dst)
+                .and_then(|()| self.varlist_cont(varlist_cont, compile_context, dst + 1)),
             _ => {
                 unreachable!(
                     "Varlist did not match any of the productions. Had {:#?}.",
@@ -750,7 +791,7 @@ impl Program {
     fn varlist_cont(
         &mut self,
         varlist_cont: &Token,
-        locals: &mut Vec<String>,
+        compile_context: &CompileContext,
         dst: u8,
     ) -> Result<(), Error> {
         match varlist_cont.tokens.as_slice() {
@@ -765,8 +806,8 @@ impl Program {
                 tokens: _,
                 token_type: TokenType::VarlistCont,
             }] => self
-                .var_assign(var, locals, dst)
-                .and_then(|()| self.varlist_cont(varlist_cont, locals, dst + 1)),
+                .var_assign(var, compile_context, dst)
+                .and_then(|()| self.varlist_cont(varlist_cont, compile_context, dst + 1)),
             _ => {
                 unreachable!(
                     "VarlistCont did not match any of the productions. Had {:#?}.",
@@ -780,12 +821,12 @@ impl Program {
         }
     }
 
-    fn var(&mut self, var: &Token, locals: &[String], dst: u8) -> Result<(), Error> {
+    fn var(&mut self, var: &Token, compile_context: &CompileContext, dst: u8) -> Result<(), Error> {
         match var.tokens.as_slice() {
             [Token {
                 tokens: _,
                 token_type: TokenType::Name(name),
-            }] => self.name(dst, name, locals),
+            }] => self.name(dst, name, compile_context),
             [Token {
                 tokens: _,
                 token_type: TokenType::Prefixexp,
@@ -818,13 +859,22 @@ impl Program {
         }
     }
 
-    fn var_assign(&mut self, var: &Token, locals: &[String], dst: u8) -> Result<(), Error> {
+    fn var_assign(
+        &mut self,
+        var: &Token,
+        compile_context: &CompileContext,
+        dst: u8,
+    ) -> Result<(), Error> {
         match var.tokens.as_slice() {
             [Token {
                 tokens: _,
                 token_type: TokenType::Name(var_name),
             }] => {
-                if let Some(var_dst) = locals.iter().rposition(|name| name.eq(var_name)) {
+                if let Some(var_dst) = compile_context
+                    .locals
+                    .iter()
+                    .rposition(|name| name.eq(&Value::from(*var_name)))
+                {
                     u8::try_from(var_dst).map_err(Error::from).map(|var_dst| {
                         self.byte_codes.push(ByteCode::Move(var_dst, dst));
                     })
@@ -843,7 +893,11 @@ impl Program {
         }
     }
 
-    fn namelist(&mut self, namelist: &Token, locals: &mut Vec<String>) -> Result<(), Error> {
+    fn namelist(
+        &mut self,
+        namelist: &Token,
+        _compile_context: &CompileContext,
+    ) -> Result<(), Error> {
         match namelist.tokens.as_slice() {
             [Token {
                 tokens: _,
@@ -868,7 +922,7 @@ impl Program {
     fn namelist_cont(
         &mut self,
         namelist_cont: &Token,
-        locals: &mut Vec<String>,
+        _compile_context: &CompileContext,
     ) -> Result<(), Error> {
         match namelist_cont.tokens.as_slice() {
             [] => Ok(()),
@@ -895,7 +949,12 @@ impl Program {
         }
     }
 
-    fn explist(&mut self, explist: &Token, locals: &mut Vec<String>, dst: u8) -> Result<(), Error> {
+    fn explist(
+        &mut self,
+        explist: &Token,
+        compile_context: &CompileContext,
+        dst: u8,
+    ) -> Result<(), Error> {
         match explist.tokens.as_slice() {
             [exp @ Token {
                 tokens: _,
@@ -904,8 +963,8 @@ impl Program {
                 tokens: _,
                 token_type: TokenType::ExplistCont,
             }] => self
-                .exp(exp, locals, dst)
-                .and_then(|()| self.explist_cont(explist_cont, locals, dst)),
+                .exp(exp, compile_context, dst)
+                .and_then(|()| self.explist_cont(explist_cont, compile_context, dst)),
             _ => {
                 unreachable!(
                     "Explist did not match any of the productions. Had {:#?}.",
@@ -922,7 +981,7 @@ impl Program {
     fn explist_cont(
         &mut self,
         explist_cont: &Token,
-        locals: &mut Vec<String>,
+        compile_context: &CompileContext,
         dst: u8,
     ) -> Result<(), Error> {
         match explist_cont.tokens.as_slice() {
@@ -937,8 +996,8 @@ impl Program {
                 tokens: _,
                 token_type: TokenType::ExplistCont,
             }] => self
-                .exp(exp, locals, dst)
-                .and_then(|()| self.explist_cont(explist_cont, locals, dst)),
+                .exp(exp, compile_context, dst)
+                .and_then(|()| self.explist_cont(explist_cont, compile_context, dst)),
             _ => {
                 unreachable!(
                     "ExplistCont did not match any of the productions. Had {:#?}.",
@@ -952,7 +1011,7 @@ impl Program {
         }
     }
 
-    fn exp(&mut self, exp: &Token, locals: &[String], dst: u8) -> Result<(), Error> {
+    fn exp(&mut self, exp: &Token, compile_context: &CompileContext, dst: u8) -> Result<(), Error> {
         match exp.tokens.as_slice() {
             [Token {
                 tokens: _,
@@ -990,7 +1049,7 @@ impl Program {
             [prefixexp @ Token {
                 tokens: _,
                 token_type: TokenType::Prefixexp,
-            }] => self.prefixexp(prefixexp, locals, dst),
+            }] => self.prefixexp(prefixexp, compile_context, dst),
             [Token {
                 tokens: _,
                 token_type: TokenType::Exp,
@@ -1238,12 +1297,17 @@ impl Program {
         }
     }
 
-    fn prefixexp(&mut self, prefixexp: &Token, locals: &[String], dst: u8) -> Result<(), Error> {
+    fn prefixexp(
+        &mut self,
+        prefixexp: &Token,
+        compile_context: &CompileContext,
+        dst: u8,
+    ) -> Result<(), Error> {
         match prefixexp.tokens.as_slice() {
             [var @ Token {
                 tokens: _,
                 token_type: TokenType::Var,
-            }] => self.var(var, locals, dst),
+            }] => self.var(var, compile_context, dst),
             [Token {
                 tokens: _,
                 token_type: TokenType::Functioncall,
@@ -1274,7 +1338,7 @@ impl Program {
     fn functioncall(
         &mut self,
         functioncall: &Token,
-        locals: &mut Vec<String>,
+        compile_context: &CompileContext,
         dst: u8,
     ) -> Result<(), Error> {
         match functioncall.tokens.as_slice() {
@@ -1285,8 +1349,8 @@ impl Program {
                 tokens: _,
                 token_type: TokenType::Args,
             }] => {
-                self.prefixexp(prefixexp, locals, dst)?;
-                self.args(args, locals, dst + 1)?;
+                self.prefixexp(prefixexp, compile_context, dst)?;
+                self.args(args, compile_context, dst + 1)?;
                 self.byte_codes.push(ByteCode::Call(dst, 1));
                 Ok(())
             }
@@ -1316,7 +1380,12 @@ impl Program {
         }
     }
 
-    fn args(&mut self, args: &Token, locals: &mut Vec<String>, dst: u8) -> Result<(), Error> {
+    fn args(
+        &mut self,
+        args: &Token,
+        compile_context: &CompileContext,
+        dst: u8,
+    ) -> Result<(), Error> {
         match args.tokens.as_slice() {
             [Token {
                 tokens: _,
@@ -1327,11 +1396,11 @@ impl Program {
             }, Token {
                 tokens: _,
                 token_type: TokenType::RParen,
-            }] => self.args_explist(args_explist, locals, dst),
+            }] => self.args_explist(args_explist, compile_context, dst),
             [tableconstructor @ Token {
                 tokens: _,
                 token_type: TokenType::Tableconstructor,
-            }] => self.tableconstructor(tableconstructor, locals, dst),
+            }] => self.tableconstructor(tableconstructor, compile_context, dst),
             [Token {
                 tokens: _,
                 token_type: TokenType::String(string),
@@ -1351,7 +1420,7 @@ impl Program {
     fn args_explist(
         &mut self,
         args_explist: &Token,
-        locals: &mut Vec<String>,
+        compile_context: &CompileContext,
         dst: u8,
     ) -> Result<(), Error> {
         match args_explist.tokens.as_slice() {
@@ -1359,7 +1428,7 @@ impl Program {
             [explist @ Token {
                 tokens: _,
                 token_type: TokenType::Explist,
-            }] => self.explist(explist, locals, dst),
+            }] => self.explist(explist, compile_context, dst),
             _ => {
                 unreachable!(
                     "ArgsExplist did not match any of the productions. Had {:#?}.",
@@ -1373,7 +1442,11 @@ impl Program {
         }
     }
 
-    fn functiondef(&mut self, functiondef: &Token, locals: &mut Vec<String>) -> Result<(), Error> {
+    fn functiondef(
+        &mut self,
+        functiondef: &Token,
+        _compile_context: &CompileContext,
+    ) -> Result<(), Error> {
         match functiondef.tokens.as_slice() {
             [Token {
                 tokens: _,
@@ -1395,7 +1468,11 @@ impl Program {
         }
     }
 
-    fn funcbody(&mut self, funcbody: &Token, locals: &mut Vec<String>) -> Result<(), Error> {
+    fn funcbody(
+        &mut self,
+        funcbody: &Token,
+        _compile_context: &CompileContext,
+    ) -> Result<(), Error> {
         match funcbody.tokens.as_slice() {
             [Token {
                 tokens: _,
@@ -1429,7 +1506,7 @@ impl Program {
     fn funcbody_parlist(
         &mut self,
         funcbody_parlist: &Token,
-        locals: &mut Vec<String>,
+        _compile_context: &CompileContext,
     ) -> Result<(), Error> {
         match funcbody_parlist.tokens.as_slice() {
             [] => Ok(()),
@@ -1450,7 +1527,7 @@ impl Program {
         }
     }
 
-    fn parlist(&mut self, parlist: &Token, locals: &mut Vec<String>) -> Result<(), Error> {
+    fn parlist(&mut self, parlist: &Token, _compile_context: &CompileContext) -> Result<(), Error> {
         match parlist.tokens.as_slice() {
             [Token {
                 tokens: _,
@@ -1479,7 +1556,7 @@ impl Program {
     fn parlist_cont(
         &mut self,
         parlist_cont: &Token,
-        locals: &mut Vec<String>,
+        _compile_context: &CompileContext,
     ) -> Result<(), Error> {
         match parlist_cont.tokens.as_slice() {
             [] => Ok(()),
@@ -1506,7 +1583,7 @@ impl Program {
     fn tableconstructor(
         &mut self,
         tableconstructor: &Token,
-        locals: &[String],
+        compile_context: &CompileContext,
         dst: u8,
     ) -> Result<(), Error> {
         match tableconstructor.tokens.as_slice() {
@@ -1525,7 +1602,7 @@ impl Program {
 
                 let (array_items, table_items) = self.tableconstructor_fieldlist(
                     tableconstructor_fieldlist,
-                    locals,
+                    compile_context,
                     dst,
                     dst + 1,
                 )?;
@@ -1552,7 +1629,7 @@ impl Program {
     fn tableconstructor_fieldlist(
         &mut self,
         tableconstructor_fieldlist: &Token,
-        locals: &[String],
+        compile_context: &CompileContext,
         table: u8,
         dst: u8,
     ) -> Result<(u8, u8), Error> {
@@ -1561,7 +1638,7 @@ impl Program {
             [fieldlist @ Token {
                 tokens: _,
                 token_type: TokenType::Fieldlist,
-            }] => self.fieldlist(fieldlist, locals, table, dst),
+            }] => self.fieldlist(fieldlist, compile_context, table, dst),
             _ => {
                 unreachable!(
                     "TableconstructorFieldlist did not match any of the productions. Had {:#?}.",
@@ -1578,7 +1655,7 @@ impl Program {
     fn fieldlist(
         &mut self,
         fieldlist: &Token,
-        locals: &[String],
+        compile_context: &CompileContext,
         table: u8,
         dst: u8,
     ) -> Result<(u8, u8), Error> {
@@ -1589,14 +1666,15 @@ impl Program {
             }, fieldlist_cont @ Token {
                 tokens: _,
                 token_type: TokenType::FieldlistCont,
-            }] => self
-                .field(field, locals, table, dst)
-                .and_then(|(array_len, table_len)| {
-                    self.fieldlist_cont(fieldlist_cont, locals, table, dst + array_len)
-                        .map(|(array_items, table_items)| {
-                            (array_items + array_len, table_items + table_len)
-                        })
-                }),
+            }] => {
+                self.field(field, compile_context, table, dst)
+                    .and_then(|(array_len, table_len)| {
+                        self.fieldlist_cont(fieldlist_cont, compile_context, table, dst + array_len)
+                            .map(|(array_items, table_items)| {
+                                (array_items + array_len, table_items + table_len)
+                            })
+                    })
+            }
             _ => {
                 unreachable!(
                     "Fieldlist did not match any of the productions. Had {:#?}.",
@@ -1613,7 +1691,7 @@ impl Program {
     fn fieldlist_cont(
         &mut self,
         fieldlist_cont: &Token,
-        locals: &[String],
+        compile_context: &CompileContext,
         table: u8,
         dst: u8,
     ) -> Result<(u8, u8), Error> {
@@ -1630,9 +1708,9 @@ impl Program {
                 token_type: TokenType::FieldlistCont,
             }] => self
                 .fieldsep(fieldsep)
-                .and_then(|()| self.field(field, locals, table, dst))
+                .and_then(|()| self.field(field, compile_context, table, dst))
                 .and_then(|(array_len, table_len)| {
-                    self.fieldlist_cont(fieldlist_cont, locals, table, dst + array_len)
+                    self.fieldlist_cont(fieldlist_cont, compile_context, table, dst + array_len)
                         .map(|(array_len_cont, table_len_cont)| {
                             (array_len_cont + array_len, table_len_cont + table_len)
                         })
@@ -1657,7 +1735,7 @@ impl Program {
     fn field(
         &mut self,
         field: &Token,
-        locals: &[String],
+        compile_context: &CompileContext,
         table: u8,
         dst: u8,
     ) -> Result<(u8, u8), Error> {
@@ -1678,8 +1756,8 @@ impl Program {
                 tokens: _,
                 token_type: TokenType::Exp,
             }] => self
-                .exp(key, locals, dst)
-                .and_then(|()| self.exp(exp, locals, dst + 1))
+                .exp(key, compile_context, dst)
+                .and_then(|()| self.exp(exp, compile_context, dst + 1))
                 .map(|()| {
                     self.byte_codes
                         .push(ByteCode::SetTable(table, dst, dst + 1));
@@ -1695,7 +1773,7 @@ impl Program {
                 tokens: _,
                 token_type: TokenType::Exp,
             }] => self
-                .exp(exp, locals, dst)
+                .exp(exp, compile_context, dst)
                 .and_then(|()| self.push_constant(*name))
                 .map(|constant_pos| {
                     self.byte_codes
@@ -1705,7 +1783,7 @@ impl Program {
             [exp @ Token {
                 tokens: _,
                 token_type: TokenType::Exp,
-            }] => self.exp(exp, locals, dst).map(|()| (1, 0)),
+            }] => self.exp(exp, compile_context, dst).map(|()| (1, 0)),
             _ => {
                 unreachable!(
                     "Field did not match any of the productions. Had {:#?}.",
@@ -1745,8 +1823,12 @@ impl Program {
     }
 
     // Terminals
-    fn name(&mut self, dst: u8, name: &str, locals: &[String]) -> Result<(), Error> {
-        if let Some(i) = locals.iter().rposition(|v| v == name) {
+    fn name(&mut self, dst: u8, name: &str, compile_context: &CompileContext) -> Result<(), Error> {
+        if let Some(i) = compile_context
+            .locals
+            .iter()
+            .rposition(|v| v == &Value::from(name))
+        {
             u8::try_from(i).map_err(Error::from).map(|i| {
                 self.byte_codes.push(ByteCode::Move(dst, i));
             })
