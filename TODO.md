@@ -4,3 +4,9 @@
 
 # Numerals
 * Implement scientific notation numerals
+
+# Lex
+* Improve logic, maybe with a DFA
+
+# Parser
+* Fix Shift-Reduces
