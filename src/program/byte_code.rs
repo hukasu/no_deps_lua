@@ -18,6 +18,12 @@ pub enum ByteCode {
     /// global resides  
     /// `src`: Location of the value on `constants` to set the global
     SetGlobalConstant(u8, u8),
+    /// Sets a value from a global with a integer
+    ///
+    /// `name`: Location on `constants` where the name of the
+    /// global resides  
+    /// `value`: Integer to store on global
+    SetGlobalInteger(u8, i16),
     /// Sets a value of a global with a value from another global
     ///
     /// `dst_name`: Location on `constants` where the name of the
@@ -47,8 +53,8 @@ pub enum ByteCode {
     LoadInt(u8, i16),
     /// Creates a new table value
     ///
-    /// `dst`: Location on the stack to store the table
-    /// `array_len`: Amount of items to allocate on the list
+    /// `dst`: Location on the stack to store the table  
+    /// `array_len`: Amount of items to allocate on the list  
     /// `table_len`: Amount of items to allocate for the map
     NewTable(u8, u8, u8),
     /// Sets a table field to a value using a value
@@ -56,17 +62,17 @@ pub enum ByteCode {
     /// `table`: Location of the table on the stack  
     /// `key`: Location on the stack of the value that will be used
     /// as key  
-    /// `value`: Location of the value on the stack  
+    /// `value`: Location of the value on the stack
     SetTable(u8, u8, u8),
     /// Sets a table field to a value using a name
     ///
-    /// `table`: Location of the `table` on the stack
-    /// `key`: Location of the name on `constants`
+    /// `table`: Location of the `table` on the stack  
+    /// `key`: Location of the name on `constants`  
     /// `value`: Location of the value on the stack
     SetField(u8, u8, u8),
     /// Stores multiple values from the stack into the table
     ///
-    /// `table`: Location of the `table` on the stack
+    /// `table`: Location of the `table` on the stack  
     /// `array_len`: Number of items on the stack to store
     SetList(u8, u8),
     /// Moves a value from one location on the stack to another

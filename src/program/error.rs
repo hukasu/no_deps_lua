@@ -4,6 +4,7 @@ use core::{fmt::Display, num::TryFromIntError};
 pub enum Error {
     Parse,
     StringDecode,
+    OrphanExp,
     StackOverflow,
     Unimplemented,
 }
@@ -17,7 +18,10 @@ impl Display for Error {
             Self::StringDecode => {
                 write!(f, "Failed to decode string.")
             }
-            Error::StackOverflow => {
+            Self::OrphanExp => {
+                write!(f, "Exp had nowhere to be stored.")
+            }
+            Self::StackOverflow => {
                 write!(f, "Tried accessing index outside stack bounds.")
             }
             Self::Unimplemented => {

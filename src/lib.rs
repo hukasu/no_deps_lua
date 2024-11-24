@@ -74,6 +74,17 @@ impl Lua {
                         return Err(Error::ExpectedName);
                     }
                 }
+                ByteCode::SetGlobalInteger(key, value) => {
+                    let key = &program.constants[*key as usize];
+                    let value = (*value).into();
+                    if let Some(global) = vm.globals.iter_mut().find(|global| global.0.eq(key)) {
+                        global.1 = value;
+                    } else if matches!(key, Value::String(_) | Value::ShortString(_)) {
+                        vm.globals.push((key.clone(), value));
+                    } else {
+                        return Err(Error::ExpectedName);
+                    }
+                }
                 ByteCode::SetGlobalGlobal(dst_name, src_name) => {
                     let dst_key = &program.constants[*dst_name as usize];
                     let src_key = &program.constants[*src_name as usize];

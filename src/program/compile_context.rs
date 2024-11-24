@@ -1,20 +1,21 @@
-use alloc::vec::Vec;
+use alloc::{collections::vec_deque::VecDeque, vec::Vec};
 
 use crate::value::Value;
 
-pub struct CompileContext {
+use super::exp_desc::ExpDesc;
+
+#[derive(Debug)]
+pub struct CompileContext<'a> {
     pub stack_top: u8,
     pub locals: Vec<Value>,
+    pub exp_descs: VecDeque<ExpDesc<'a>>,
+    pub new_locals: Vec<Value>,
 }
 
-impl CompileContext {
-    pub fn increment_stack_top(&mut self) -> &mut Self {
+impl<'a> CompileContext<'a> {
+    pub fn reserve_stack_top(&mut self) -> ExpDesc<'a> {
+        let top = self.stack_top;
         self.stack_top += 1;
-        self
-    }
-
-    pub fn decrement_stack_top(&mut self) -> &mut Self {
-        self.stack_top -= 1;
-        self
+        ExpDesc::Local(usize::from(top))
     }
 }

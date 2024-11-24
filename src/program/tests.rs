@@ -1,3 +1,7 @@
+use alloc::string::String;
+
+use crate::ext::Unescape;
+
 use super::*;
 
 #[test]
@@ -29,7 +33,11 @@ print "hello again..."
             ByteCode::Call(0, 1),
         ]
     );
+    crate::Lua::execute(&program).unwrap();
+}
 
+#[test]
+fn chapter1b() {
     let err = Program::parse(
         r#"
 print "hello world"
@@ -38,7 +46,6 @@ print "hello again...
     )
     .expect_err("This program should fail");
     assert_eq!(err, Error::Parse);
-    crate::Lua::execute(&program).unwrap();
 }
 
 #[test]
@@ -56,7 +63,7 @@ print(123456.0)
     .unwrap();
     assert_eq!(
         &program.constants,
-        &["print".into(), 123456.into(), 123456.0.into(),]
+        &["print".into(), 123456i64.into(), 123456.0.into(),]
     );
     assert_eq!(
         &program.byte_codes,
@@ -106,15 +113,21 @@ print "I'm local-print!" -- call local function
     assert_eq!(
         &program.byte_codes,
         &[
+            // local a = "hello, local!"
             ByteCode::LoadConstant(0, 0),
+            // local b = a
             ByteCode::Move(1, 0),
+            // print(b)
             ByteCode::GetGlobal(2, 1),
             ByteCode::Move(3, 1),
             ByteCode::Call(2, 1),
+            // print(print)
             ByteCode::GetGlobal(2, 1),
             ByteCode::GetGlobal(3, 1),
             ByteCode::Call(2, 1),
+            // local print = print
             ByteCode::GetGlobal(2, 1),
+            // print "I'm local-print!"
             ByteCode::Move(3, 2),
             ByteCode::LoadConstant(4, 2),
             ByteCode::Call(3, 1),
@@ -151,34 +164,40 @@ print(g)
     assert_eq!(
         &program.byte_codes,
         &[
+            // local a = 456
             ByteCode::LoadInt(0, 456),
-            ByteCode::LoadInt(1, 123),
-            ByteCode::Move(0, 1),
+            // a = 123
+            ByteCode::LoadInt(0, 123),
+            // print(a)
             ByteCode::GetGlobal(1, 0),
             ByteCode::Move(2, 0),
             ByteCode::Call(1, 1),
-            ByteCode::Move(1, 0),
-            ByteCode::Move(0, 1),
+            // a = a
+            // print(a)
             ByteCode::GetGlobal(1, 0),
             ByteCode::Move(2, 0),
             ByteCode::Call(1, 1),
-            ByteCode::GetGlobal(1, 1),
-            ByteCode::Move(0, 1),
+            // a = g
+            ByteCode::GetGlobal(0, 1),
+            // print(a)
             ByteCode::GetGlobal(1, 0),
             ByteCode::Move(2, 0),
             ByteCode::Call(1, 1),
-            ByteCode::LoadInt(1, 123),
-            ByteCode::SetGlobal(1, 1),
+            // g = 123
+            ByteCode::SetGlobalInteger(1, 123),
+            // print(g)
             ByteCode::GetGlobal(1, 0),
             ByteCode::GetGlobal(2, 1),
             ByteCode::Call(1, 1),
-            ByteCode::Move(1, 0),
-            ByteCode::SetGlobal(1, 1),
+            // g = a
+            ByteCode::SetGlobal(1, 0),
+            // print(g)
             ByteCode::GetGlobal(1, 0),
             ByteCode::GetGlobal(2, 1),
             ByteCode::Call(1, 1),
-            ByteCode::GetGlobal(1, 2),
-            ByteCode::SetGlobal(1, 1),
+            // g = g2
+            ByteCode::SetGlobalGlobal(1, 2),
+            // print(g)
             ByteCode::GetGlobal(1, 0),
             ByteCode::GetGlobal(2, 1),
             ByteCode::Call(1, 1),
@@ -200,6 +219,52 @@ print "null: \0." -- '\0'
 "#,
     )
     .unwrap();
+    assert_eq!(
+        &program.constants,
+        &[
+            "print".into(),
+            "tab:\thi".into(),
+            String::from_utf8_lossy(b"\xE4\xBD\xA0\xE5\xA5\xBD")
+                .as_ref()
+                .unescape()
+                .unwrap()
+                .as_str()
+                .into(),
+            String::from_utf8_lossy(b"\xE4\xBD")
+                .as_ref()
+                .unescape()
+                .unwrap()
+                .as_str()
+                .into(),
+            "Hello".into(),
+            "null: \0.".into(),
+        ]
+    );
+    assert_eq!(
+        &program.byte_codes,
+        &[
+            // print "tab:\thi" -- tab
+            ByteCode::GetGlobal(0, 0),
+            ByteCode::LoadConstant(1, 1),
+            ByteCode::Call(0, 1),
+            // print "\xE4\xBD\xA0\xE5\xA5\xBD" -- 你好
+            ByteCode::GetGlobal(0, 0),
+            ByteCode::LoadConstant(1, 2),
+            ByteCode::Call(0, 1),
+            // print "\xE4\xBD" -- invalid UTF-8
+            ByteCode::GetGlobal(0, 0),
+            ByteCode::LoadConstant(1, 3),
+            ByteCode::Call(0, 1),
+            // print "\72\101\108\108\111" -- Hello
+            ByteCode::GetGlobal(0, 0),
+            ByteCode::LoadConstant(1, 4),
+            ByteCode::Call(0, 1),
+            // print "null: \0." -- '\0'
+            ByteCode::GetGlobal(0, 0),
+            ByteCode::LoadConstant(1, 5),
+            ByteCode::Call(0, 1),
+        ]
+    );
     crate::Lua::execute(&program).unwrap();
 }
 
@@ -217,5 +282,45 @@ print {
 "#,
     )
     .unwrap();
+    assert_eq!(
+        &program.constants,
+        &[
+            "kkk".into(),
+            "print".into(),
+            "hello".into(),
+            "x".into(),
+            "world".into(),
+            "y".into(),
+            "vvv".into()
+        ]
+    );
+    assert_eq!(
+        &program.byte_codes,
+        &[
+            // local key = "kkk"
+            ByteCode::LoadConstant(0, 0),
+            // print {...}
+            ByteCode::GetGlobal(1, 1),
+            // {...}
+            ByteCode::NewTable(2, 3, 3),
+            // 100, 200, 300;
+            ByteCode::LoadInt(3, 100),
+            ByteCode::LoadInt(4, 200),
+            ByteCode::LoadInt(5, 300),
+            // x="hello", y="world";
+            ByteCode::LoadConstant(6, 2),
+            ByteCode::SetField(2, 3, 6),
+            ByteCode::LoadConstant(6, 4),
+            ByteCode::SetField(2, 5, 6),
+            // [key]="vvv";
+            ByteCode::Move(6, 0),
+            ByteCode::LoadConstant(7, 6),
+            ByteCode::SetTable(2, 6, 7),
+            // {...}
+            ByteCode::SetList(2, 3),
+            // print {...}
+            ByteCode::Call(1, 1)
+        ]
+    );
     crate::Lua::execute(&program).unwrap();
 }

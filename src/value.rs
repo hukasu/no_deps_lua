@@ -75,6 +75,18 @@ impl Ord for Value {
     }
 }
 
+impl From<()> for Value {
+    fn from(_value: ()) -> Self {
+        Value::Nil
+    }
+}
+
+impl From<i16> for Value {
+    fn from(value: i16) -> Self {
+        Value::Integer(i64::from(value))
+    }
+}
+
 impl From<i64> for Value {
     fn from(value: i64) -> Self {
         Value::Integer(value)

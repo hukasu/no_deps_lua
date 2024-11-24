@@ -241,15 +241,6 @@ pub enum TokenType<'a> {
     /// 90 exp :== exp Pow exp
     /// ```
     Exp,
-    /// Prefixexp
-    ///
-    /// Reduced from Productions
-    /// ```custom
-    /// 91 prefixexp :== var
-    /// 92 prefixexp :== functioncall
-    /// 93 prefixexp :== Lparen exp Rparen
-    /// ```
-    Prefixexp,
     /// Functioncall
     ///
     /// Reduced from Productions
@@ -374,7 +365,6 @@ impl<'a> Display for TokenType<'a> {
             Self::Explist => write!(f, "explist"),
             Self::ExplistCont => write!(f, "explist_cont"),
             Self::Exp => write!(f, "exp"),
-            Self::Prefixexp => write!(f, "prefixexp"),
             Self::Functioncall => write!(f, "functioncall"),
             Self::Args => write!(f, "args"),
             Self::ArgsExplist => write!(f, "args_explist"),
