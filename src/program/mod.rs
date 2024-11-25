@@ -1472,7 +1472,7 @@ impl Program {
                 let dst = compile_context.stack_top;
 
                 let top = compile_context.reserve_stack_top();
-                self.exp(exp, compile_context, &top)?.discharge(top, self);
+                self.exp(exp, compile_context, &top)?.discharge(top, self)?;
 
                 let constant = self.push_constant(*name)?;
                 self.byte_codes
@@ -1485,7 +1485,7 @@ impl Program {
                 exp => TokenType::Exp
             ) => {
                 let top = compile_context.reserve_stack_top();
-                self.exp(exp, compile_context, &top)?.discharge(top, self);
+                self.exp(exp, compile_context, &top)?.discharge(top, self)?;
 
                 Ok((1, 0))
             }
