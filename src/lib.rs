@@ -126,8 +126,10 @@ impl Lua {
                     if let Value::Table(table) = vm.stack[usize::from(*table)].clone() {
                         let key = vm.stack[usize::from(*key)].clone();
                         let value = vm.stack[usize::from(*value)].clone();
-                        let binary_search =
-                            table.borrow().table.binary_search_by(|a| a.0.cmp(&key));
+                        let binary_search = (*table)
+                            .borrow()
+                            .table
+                            .binary_search_by_key(&&key, |a| &a.0);
                         match binary_search {
                             Ok(i) => {
                                 let mut table_borrow = table.borrow_mut();
@@ -146,8 +148,10 @@ impl Lua {
                     if let Value::Table(table) = vm.stack[usize::from(*table)].clone() {
                         let key = program.constants[usize::from(*key)].clone();
                         let value = vm.stack[usize::from(*value)].clone();
-                        let binary_search =
-                            table.borrow().table.binary_search_by(|a| a.0.cmp(&key));
+                        let binary_search = (*table)
+                            .borrow()
+                            .table
+                            .binary_search_by_key(&&key, |a| &a.0);
                         match binary_search {
                             Ok(i) => {
                                 let mut table_borrow = table.borrow_mut();
@@ -169,6 +173,53 @@ impl Lua {
                             table_items_start..(table_items_start + usize::from(*array_len)),
                         );
                         table.borrow_mut().array.extend(values);
+                    } else {
+                        return Err(Error::ExpectedTable);
+                    }
+                }
+                ByteCode::GetTable(dst, table, src) => {
+                    if let Value::Table(table) = vm.stack[usize::from(*table)].clone() {
+                        let key = &vm.stack[usize::from(*src)];
+                        let bin_search =
+                            (*table).borrow().table.binary_search_by_key(&key, |a| &a.0);
+                        let value = match bin_search {
+                            Ok(i) => (*table).borrow().table[i].1.clone(),
+                            Err(_) => Value::Nil,
+                        };
+                        vm.stack.insert(*dst as usize, value);
+                    } else {
+                        return Err(Error::ExpectedTable);
+                    }
+                }
+                ByteCode::GetField(dst, table, key) => {
+                    if let Value::Table(table) = vm.stack[usize::from(*table)].clone() {
+                        let key = &program.constants[usize::from(*key)];
+                        let bin_search =
+                            (*table).borrow().table.binary_search_by_key(&key, |a| &a.0);
+                        let value = match bin_search {
+                            Ok(i) => (*table).borrow().table[i].1.clone(),
+                            Err(_) => Value::Nil,
+                        };
+                        vm.stack.insert(*dst as usize, value);
+                    } else {
+                        return Err(Error::ExpectedTable);
+                    }
+                }
+                ByteCode::GetInt(dst, table, index) => {
+                    if let Value::Table(table) = vm.stack[usize::from(*table)].clone() {
+                        let value = if index == &0 {
+                            let bin_search = (*table)
+                                .borrow()
+                                .table
+                                .binary_search_by_key(&&Value::Integer(0), |a| &a.0);
+                            match bin_search {
+                                Ok(i) => (*table).borrow().table[i].1.clone(),
+                                Err(_) => Value::Nil,
+                            }
+                        } else {
+                            (*table).borrow().array[usize::from(*index) - 1].clone()
+                        };
+                        vm.stack.insert(*dst as usize, value);
                     } else {
                         return Err(Error::ExpectedTable);
                     }

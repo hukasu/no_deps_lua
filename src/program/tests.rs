@@ -68,18 +68,23 @@ print(123456.0)
     assert_eq!(
         &program.byte_codes,
         &[
+            // print(nil)
             ByteCode::GetGlobal(0, 0),
             ByteCode::LoadNil(1),
             ByteCode::Call(0, 1),
+            // print(false)
             ByteCode::GetGlobal(0, 0),
             ByteCode::LoadBool(1, false),
             ByteCode::Call(0, 1),
+            // print(123)
             ByteCode::GetGlobal(0, 0),
             ByteCode::LoadInt(1, 123),
             ByteCode::Call(0, 1),
+            // print(123456)
             ByteCode::GetGlobal(0, 0),
             ByteCode::LoadConstant(1, 1),
             ByteCode::Call(0, 1),
+            // print(123456.0)
             ByteCode::GetGlobal(0, 0),
             ByteCode::LoadConstant(1, 2),
             ByteCode::Call(0, 1),
@@ -292,6 +297,138 @@ print {
             "world".into(),
             "y".into(),
             "vvv".into()
+        ]
+    );
+    assert_eq!(
+        &program.byte_codes,
+        &[
+            // local key = "kkk"
+            ByteCode::LoadConstant(0, 0),
+            // print {...}
+            ByteCode::GetGlobal(1, 1),
+            // {...}
+            ByteCode::NewTable(2, 3, 3),
+            // 100, 200, 300;
+            ByteCode::LoadInt(3, 100),
+            ByteCode::LoadInt(4, 200),
+            ByteCode::LoadInt(5, 300),
+            // x="hello", y="world";
+            ByteCode::LoadConstant(6, 2),
+            ByteCode::SetField(2, 3, 6),
+            ByteCode::LoadConstant(6, 4),
+            ByteCode::SetField(2, 5, 6),
+            // [key]="vvv";
+            ByteCode::Move(6, 0),
+            ByteCode::LoadConstant(7, 6),
+            ByteCode::SetTable(2, 6, 7),
+            // {...}
+            ByteCode::SetList(2, 3),
+            // print {...}
+            ByteCode::Call(1, 1)
+        ]
+    );
+    crate::Lua::execute(&program).unwrap();
+}
+
+#[test]
+fn chapter4_table() {
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
+    let program = Program::parse(
+        r#"
+local key = "key"
+local t = {
+    100, 200, 300;  -- list style
+    x="hello", y="world";  -- record style
+    [key]="vvv";  -- general style
+}
+print(t[1])
+print(t['x'])
+print(t.key)
+print(t)
+"#,
+    )
+    .unwrap();
+    assert_eq!(
+        &program.constants,
+        &[
+            "key".into(),
+            "hello".into(),
+            "x".into(),
+            "world".into(),
+            "y".into(),
+            "vvv".into(),
+            "print".into(),
+        ]
+    );
+    assert_eq!(
+        &program.byte_codes,
+        &[
+            // local key = "key"
+            ByteCode::LoadConstant(0, 0),
+            // local t = {...}
+            ByteCode::NewTable(1, 3, 3),
+            // 100, 200, 300;
+            ByteCode::LoadInt(2, 100),
+            ByteCode::LoadInt(3, 200),
+            ByteCode::LoadInt(4, 300),
+            // x="hello", y="world";
+            ByteCode::LoadConstant(5, 1),
+            ByteCode::SetField(1, 2, 5),
+            ByteCode::LoadConstant(5, 3),
+            ByteCode::SetField(1, 4, 5),
+            // [key]="vvv";
+            ByteCode::Move(5, 0),
+            ByteCode::LoadConstant(6, 5),
+            ByteCode::SetTable(1, 5, 6),
+            // {...}
+            ByteCode::SetList(1, 3),
+            // print(t[1])
+            ByteCode::GetGlobal(2, 6),
+            ByteCode::GetInt(3, 1, 1),
+            ByteCode::Call(2, 1),
+            // print(t['x'])
+            ByteCode::GetGlobal(2, 6),
+            ByteCode::GetField(3, 1, 2),
+            ByteCode::Call(2, 1),
+            // print(t.key)
+            ByteCode::GetGlobal(2, 6),
+            ByteCode::LoadConstant(4, 0),
+            ByteCode::GetTable(3, 1, 4),
+            ByteCode::Call(2, 1),
+            // print(t)
+            ByteCode::GetGlobal(2, 6),
+            ByteCode::Move(3, 1),
+            ByteCode::Call(2, 1),
+        ]
+    );
+    crate::Lua::execute(&program).unwrap();
+}
+
+#[test]
+fn chapter4_prefixexp() {
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
+    let program = Program::parse(
+        r#"
+local a,b = 100,200
+t = {k=300, z=a, 10,20,30}
+t.k = 400 -- set
+t.x = t.z -- new
+t.f = print -- new
+t.f(t.k)
+t.f(t.x)
+t.f(t[2])
+t.f(t[1000])
+"#,
+    )
+    .unwrap();
+    assert_eq!(
+        &program.constants,
+        &[
+            "t".into(),
+            "k".into(),
+            "z".into(),
+            "f".into(),
+            "print".into(),
         ]
     );
     assert_eq!(

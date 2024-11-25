@@ -5,6 +5,7 @@ pub enum Error {
     Parse,
     StringDecode,
     OrphanExp,
+    NilTableIndex,
     StackOverflow,
     Unimplemented,
 }
@@ -20,6 +21,9 @@ impl Display for Error {
             }
             Self::OrphanExp => {
                 write!(f, "Exp had nowhere to be stored.")
+            }
+            Self::NilTableIndex => {
+                write!(f, "Can't use Nil as index to a table.")
             }
             Self::StackOverflow => {
                 write!(f, "Tried accessing index outside stack bounds.")

@@ -66,15 +66,33 @@ pub enum ByteCode {
     SetTable(u8, u8, u8),
     /// Sets a table field to a value using a name
     ///
-    /// `table`: Location of the `table` on the stack  
+    /// `table`: Location of the table on the stack  
     /// `key`: Location of the name on `constants`  
     /// `value`: Location of the value on the stack
     SetField(u8, u8, u8),
     /// Stores multiple values from the stack into the table
     ///
-    /// `table`: Location of the `table` on the stack  
+    /// `table`: Location of the table on the stack  
     /// `array_len`: Number of items on the stack to store
     SetList(u8, u8),
+    /// Loads a table field to the stack using a stack value
+    ///
+    /// `dst`: Location on the stack to store the table's value  
+    /// `table`: Location of the table on the stack  
+    /// `src`: Location of the name on the stack  
+    GetTable(u8, u8, u8),
+    /// Loads a table field to the stack using a name
+    ///
+    /// `dst`: Location on the stack to store the table's value  
+    /// `table`: Location of the table on the stack  
+    /// `key`: Location of the name on `constants`  
+    GetField(u8, u8, u8),
+    /// Loads a value from the table into the stack using integer index
+    ///
+    /// `dst`: Location on the stack to store the table's value  
+    /// `table`: Location of the table on the stack  
+    /// `index`: Index of the item to load
+    GetInt(u8, u8, u8),
     /// Moves a value from one location on the stack to another
     ///
     /// `dst`: Location on the stack to store the value  

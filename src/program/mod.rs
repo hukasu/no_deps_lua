@@ -5,7 +5,7 @@ mod exp_desc;
 #[cfg(test)]
 mod tests;
 
-use alloc::{collections::vec_deque::VecDeque, vec::Vec};
+use alloc::{boxed::Box, vec::Vec};
 
 use crate::parser::{Parser, Token, TokenType};
 
@@ -40,8 +40,6 @@ impl Program {
         let mut compile_context = CompileContext {
             stack_top: 0,
             locals: Vec::new(),
-            exp_descs: VecDeque::new(),
-            new_locals: Vec::new(),
         };
 
         program.chunk(&chunk, &mut compile_context)?;
@@ -64,10 +62,10 @@ impl Program {
     }
 
     // Non-terminals
-    fn chunk<'a>(
+    fn chunk(
         &mut self,
-        chunk: &Token<'a>,
-        compile_context: &mut CompileContext<'a>,
+        chunk: &Token<'_>,
+        compile_context: &mut CompileContext,
     ) -> Result<(), Error> {
         match chunk.tokens.as_slice() {
             make_deconstruct!(block=> TokenType::Block) => self.block(block, compile_context),
@@ -84,10 +82,10 @@ impl Program {
         }
     }
 
-    fn block<'a>(
+    fn block(
         &mut self,
-        block: &Token<'a>,
-        compile_context: &mut CompileContext<'a>,
+        block: &Token<'_>,
+        compile_context: &mut CompileContext,
     ) -> Result<(), Error> {
         match block.tokens.as_slice() {
             make_deconstruct!(
@@ -109,10 +107,10 @@ impl Program {
         }
     }
 
-    fn block_stat<'a>(
+    fn block_stat(
         &mut self,
-        block: &Token<'a>,
-        compile_context: &mut CompileContext<'a>,
+        block: &Token<'_>,
+        compile_context: &mut CompileContext,
     ) -> Result<(), Error> {
         match block.tokens.as_slice() {
             [] => Ok(()),
@@ -153,24 +151,21 @@ impl Program {
         }
     }
 
-    fn stat<'a>(
+    fn stat(
         &mut self,
-        stat: &Token<'a>,
-        compile_context: &mut CompileContext<'a>,
+        stat: &Token<'_>,
+        compile_context: &mut CompileContext,
     ) -> Result<(), Error> {
-        assert!(
-            compile_context.exp_descs.is_empty(),
-            "ExpDesc should be empty when starting a new `stat`."
-        );
         match stat.tokens.as_slice() {
             make_deconstruct!(_semicolon=> TokenType::SemiColon) => Ok(()),
             make_deconstruct!(
                 varlist=> TokenType::Varlist,
                 _assing=> TokenType::Assign,
                 explist=> TokenType::Explist
-            ) => self
-                .varlist(varlist, compile_context)
-                .and_then(|()| self.explist(explist, compile_context, false)),
+            ) => {
+                let exp_descs = self.varlist(varlist, compile_context)?;
+                self.explist(explist, compile_context, Some(&exp_descs))
+            }
             make_deconstruct!(functioncall=> TokenType::Functioncall) => {
                 self.functioncall(functioncall, compile_context)
             }
@@ -242,13 +237,15 @@ impl Program {
                 _local=> TokenType::Local,
                 attnamelist=> TokenType::Attnamelist,
                 stat_attexplist=> TokenType::StatAttexplist
-            ) => self
-                .attnamelist(attnamelist, compile_context)
-                .and_then(|()| self.stat_attexplist(stat_attexplist, compile_context))
-                .inspect(|()| {
-                    let new_locals = core::mem::take(&mut compile_context.new_locals);
-                    compile_context.locals.extend(new_locals);
-                }),
+            ) => {
+                let (new_locals, exp_descs) = self.attnamelist(attnamelist, compile_context)?;
+                self.stat_attexplist(stat_attexplist, compile_context, &exp_descs)?;
+                // Adding the new names into `locals` to prevent
+                // referencing the new name when you could be trying to shadow a
+                // global or another local
+                compile_context.locals.extend(new_locals);
+                Ok(())
+            }
             _ => {
                 unreachable!(
                     "Stat did not match any of the productions. Had {:#?}.",
@@ -334,17 +331,18 @@ impl Program {
         }
     }
 
-    fn stat_attexplist<'a>(
+    fn stat_attexplist(
         &mut self,
-        stat_attexplist: &Token<'a>,
-        compile_context: &mut CompileContext<'a>,
+        stat_attexplist: &Token<'_>,
+        compile_context: &mut CompileContext,
+        exp_descs: &[ExpDesc],
     ) -> Result<(), Error> {
         match stat_attexplist.tokens.as_slice() {
             [] => Ok(()),
             make_deconstruct!(
                 _assign=> TokenType::Assign,
                 explist=> TokenType::Explist
-            ) => self.explist(explist, compile_context, false),
+            ) => self.explist(explist, compile_context, Some(exp_descs)),
             _ => {
                 unreachable!(
                     "StatAttexplist did not match any of the productions. Had {:#?}.",
@@ -361,18 +359,27 @@ impl Program {
     fn attnamelist<'a>(
         &mut self,
         attnamelist: &Token<'a>,
-        compile_context: &mut CompileContext<'a>,
-    ) -> Result<(), Error> {
+        compile_context: &mut CompileContext,
+    ) -> Result<(Vec<Value>, Vec<ExpDesc<'a>>), Error> {
         match attnamelist.tokens.as_slice() {
             make_deconstruct!(
                 _name=> TokenType::Name(name),
                 _attrib=> TokenType::Attrib,
                 attnamelist_cont=> TokenType::AttnamelistCont
             ) => {
+                let mut new_locals = [(*name).into()].to_vec();
+
                 let stack_top = compile_context.reserve_stack_top();
-                compile_context.exp_descs.push_back(stack_top);
-                compile_context.new_locals.push((*name).into());
-                self.attnamelist_cont(attnamelist_cont, compile_context)
+                let mut exp_descs = [stack_top].to_vec();
+
+                self.attnamelist_cont(
+                    attnamelist_cont,
+                    compile_context,
+                    &mut new_locals,
+                    &mut exp_descs,
+                )?;
+
+                Ok((new_locals, exp_descs))
             }
             _ => {
                 unreachable!(
@@ -387,10 +394,12 @@ impl Program {
         }
     }
 
-    fn attnamelist_cont(
+    fn attnamelist_cont<'a>(
         &mut self,
-        attnamelist_cont: &Token,
+        attnamelist_cont: &Token<'a>,
         compile_context: &mut CompileContext,
+        new_locals: &mut Vec<Value>,
+        exp_descs: &mut Vec<ExpDesc<'a>>,
     ) -> Result<(), Error> {
         match attnamelist_cont.tokens.as_slice() {
             [] => Ok(()),
@@ -400,10 +409,12 @@ impl Program {
                 _attrib=> TokenType::Attrib,
                 attnamelist_cont=> TokenType::AttnamelistCont
             ) => {
+                new_locals.push((*name).into());
+
                 let stack_top = compile_context.reserve_stack_top();
-                compile_context.exp_descs.push_back(stack_top);
-                compile_context.locals.push((*name).into());
-                self.attnamelist_cont(attnamelist_cont, compile_context)
+                exp_descs.push(stack_top);
+
+                self.attnamelist_cont(attnamelist_cont, compile_context, new_locals, exp_descs)
             }
             _ => {
                 unreachable!(
@@ -597,12 +608,19 @@ impl Program {
     fn varlist<'a>(
         &mut self,
         varlist: &Token<'a>,
-        compile_context: &mut CompileContext<'a>,
-    ) -> Result<(), Error> {
+        compile_context: &mut CompileContext,
+    ) -> Result<Vec<ExpDesc<'a>>, Error> {
         match varlist.tokens.as_slice() {
-            make_deconstruct!(var=> TokenType::Var, varlist_cont=> TokenType::VarlistCont) => self
-                .var(var, compile_context)
-                .and_then(|()| self.varlist_cont(varlist_cont, compile_context)),
+            make_deconstruct!(var=> TokenType::Var, varlist_cont=> TokenType::VarlistCont) => {
+                let mut exp_descs = Vec::new();
+
+                let var_exp_desc = self.var(var, compile_context)?;
+                exp_descs.push(var_exp_desc);
+
+                self.varlist_cont(varlist_cont, compile_context, &mut exp_descs)?;
+
+                Ok(exp_descs)
+            }
             _ => {
                 unreachable!(
                     "Varlist did not match any of the productions. Had {:#?}.",
@@ -619,7 +637,8 @@ impl Program {
     fn varlist_cont<'a>(
         &mut self,
         varlist_cont: &Token<'a>,
-        compile_context: &mut CompileContext<'a>,
+        compile_context: &mut CompileContext,
+        exp_descs: &mut Vec<ExpDesc<'a>>,
     ) -> Result<(), Error> {
         match varlist_cont.tokens.as_slice() {
             [] => Ok(()),
@@ -627,9 +646,12 @@ impl Program {
                 _comma=> TokenType::Comma,
                 var=> TokenType::Var,
                 varlist_cont=> TokenType::VarlistCont
-            ) => self
-                .var(var, compile_context)
-                .and_then(|()| self.varlist_cont(varlist_cont, compile_context)),
+            ) => {
+                let var_exp_desc = self.var(var, compile_context)?;
+                exp_descs.push(var_exp_desc);
+
+                self.varlist_cont(varlist_cont, compile_context, exp_descs)
+            }
             _ => {
                 unreachable!(
                     "VarlistCont did not match any of the productions. Had {:#?}.",
@@ -646,18 +668,28 @@ impl Program {
     fn var<'a>(
         &mut self,
         var: &Token<'a>,
-        compile_context: &mut CompileContext<'a>,
-    ) -> Result<(), Error> {
+        compile_context: &mut CompileContext,
+    ) -> Result<ExpDesc<'a>, Error> {
         match var.tokens.as_slice() {
-            make_deconstruct!(_name=> TokenType::Name(name)) => self
-                .name(name, compile_context)
-                .map(|exp_desc| compile_context.exp_descs.push_back(exp_desc)),
+            make_deconstruct!(_name=> TokenType::Name(name)) => self.name(name, compile_context),
             make_deconstruct!(
-                _var=> TokenType::Var,
+                var=> TokenType::Var,
                 _lsquare=> TokenType::LSquare,
-                _exp=> TokenType::Exp,
+                exp=> TokenType::Exp,
                 _rsquare=> TokenType::RSquare
-            ) => Err(Error::Unimplemented),
+            ) => {
+                let var_exp_desc = self.var(var, compile_context)?;
+                let top = compile_context.reserve_stack_top();
+                let exp_exp_desc = self.exp(exp, compile_context, &top)?;
+                compile_context.stack_top -= 1;
+                match var_exp_desc {
+                    ExpDesc::Local(table) => Ok(ExpDesc::TableLocal(table, Box::new(exp_exp_desc))),
+                    _ => {
+                        log::error!("Only local table access is available.");
+                        Err(Error::Unimplemented)
+                    }
+                }
+            }
             make_deconstruct!(
                 _functioncall=> TokenType::Functioncall,
                 _lsquare=> TokenType::LSquare,
@@ -673,10 +705,24 @@ impl Program {
                 _rsquare=> TokenType::RSquare
             ) => Err(Error::Unimplemented),
             make_deconstruct!(
-                _var=> TokenType::Var,
+                var=> TokenType::Var,
                 _dot=> TokenType::Dot,
-                _name=> TokenType::Name(_)
-            ) => Err(Error::Unimplemented),
+                _name=> TokenType::Name(name)
+            ) => {
+                let var_exp_desc = self.var(var, compile_context)?;
+
+                let name_exp_desc = compile_context.reserve_stack_top();
+                self.string(name).discharge(name_exp_desc.clone(), self)?;
+                match var_exp_desc {
+                    ExpDesc::Local(table) => {
+                        Ok(ExpDesc::TableLocal(table, Box::new(name_exp_desc)))
+                    }
+                    _ => {
+                        log::error!("Only local table access is available.");
+                        Err(Error::Unimplemented)
+                    }
+                }
+            }
             make_deconstruct!(
                 _functioncall=> TokenType::Functioncall,
                 _dot=> TokenType::Dot,
@@ -701,13 +747,13 @@ impl Program {
     fn namelist(
         &mut self,
         namelist: &Token,
-        _compile_context: &CompileContext,
+        compile_context: &CompileContext,
     ) -> Result<(), Error> {
         match namelist.tokens.as_slice() {
             make_deconstruct!(
                 _name=> TokenType::Name(_),
-                _namelist_cont=> TokenType::NamelistCont
-            ) => Err(Error::Unimplemented),
+                namelist_cont=> TokenType::NamelistCont
+            ) => self.namelist_cont(namelist_cont, compile_context),
             _ => {
                 unreachable!(
                     "Namelist did not match any of the productions. Had {:#?}.",
@@ -724,15 +770,15 @@ impl Program {
     fn namelist_cont(
         &mut self,
         namelist_cont: &Token,
-        _compile_context: &CompileContext,
+        compile_context: &CompileContext,
     ) -> Result<(), Error> {
         match namelist_cont.tokens.as_slice() {
             [] => Ok(()),
             make_deconstruct!(
                 _comma=> TokenType::Comma,
                 _name=> TokenType::Name(_),
-                _namelist_cont=> TokenType::NamelistCont
-            ) => Err(Error::Unimplemented),
+                namelist_cont=> TokenType::NamelistCont
+            ) => self.namelist_cont(namelist_cont, compile_context),
             _ => {
                 unreachable!(
                     "NamelistCont did not match any of the productions. Had {:#?}.",
@@ -749,16 +795,24 @@ impl Program {
     fn explist<'a>(
         &mut self,
         explist: &Token<'a>,
-        compile_context: &mut CompileContext<'a>,
-        discharge_on_top: bool,
+        compile_context: &mut CompileContext,
+        maybe_exp_descs: Option<&[ExpDesc<'a>]>,
     ) -> Result<(), Error> {
         match explist.tokens.as_slice() {
             make_deconstruct!(
                 exp => TokenType::Exp,
                 explist_cont => TokenType::ExplistCont
-            ) => self
-                .exp(exp, compile_context, discharge_on_top)
-                .and_then(|()| self.explist_cont(explist_cont, compile_context, discharge_on_top)),
+            ) => {
+                let (exp_desc, tail) = maybe_exp_descs.map_or_else(
+                    || (compile_context.reserve_stack_top(), None),
+                    |exp_descs| (exp_descs[0].clone(), Some(&exp_descs[1..])),
+                );
+
+                self.exp(exp, compile_context, &exp_desc)?
+                    .discharge(exp_desc, self)?;
+
+                self.explist_cont(explist_cont, compile_context, tail)
+            }
             _ => {
                 unreachable!(
                     "Explist did not match any of the productions. Had {:#?}.",
@@ -775,8 +829,8 @@ impl Program {
     fn explist_cont<'a>(
         &mut self,
         explist_cont: &Token<'a>,
-        compile_context: &mut CompileContext<'a>,
-        discharge_on_top: bool,
+        compile_context: &mut CompileContext,
+        maybe_exp_descs: Option<&[ExpDesc<'a>]>,
     ) -> Result<(), Error> {
         match explist_cont.tokens.as_slice() {
             [] => Ok(()),
@@ -784,9 +838,17 @@ impl Program {
                 _comma => TokenType::Comma,
                 exp => TokenType::Exp,
                 explist_cont => TokenType::ExplistCont
-            ) => self
-                .exp(exp, compile_context, discharge_on_top)
-                .and_then(|()| self.explist_cont(explist_cont, compile_context, discharge_on_top)),
+            ) => {
+                let (exp_desc, tail) = maybe_exp_descs.map_or_else(
+                    || (compile_context.reserve_stack_top(), None),
+                    |exp_descs| (exp_descs[0].clone(), Some(&exp_descs[1..])),
+                );
+
+                self.exp(exp, compile_context, &exp_desc)?
+                    .discharge(exp_desc, self)?;
+
+                self.explist_cont(explist_cont, compile_context, tail)
+            }
             _ => {
                 unreachable!(
                     "ExplistCont did not match any of the productions. Had {:#?}.",
@@ -800,58 +862,39 @@ impl Program {
         }
     }
 
+    #[must_use = "ExpDesc might be constant values that need to be discharged"]
     fn exp<'a>(
         &mut self,
         exp: &Token<'a>,
-        compile_context: &mut CompileContext<'a>,
-        discharge_on_top: bool,
-    ) -> Result<(), Error> {
-        let exp_desc = if discharge_on_top {
-            compile_context.reserve_stack_top()
-        } else {
-            compile_context
-                .exp_descs
-                .pop_front()
-                .ok_or(Error::OrphanExp)?
-        };
+        compile_context: &mut CompileContext,
+        exp_desc: &ExpDesc<'a>,
+    ) -> Result<ExpDesc<'a>, Error> {
         match exp.tokens.as_slice() {
-            make_deconstruct!(_nil => TokenType::Nil) => self.nil().discharge(exp_desc, self),
-            make_deconstruct!(_false => TokenType::False) => {
-                self.boolean(false).discharge(exp_desc, self)
-            }
-            make_deconstruct!(_true => TokenType::True) => {
-                self.boolean(true).discharge(exp_desc, self)
-            }
+            make_deconstruct!(_nil => TokenType::Nil) => Ok(self.nil()),
+            make_deconstruct!(_false => TokenType::False) => Ok(self.boolean(false)),
+            make_deconstruct!(_true => TokenType::True) => Ok(self.boolean(true)),
             make_deconstruct!(
                 _string => TokenType::String(string)
-            ) => self.string(string).discharge(exp_desc, self),
+            ) => Ok(self.string(string)),
             make_deconstruct!(_integer => TokenType::Integer(integer)) => {
-                self.integer(*integer).discharge(exp_desc, self)
+                Ok(self.integer(*integer))
             }
-            make_deconstruct!(_float => TokenType::Float(float)) => {
-                self.float(*float).discharge(exp_desc, self)
-            }
+            make_deconstruct!(_float => TokenType::Float(float)) => Ok(self.float(*float)),
             make_deconstruct!(_functiondef => TokenType::Functiondef) => Err(Error::Unimplemented),
-            make_deconstruct!(var => TokenType::Var) => self
-                .var(var, compile_context)
-                .and_then(|()| {
-                    compile_context
-                        .exp_descs
-                        .pop_front()
-                        .ok_or(Error::OrphanExp)
-                })
-                .and_then(|var| var.discharge(exp_desc, self)),
+            make_deconstruct!(var => TokenType::Var) => self.var(var, compile_context),
             make_deconstruct!(functioncall => TokenType::Functioncall) => {
-                self.functioncall(functioncall, compile_context)
+                self.functioncall(functioncall, compile_context)?;
+                // TODO verify what needs to be returned here
+                Ok(ExpDesc::Nil)
             }
             make_deconstruct!(
                 _lparen => TokenType::LParen,
                 exp => TokenType::Exp,
                 _rparen => TokenType::RParen
-            ) => self.exp(exp, compile_context, discharge_on_top),
+            ) => self.exp(exp, compile_context, exp_desc),
             make_deconstruct!(
                 tableconstructor => TokenType::Tableconstructor
-            ) => self.tableconstructor(tableconstructor, compile_context),
+            ) => self.tableconstructor(tableconstructor, compile_context, exp_desc),
             make_deconstruct!(
                 _lhs => TokenType::Exp,
                 _op => TokenType::Or,
@@ -982,30 +1025,27 @@ impl Program {
         }
     }
 
-    fn functioncall<'a>(
+    fn functioncall(
         &mut self,
-        functioncall: &Token<'a>,
-        compile_context: &mut CompileContext<'a>,
+        functioncall: &Token<'_>,
+        compile_context: &mut CompileContext,
     ) -> Result<(), Error> {
         let func_index = compile_context.stack_top;
         match functioncall.tokens.as_slice() {
             make_deconstruct!(
                 var => TokenType::Var,
                 args => TokenType::Args
-            ) => self
-                .var(var, compile_context)
-                .and_then(|()| {
-                    compile_context
-                        .exp_descs
-                        .pop_front()
-                        .ok_or(Error::OrphanExp)
-                        .and_then(|top| top.discharge(compile_context.reserve_stack_top(), self))
-                })
-                .and_then(|()| self.args(args, compile_context))
-                .map(|()| {
-                    self.byte_codes.push(ByteCode::Call(func_index, 1));
-                    compile_context.stack_top = func_index;
-                }),
+            ) => {
+                let top = self.var(var, compile_context)?;
+                top.discharge(compile_context.reserve_stack_top(), self)?;
+
+                self.args(args, compile_context)?;
+
+                self.byte_codes.push(ByteCode::Call(func_index, 1));
+                compile_context.stack_top = func_index;
+
+                Ok(())
+            }
             make_deconstruct!(
                 _functioncall => TokenType::Functioncall,
                 _args => TokenType::Args
@@ -1049,10 +1089,10 @@ impl Program {
         }
     }
 
-    fn args<'a>(
+    fn args(
         &mut self,
-        args: &Token<'a>,
-        compile_context: &mut CompileContext<'a>,
+        args: &Token<'_>,
+        compile_context: &mut CompileContext,
     ) -> Result<(), Error> {
         match args.tokens.as_slice() {
             make_deconstruct!(
@@ -1062,7 +1102,12 @@ impl Program {
             ) => self.args_explist(args_explist, compile_context),
             make_deconstruct!(
                 tableconstructor => TokenType::Tableconstructor
-            ) => self.tableconstructor(tableconstructor, compile_context),
+            ) => {
+                let top = compile_context.reserve_stack_top();
+                self.tableconstructor(tableconstructor, compile_context, &top)?;
+                // Already on top of the stack, no need to move
+                Ok(())
+            }
             make_deconstruct!(
                 _string => TokenType::String(string)
             ) => self
@@ -1080,16 +1125,16 @@ impl Program {
         }
     }
 
-    fn args_explist<'a>(
+    fn args_explist(
         &mut self,
-        args_explist: &Token<'a>,
-        compile_context: &mut CompileContext<'a>,
+        args_explist: &Token<'_>,
+        compile_context: &mut CompileContext,
     ) -> Result<(), Error> {
         match args_explist.tokens.as_slice() {
             [] => Ok(()),
             make_deconstruct!(
                 explist => TokenType::Explist
-            ) => self.explist(explist, compile_context, true),
+            ) => self.explist(explist, compile_context, None),
             _ => {
                 unreachable!(
                     "ArgsExplist did not match any of the productions. Had {:#?}.",
@@ -1241,17 +1286,22 @@ impl Program {
     fn tableconstructor<'a>(
         &mut self,
         tableconstructor: &Token<'a>,
-        compile_context: &mut CompileContext<'a>,
-    ) -> Result<(), Error> {
+        compile_context: &mut CompileContext,
+        exp_desc: &ExpDesc<'a>,
+    ) -> Result<ExpDesc<'a>, Error> {
         match tableconstructor.tokens.as_slice() {
             make_deconstruct!(
                 _lcurly => TokenType::LCurly,
                 tableconstructor_fieldlist => TokenType::TableconstructorFieldlist,
                 _rcurly => TokenType::RCurly
             ) => {
-                let dst = compile_context.stack_top;
-                // Setting the stack top to one register after table destination
-                compile_context.stack_top += 1;
+                let dst = match exp_desc {
+                    ExpDesc::Local(dst) => u8::try_from(*dst)?,
+                    _ => {
+                        log::error!("Only table creation on stack is supported.");
+                        return Err(Error::Unimplemented);
+                    }
+                };
 
                 let table_initialization_bytecode_position = self.byte_codes.len();
                 self.byte_codes.push(ByteCode::NewTable(0, 0, 0));
@@ -1270,7 +1320,7 @@ impl Program {
                 // clearing the list values
                 compile_context.stack_top = dst + 1;
 
-                Ok(())
+                Ok(ExpDesc::Local(usize::from(dst)))
             }
             _ => {
                 unreachable!(
@@ -1285,10 +1335,10 @@ impl Program {
         }
     }
 
-    fn tableconstructor_fieldlist<'a>(
+    fn tableconstructor_fieldlist(
         &mut self,
-        tableconstructor_fieldlist: &Token<'a>,
-        compile_context: &mut CompileContext<'a>,
+        tableconstructor_fieldlist: &Token<'_>,
+        compile_context: &mut CompileContext,
         table: u8,
     ) -> Result<(u8, u8), Error> {
         match tableconstructor_fieldlist.tokens.as_slice() {
@@ -1309,24 +1359,23 @@ impl Program {
         }
     }
 
-    fn fieldlist<'a>(
+    fn fieldlist(
         &mut self,
-        fieldlist: &Token<'a>,
-        compile_context: &mut CompileContext<'a>,
+        fieldlist: &Token<'_>,
+        compile_context: &mut CompileContext,
         table: u8,
     ) -> Result<(u8, u8), Error> {
         match fieldlist.tokens.as_slice() {
             make_deconstruct!(
                 field => TokenType::Field,
                 fieldlist_cont => TokenType::FieldlistCont
-            ) => self
-                .field(field, compile_context, table)
-                .and_then(|(array_item, table_item)| {
-                    self.fieldlist_cont(fieldlist_cont, compile_context, table)
-                        .map(|(array_len, table_len)| {
-                            (array_len + array_item, table_len + table_item)
-                        })
-                }),
+            ) => {
+                let (array_item, table_item) = self.field(field, compile_context, table)?;
+                let (array_len, table_len) =
+                    self.fieldlist_cont(fieldlist_cont, compile_context, table)?;
+
+                Ok((array_len + array_item, table_len + table_item))
+            }
             _ => {
                 unreachable!(
                     "Fieldlist did not match any of the productions. Had {:#?}.",
@@ -1340,10 +1389,10 @@ impl Program {
         }
     }
 
-    fn fieldlist_cont<'a>(
+    fn fieldlist_cont(
         &mut self,
-        fieldlist_cont: &Token<'a>,
-        compile_context: &mut CompileContext<'a>,
+        fieldlist_cont: &Token<'_>,
+        compile_context: &mut CompileContext,
         table: u8,
     ) -> Result<(u8, u8), Error> {
         match fieldlist_cont.tokens.as_slice() {
@@ -1377,10 +1426,10 @@ impl Program {
         }
     }
 
-    fn field<'a>(
+    fn field(
         &mut self,
-        field: &Token<'a>,
-        compile_context: &mut CompileContext<'a>,
+        field: &Token<'_>,
+        compile_context: &mut CompileContext,
         table: u8,
     ) -> Result<(u8, u8), Error> {
         match field.tokens.as_slice() {
@@ -1392,13 +1441,28 @@ impl Program {
                 exp => TokenType::Exp
             ) => {
                 let dst = compile_context.stack_top;
-                self.exp(key, compile_context, true)
-                    .and_then(|()| self.exp(exp, compile_context, true))
-                    .inspect(|()| {
-                        self.byte_codes
-                            .push(ByteCode::SetTable(table, dst, dst + 1));
-                    })
-                    .map(|()| (0, 1))
+
+                let key_top = compile_context.reserve_stack_top();
+                self.exp(key, compile_context, &key_top)?
+                    .discharge(key_top.clone(), self)?;
+                let exp_top = compile_context.reserve_stack_top();
+                self.exp(exp, compile_context, &exp_top)?
+                    .discharge(exp_top.clone(), self)?;
+
+                match (key_top, exp_top) {
+                    (ExpDesc::Local(key), ExpDesc::Local(value)) => {
+                        self.byte_codes.push(ByteCode::SetTable(
+                            table,
+                            u8::try_from(key)?,
+                            u8::try_from(value)?,
+                        ));
+
+                        compile_context.stack_top = dst;
+
+                        Ok((0, 1))
+                    }
+                    _ => Err(Error::Unimplemented),
+                }
             }
             make_deconstruct!(
                 _name => TokenType::Name(name),
@@ -1406,18 +1470,25 @@ impl Program {
                 exp => TokenType::Exp
             ) => {
                 let dst = compile_context.stack_top;
-                self.exp(exp, compile_context, true)
-                    .and_then(|()| self.push_constant(*name))
-                    .map(|constant_pos| {
-                        compile_context.stack_top = dst;
-                        self.byte_codes
-                            .push(ByteCode::SetField(table, constant_pos, dst));
-                    })
-                    .map(|()| (0, 1))
+
+                let top = compile_context.reserve_stack_top();
+                self.exp(exp, compile_context, &top)?.discharge(top, self);
+
+                let constant = self.push_constant(*name)?;
+                self.byte_codes
+                    .push(ByteCode::SetField(table, constant, dst));
+
+                compile_context.stack_top = dst;
+                Ok((0, 1))
             }
             make_deconstruct!(
                 exp => TokenType::Exp
-            ) => self.exp(exp, compile_context, true).map(|()| (1, 0)),
+            ) => {
+                let top = compile_context.reserve_stack_top();
+                self.exp(exp, compile_context, &top)?.discharge(top, self);
+
+                Ok((1, 0))
+            }
             _ => {
                 unreachable!(
                     "Field did not match any of the productions. Had {:#?}.",
