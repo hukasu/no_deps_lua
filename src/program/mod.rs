@@ -684,6 +684,9 @@ impl Program {
                 compile_context.stack_top -= 1;
                 match var_exp_desc {
                     ExpDesc::Local(table) => Ok(ExpDesc::TableLocal(table, Box::new(exp_exp_desc))),
+                    ExpDesc::Global(table) => {
+                        Ok(ExpDesc::TableGlobal(table, Box::new(exp_exp_desc)))
+                    }
                     _ => {
                         log::error!("Only local table access is available.");
                         Err(Error::Unimplemented)
@@ -711,11 +714,13 @@ impl Program {
             ) => {
                 let var_exp_desc = self.var(var, compile_context)?;
 
-                let name_exp_desc = compile_context.reserve_stack_top();
-                self.string(name).discharge(name_exp_desc.clone(), self)?;
+                let name_exp_desc = self.string(name);
                 match var_exp_desc {
                     ExpDesc::Local(table) => {
                         Ok(ExpDesc::TableLocal(table, Box::new(name_exp_desc)))
+                    }
+                    ExpDesc::Global(table) => {
+                        Ok(ExpDesc::TableGlobal(table, Box::new(name_exp_desc)))
                     }
                     _ => {
                         log::error!("Only local table access is available.");
@@ -808,8 +813,11 @@ impl Program {
                     |exp_descs| (exp_descs[0].clone(), Some(&exp_descs[1..])),
                 );
 
-                self.exp(exp, compile_context, &exp_desc)?
-                    .discharge(exp_desc, self)?;
+                self.exp(exp, compile_context, &exp_desc)?.discharge(
+                    &exp_desc,
+                    self,
+                    compile_context,
+                )?;
 
                 self.explist_cont(explist_cont, compile_context, tail)
             }
@@ -844,8 +852,11 @@ impl Program {
                     |exp_descs| (exp_descs[0].clone(), Some(&exp_descs[1..])),
                 );
 
-                self.exp(exp, compile_context, &exp_desc)?
-                    .discharge(exp_desc, self)?;
+                self.exp(exp, compile_context, &exp_desc)?.discharge(
+                    &exp_desc,
+                    self,
+                    compile_context,
+                )?;
 
                 self.explist_cont(explist_cont, compile_context, tail)
             }
@@ -1037,7 +1048,7 @@ impl Program {
                 args => TokenType::Args
             ) => {
                 let top = self.var(var, compile_context)?;
-                top.discharge(compile_context.reserve_stack_top(), self)?;
+                top.discharge(&compile_context.reserve_stack_top(), self, compile_context)?;
 
                 self.args(args, compile_context)?;
 
@@ -1110,9 +1121,11 @@ impl Program {
             }
             make_deconstruct!(
                 _string => TokenType::String(string)
-            ) => self
-                .string(string)
-                .discharge(compile_context.reserve_stack_top(), self),
+            ) => self.string(string).discharge(
+                &compile_context.reserve_stack_top(),
+                self,
+                compile_context,
+            ),
             _ => {
                 unreachable!(
                     "Args did not match any of the productions. Had {:#?}.",
@@ -1297,6 +1310,11 @@ impl Program {
             ) => {
                 let dst = match exp_desc {
                     ExpDesc::Local(dst) => u8::try_from(*dst)?,
+                    ExpDesc::Global(_) => {
+                        let dst = compile_context.stack_top;
+                        compile_context.stack_top += 1;
+                        dst
+                    }
                     _ => {
                         log::error!("Only table creation on stack is supported.");
                         return Err(Error::Unimplemented);
@@ -1316,9 +1334,11 @@ impl Program {
                     ByteCode::NewTable(dst, array_items, table_items);
                 self.byte_codes.push(ByteCode::SetList(dst, array_items));
 
-                // Setting the stack top back to one register after table destination
-                // clearing the list values
-                compile_context.stack_top = dst + 1;
+                // Clear the list values
+                compile_context.stack_top -= array_items;
+                if let ExpDesc::Global(_) = exp_desc {
+                    compile_context.stack_top -= 1;
+                }
 
                 Ok(ExpDesc::Local(usize::from(dst)))
             }
@@ -1443,11 +1463,17 @@ impl Program {
                 let dst = compile_context.stack_top;
 
                 let key_top = compile_context.reserve_stack_top();
-                self.exp(key, compile_context, &key_top)?
-                    .discharge(key_top.clone(), self)?;
+                self.exp(key, compile_context, &key_top)?.discharge(
+                    &key_top,
+                    self,
+                    compile_context,
+                )?;
                 let exp_top = compile_context.reserve_stack_top();
-                self.exp(exp, compile_context, &exp_top)?
-                    .discharge(exp_top.clone(), self)?;
+                self.exp(exp, compile_context, &exp_top)?.discharge(
+                    &exp_top,
+                    self,
+                    compile_context,
+                )?;
 
                 match (key_top, exp_top) {
                     (ExpDesc::Local(key), ExpDesc::Local(value)) => {
@@ -1472,7 +1498,8 @@ impl Program {
                 let dst = compile_context.stack_top;
 
                 let top = compile_context.reserve_stack_top();
-                self.exp(exp, compile_context, &top)?.discharge(top, self)?;
+                self.exp(exp, compile_context, &top)?
+                    .discharge(&top, self, compile_context)?;
 
                 let constant = self.push_constant(*name)?;
                 self.byte_codes
@@ -1485,7 +1512,8 @@ impl Program {
                 exp => TokenType::Exp
             ) => {
                 let top = compile_context.reserve_stack_top();
-                self.exp(exp, compile_context, &top)?.discharge(top, self)?;
+                self.exp(exp, compile_context, &top)?
+                    .discharge(&top, self, compile_context)?;
 
                 Ok((1, 0))
             }

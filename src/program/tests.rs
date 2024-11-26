@@ -335,11 +335,11 @@ fn chapter4_table() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
     let program = Program::parse(
         r#"
-local key = "key"
+local k = "key"
 local t = {
     100, 200, 300;  -- list style
     x="hello", y="world";  -- record style
-    [key]="val";  -- general style
+    [k]="val";  -- general style
 }
 print(t[1])
 print(t['x'])
@@ -392,8 +392,7 @@ print(t)
             ByteCode::Call(2, 1),
             // print(t.key)
             ByteCode::GetGlobal(2, 6),
-            ByteCode::LoadConstant(4, 0),
-            ByteCode::GetTable(3, 1, 4),
+            ByteCode::GetField(3, 1, 0),
             ByteCode::Call(2, 1),
             // print(t)
             ByteCode::GetGlobal(2, 6),
@@ -427,36 +426,70 @@ t.f(t[1000])
             "t".into(),
             "k".into(),
             "z".into(),
-            "f".into(),
+            "x".into(),
             "print".into(),
+            "f".into(),
+            1000i64.into()
         ]
     );
     assert_eq!(
         &program.byte_codes,
         &[
-            // local key = "key"
-            ByteCode::LoadConstant(0, 0),
-            // print {...}
-            ByteCode::GetGlobal(1, 1),
-            // {...}
-            ByteCode::NewTable(2, 3, 3),
-            // 100, 200, 300;
-            ByteCode::LoadInt(3, 100),
-            ByteCode::LoadInt(4, 200),
-            ByteCode::LoadInt(5, 300),
-            // x="hello", y="world";
-            ByteCode::LoadConstant(6, 2),
-            ByteCode::SetField(2, 3, 6),
-            ByteCode::LoadConstant(6, 4),
-            ByteCode::SetField(2, 5, 6),
-            // [key]="val";
-            ByteCode::Move(6, 0),
-            ByteCode::LoadConstant(7, 6),
-            ByteCode::SetTable(2, 6, 7),
-            // {...}
+            // local a,b = 100,200
+            ByteCode::LoadInt(0, 100),
+            ByteCode::LoadInt(1, 200),
+            // t = {...}
+            ByteCode::NewTable(2, 3, 2),
+            // k=300
+            ByteCode::LoadInt(3, 300),
+            ByteCode::SetField(2, 1, 3),
+            // z=a
+            ByteCode::Move(3, 0),
+            ByteCode::SetField(2, 2, 3),
+            // 10,20,30
+            ByteCode::LoadInt(3, 10),
+            ByteCode::LoadInt(4, 20),
+            ByteCode::LoadInt(5, 30),
             ByteCode::SetList(2, 3),
-            // print {...}
-            ByteCode::Call(1, 1)
+            // t = {...}
+            ByteCode::SetGlobal(0, 2),
+            // t.k = 400 -- set
+            ByteCode::GetGlobal(2, 0),
+            ByteCode::LoadInt(3, 400),
+            ByteCode::SetField(2, 1, 3),
+            // t.x = t.z -- new
+            ByteCode::GetGlobal(2, 0),
+            ByteCode::GetField(2, 2, 2),
+            ByteCode::GetGlobal(3, 0),
+            ByteCode::SetField(3, 3, 2),
+            // t.f = print -- new
+            ByteCode::GetGlobal(2, 4),
+            ByteCode::GetGlobal(3, 0),
+            ByteCode::SetField(3, 5, 2),
+            // t.f(t.k)
+            ByteCode::GetGlobal(2, 0),
+            ByteCode::GetField(2, 2, 5),
+            ByteCode::GetGlobal(3, 0),
+            ByteCode::GetField(3, 3, 1),
+            ByteCode::Call(2, 1),
+            // t.f(t.x)
+            ByteCode::GetGlobal(2, 0),
+            ByteCode::GetField(2, 2, 5),
+            ByteCode::GetGlobal(3, 0),
+            ByteCode::GetField(3, 3, 3),
+            ByteCode::Call(2, 1),
+            // t.f(t[2])
+            ByteCode::GetGlobal(2, 0),
+            ByteCode::GetField(2, 2, 5),
+            ByteCode::GetGlobal(3, 0),
+            ByteCode::GetInt(3, 3, 2),
+            ByteCode::Call(2, 1),
+            // t.f(t[1000])
+            ByteCode::GetGlobal(2, 0),
+            ByteCode::GetField(2, 2, 5),
+            ByteCode::GetGlobal(3, 0),
+            ByteCode::GetField(3, 3, 6),
+            ByteCode::Call(2, 1),
         ]
     );
     crate::Lua::execute(&program).unwrap();
