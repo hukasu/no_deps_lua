@@ -278,11 +278,11 @@ fn chapter4_2() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
     let program = Program::parse(
         r#"
-local key = "kkk"
+local key = "key"
 print {
     100, 200, 300; -- list style
     x="hello", y="world"; -- record style
-    [key]="vvv"; -- general style
+    [key]="val"; -- general style
 }
 "#,
     )
@@ -290,19 +290,19 @@ print {
     assert_eq!(
         &program.constants,
         &[
-            "kkk".into(),
+            "key".into(),
             "print".into(),
             "hello".into(),
             "x".into(),
             "world".into(),
             "y".into(),
-            "vvv".into()
+            "val".into()
         ]
     );
     assert_eq!(
         &program.byte_codes,
         &[
-            // local key = "kkk"
+            // local key = "key"
             ByteCode::LoadConstant(0, 0),
             // print {...}
             ByteCode::GetGlobal(1, 1),
@@ -317,7 +317,7 @@ print {
             ByteCode::SetField(2, 3, 6),
             ByteCode::LoadConstant(6, 4),
             ByteCode::SetField(2, 5, 6),
-            // [key]="vvv";
+            // [key]="val";
             ByteCode::Move(6, 0),
             ByteCode::LoadConstant(7, 6),
             ByteCode::SetTable(2, 6, 7),
@@ -339,7 +339,7 @@ local key = "key"
 local t = {
     100, 200, 300;  -- list style
     x="hello", y="world";  -- record style
-    [key]="vvv";  -- general style
+    [key]="val";  -- general style
 }
 print(t[1])
 print(t['x'])
@@ -356,7 +356,7 @@ print(t)
             "x".into(),
             "world".into(),
             "y".into(),
-            "vvv".into(),
+            "val".into(),
             "print".into(),
         ]
     );
@@ -376,7 +376,7 @@ print(t)
             ByteCode::SetField(1, 2, 5),
             ByteCode::LoadConstant(5, 3),
             ByteCode::SetField(1, 4, 5),
-            // [key]="vvv";
+            // [key]="val";
             ByteCode::Move(5, 0),
             ByteCode::LoadConstant(6, 5),
             ByteCode::SetTable(1, 5, 6),
@@ -434,7 +434,7 @@ t.f(t[1000])
     assert_eq!(
         &program.byte_codes,
         &[
-            // local key = "kkk"
+            // local key = "key"
             ByteCode::LoadConstant(0, 0),
             // print {...}
             ByteCode::GetGlobal(1, 1),
@@ -449,7 +449,7 @@ t.f(t[1000])
             ByteCode::SetField(2, 3, 6),
             ByteCode::LoadConstant(6, 4),
             ByteCode::SetField(2, 5, 6),
-            // [key]="vvv";
+            // [key]="val";
             ByteCode::Move(6, 0),
             ByteCode::LoadConstant(7, 6),
             ByteCode::SetTable(2, 6, 7),
