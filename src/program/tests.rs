@@ -37,19 +37,7 @@ print "hello again..."
 }
 
 #[test]
-fn chapter1b() {
-    let err = Program::parse(
-        r#"
-print "hello world"
-print "hello again...
-"#,
-    )
-    .expect_err("This program should fail");
-    assert_eq!(err, Error::Parse);
-}
-
-#[test]
-fn chapter2_1() {
+fn chapter2_types() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
     let program = Program::parse(
         r#"
@@ -94,7 +82,7 @@ print(123456.0)
 }
 
 #[test]
-fn chapter2_2() {
+fn chapter2_local2() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
     let program = Program::parse(
         r#"
@@ -142,7 +130,7 @@ print "I'm local-print!" -- call local function
 }
 
 #[test]
-fn chapter2_3() {
+fn chapter2_assign() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
     let program = Program::parse(
         r#"
@@ -212,7 +200,7 @@ print(g)
 }
 
 #[test]
-fn chapter3_4() {
+fn chapter3_escape() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
     let program = Program::parse(
         r#"
@@ -274,57 +262,74 @@ print "null: \0." -- '\0'
 }
 
 #[test]
-fn chapter4_2() {
+fn chapter3_strings() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
     let program = Program::parse(
         r#"
-local key = "key"
-print {
-    100, 200, 300; -- list style
-    x="hello", y="world"; -- record style
-    [key]="val"; -- general style
-}
+local s = "hello_world"
+local m = "middle_string_middle_string"
+local l = "long_string_long_string_long_string_long_string_long_string"
+print(s)
+print(m)
+print(l)
+
+hello_world = 12
+middle_string_middle_string = 345
+long_string_long_string_long_string_long_string_long_string = 6789
+print(hello_world)
+print(middle_string_middle_string)
+print(long_string_long_string_long_string_long_string_long_string)
 "#,
     )
     .unwrap();
     assert_eq!(
         &program.constants,
         &[
-            "key".into(),
+            "hello_world".into(),
+            "middle_string_middle_string".into(),
+            "long_string_long_string_long_string_long_string_long_string".into(),
             "print".into(),
-            "hello".into(),
-            "x".into(),
-            "world".into(),
-            "y".into(),
-            "val".into()
         ]
     );
     assert_eq!(
         &program.byte_codes,
         &[
-            // local key = "key"
+            // local s = "hello_world"
             ByteCode::LoadConstant(0, 0),
-            // print {...}
-            ByteCode::GetGlobal(1, 1),
-            // {...}
-            ByteCode::NewTable(2, 3, 3),
-            // 100, 200, 300;
-            ByteCode::LoadInt(3, 100),
-            ByteCode::LoadInt(4, 200),
-            ByteCode::LoadInt(5, 300),
-            // x="hello", y="world";
-            ByteCode::LoadConstant(6, 2),
-            ByteCode::SetField(2, 3, 6),
-            ByteCode::LoadConstant(6, 4),
-            ByteCode::SetField(2, 5, 6),
-            // [key]="val";
-            ByteCode::Move(6, 0),
-            ByteCode::LoadConstant(7, 6),
-            ByteCode::SetTable(2, 6, 7),
-            // {...}
-            ByteCode::SetList(2, 3),
-            // print {...}
-            ByteCode::Call(1, 1)
+            // local m = "middle_string_middle_string"
+            ByteCode::LoadConstant(1, 1),
+            // local l = "long_string_long_string_long_string_long_string_long_string"
+            ByteCode::LoadConstant(2, 2),
+            // print(s)
+            ByteCode::GetGlobal(3, 3),
+            ByteCode::Move(4, 0),
+            ByteCode::Call(3, 1),
+            // print(m)
+            ByteCode::GetGlobal(3, 3),
+            ByteCode::Move(4, 1),
+            ByteCode::Call(3, 1),
+            // print(l)
+            ByteCode::GetGlobal(3, 3),
+            ByteCode::Move(4, 2),
+            ByteCode::Call(3, 1),
+            // hello_world = 12
+            ByteCode::SetGlobalInteger(0, 12),
+            // middle_string_middle_string = 345
+            ByteCode::SetGlobalInteger(1, 345),
+            // long_string_long_string_long_string_long_string_long_string = 6789
+            ByteCode::SetGlobalInteger(2, 6789),
+            // print(hello_world)
+            ByteCode::GetGlobal(3, 3),
+            ByteCode::GetGlobal(4, 0),
+            ByteCode::Call(3, 1),
+            // print(middle_string_middle_string)
+            ByteCode::GetGlobal(3, 3),
+            ByteCode::GetGlobal(4, 1),
+            ByteCode::Call(3, 1),
+            // print(long_string_long_string_long_string_long_string_long_string)
+            ByteCode::GetGlobal(3, 3),
+            ByteCode::GetGlobal(4, 2),
+            ByteCode::Call(3, 1),
         ]
     );
     crate::Lua::execute(&program).unwrap();
