@@ -93,6 +93,26 @@ pub enum ByteCode {
     /// `table`: Location of the table on the stack  
     /// `index`: Index of the item to load
     GetInt(u8, u8, u8),
+    /// Performs logical negation.
+    ///
+    /// `dst`: Location on stack to store result of operation  
+    /// `src`: Location on stack to load value
+    Not(u8, u8),
+    /// Performs length calculation on String.
+    ///
+    /// `dst`: Location on stack to store result of operation  
+    /// `src`: Location on stack to load value
+    Len(u8, u8),
+    /// Performs negation.
+    ///
+    /// `dst`: Location on stack to store result of operation  
+    /// `src`: Location on stack to load value
+    Neg(u8, u8),
+    /// Performs bit-wise not.
+    ///
+    /// `dst`: Location on stack to store result of operation  
+    /// `src`: Location on stack to load value
+    BitNot(u8, u8),
     /// Moves a value from one location on the stack to another
     ///
     /// `dst`: Location on the stack to store the value  

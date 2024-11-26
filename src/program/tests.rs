@@ -499,3 +499,92 @@ t.f(t[1000])
     );
     crate::Lua::execute(&program).unwrap();
 }
+
+#[test]
+fn chapter5_unops() {
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
+    let program = Program::parse(
+        r#"
+local i = 100
+local f = 3.14
+a = "iamastring"
+print(~100)
+print(~i)
+print(-3.14)
+print(-f)
+print(#"iamastring")
+print(#a)
+print(not false)
+print(not nil)
+print(not not nil)
+print(not print)
+"#,
+    )
+    .unwrap();
+    assert_eq!(
+        &program.constants,
+        &[
+            #[allow(clippy::approx_constant)]
+            3.14f64.into(),
+            "a".into(),
+            "iamastring".into(),
+            "print".into(),
+            #[allow(clippy::approx_constant)]
+            (-3.14f64).into(),
+        ]
+    );
+    assert_eq!(
+        &program.byte_codes,
+        &[
+            // local i = 100
+            ByteCode::LoadInt(0, 100),
+            // local f = 3.14
+            ByteCode::LoadConstant(1, 0),
+            // a = "iamastring"
+            ByteCode::SetGlobalConstant(1, 2),
+            // print(~100)
+            ByteCode::GetGlobal(2, 3),
+            ByteCode::LoadInt(3, !100),
+            ByteCode::Call(2, 1),
+            // print(~i)
+            ByteCode::GetGlobal(2, 3),
+            ByteCode::BitNot(3, 0),
+            ByteCode::Call(2, 1),
+            // print(-3.14)
+            ByteCode::GetGlobal(2, 3),
+            ByteCode::LoadConstant(3, 4),
+            ByteCode::Call(2, 1),
+            // print(-f)
+            ByteCode::GetGlobal(2, 3),
+            ByteCode::Neg(3, 1),
+            ByteCode::Call(2, 1),
+            // print(#"iamastring")
+            ByteCode::GetGlobal(2, 3),
+            ByteCode::LoadInt(3, 10),
+            ByteCode::Call(2, 1),
+            // print(#a)
+            ByteCode::GetGlobal(2, 3),
+            ByteCode::GetGlobal(3, 1),
+            ByteCode::Len(3, 3),
+            ByteCode::Call(2, 1),
+            // print(not false)
+            ByteCode::GetGlobal(2, 3),
+            ByteCode::LoadBool(3, true),
+            ByteCode::Call(2, 1),
+            // print(not nil)
+            ByteCode::GetGlobal(2, 3),
+            ByteCode::LoadBool(3, true),
+            ByteCode::Call(2, 1),
+            // print(not not nil)
+            ByteCode::GetGlobal(2, 3),
+            ByteCode::LoadBool(3, false),
+            ByteCode::Call(2, 1),
+            // print(not print)
+            ByteCode::GetGlobal(2, 3),
+            ByteCode::GetGlobal(3, 3),
+            ByteCode::Not(3, 3),
+            ByteCode::Call(2, 1),
+        ]
+    );
+    crate::Lua::execute(&program).unwrap();
+}

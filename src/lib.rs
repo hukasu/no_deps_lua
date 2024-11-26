@@ -12,7 +12,7 @@ mod value;
 
 extern crate alloc;
 
-use core::cell::RefCell;
+use core::{cell::RefCell, cmp::Ordering};
 
 use alloc::{rc::Rc, vec::Vec};
 use table::Table;
@@ -36,6 +36,24 @@ impl Lua {
             func_index: 0,
             globals,
             stack: Vec::new(),
+        }
+    }
+
+    fn set_stack(&mut self, dst: u8, value: Value) -> Result<(), Error> {
+        let dst = usize::from(dst);
+        match self.stack.len().cmp(&dst) {
+            Ordering::Greater => {
+                self.stack[dst] = value;
+                Ok(())
+            }
+            Ordering::Equal => {
+                self.stack.push(value);
+                Ok(())
+            }
+            Ordering::Less => {
+                log::error!("Trying to set a value out of the bounds of the stack.");
+                Err(Error::StackOverflow)
+            }
         }
     }
 
@@ -223,6 +241,36 @@ impl Lua {
                     } else {
                         return Err(Error::ExpectedTable);
                     }
+                }
+                ByteCode::Not(dst, src) => {
+                    let value = match &vm.stack[usize::from(*src)] {
+                        Value::Boolean(false) | Value::Nil => Value::Boolean(true),
+                        _ => Value::Boolean(false),
+                    };
+                    vm.set_stack(*dst, value)?;
+                }
+                ByteCode::Len(dst, src) => {
+                    let value = match &vm.stack[usize::from(*src)] {
+                        Value::String(string) => Value::Integer(i64::try_from(string.len())?),
+                        Value::ShortString(string) => Value::Integer(i64::try_from(string.len())?),
+                        _ => return Err(Error::InvalidLenOperand),
+                    };
+                    vm.set_stack(*dst, value)?;
+                }
+                ByteCode::Neg(dst, src) => {
+                    let value = match vm.stack[usize::from(*src)] {
+                        Value::Integer(integer) => Value::Integer(-integer),
+                        Value::Float(float) => Value::Float(-float),
+                        _ => return Err(Error::InvalidNegOperand),
+                    };
+                    vm.set_stack(*dst, value)?;
+                }
+                ByteCode::BitNot(dst, src) => {
+                    let value = match vm.stack[usize::from(*src)] {
+                        Value::Integer(integer) => Value::Integer(!integer),
+                        _ => return Err(Error::InvalidBitNotOperand),
+                    };
+                    vm.set_stack(*dst, value)?;
                 }
                 ByteCode::Move(dst, src) => vm
                     .stack

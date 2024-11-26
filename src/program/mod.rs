@@ -7,7 +7,10 @@ mod tests;
 
 use alloc::{boxed::Box, vec::Vec};
 
-use crate::parser::{Parser, Token, TokenType};
+use crate::{
+    ext::Unescape,
+    parser::{Parser, Token, TokenType},
+};
 
 use super::value::Value;
 
@@ -1013,20 +1016,117 @@ impl Program {
             ) => Err(Error::Unimplemented),
             make_deconstruct!(
                 _op => TokenType::Not,
-                _rhs => TokenType::Exp
-            ) => Err(Error::Unimplemented),
+                rhs => TokenType::Exp
+            ) => {
+                let (stack_top, top) = match exp_desc {
+                    ExpDesc::Local(top) => (*top, exp_desc.clone()),
+                    _ => {
+                        let stack_top = compile_context.stack_top;
+                        let top = compile_context.reserve_stack_top();
+                        (usize::from(stack_top), top)
+                    }
+                };
+                let exp_exp_desc = self.exp(rhs, compile_context, &top)?;
+
+                match exp_exp_desc {
+                    ExpDesc::Local(src) => Ok(ExpDesc::Unop(ByteCode::Not, src)),
+                    global @ ExpDesc::Global(_) => {
+                        global.discharge(&top, self, compile_context)?;
+                        Ok(ExpDesc::Unop(ByteCode::Not, stack_top))
+                    }
+                    ExpDesc::Nil => Ok(ExpDesc::Boolean(true)),
+                    ExpDesc::Boolean(boolean) => Ok(ExpDesc::Boolean(!boolean)),
+                    other => {
+                        other.discharge(&top, self, compile_context)?;
+                        Ok(top)
+                    }
+                }
+            }
             make_deconstruct!(
                 _op => TokenType::Len,
-                _rhs => TokenType::Exp
-            ) => Err(Error::Unimplemented),
+                rhs => TokenType::Exp
+            ) => {
+                let (stack_top, top) = match exp_desc {
+                    ExpDesc::Local(top) => (*top, exp_desc.clone()),
+                    _ => {
+                        let stack_top = compile_context.stack_top;
+                        let top = compile_context.reserve_stack_top();
+                        (usize::from(stack_top), top)
+                    }
+                };
+                let exp_exp_desc = self.exp(rhs, compile_context, &top)?;
+
+                match exp_exp_desc {
+                    ExpDesc::Local(src) => Ok(ExpDesc::Unop(ByteCode::Len, src)),
+                    global @ ExpDesc::Global(_) => {
+                        global.discharge(&top, self, compile_context)?;
+                        Ok(ExpDesc::Unop(ByteCode::Len, stack_top))
+                    }
+                    ExpDesc::String(string) => {
+                        let string = string.unescape()?;
+                        Ok(ExpDesc::Integer(i64::try_from(string.len())?))
+                    }
+                    other => {
+                        other.discharge(&top, self, compile_context)?;
+                        Ok(top)
+                    }
+                }
+            }
             make_deconstruct!(
                 _op => TokenType::Sub,
-                _rhs => TokenType::Exp
-            ) => Err(Error::Unimplemented),
+                rhs => TokenType::Exp
+            ) => {
+                let (stack_top, top) = match exp_desc {
+                    ExpDesc::Local(top) => (*top, exp_desc.clone()),
+                    _ => {
+                        let stack_top = compile_context.stack_top;
+                        let top = compile_context.reserve_stack_top();
+                        (usize::from(stack_top), top)
+                    }
+                };
+                let exp_exp_desc = self.exp(rhs, compile_context, &top)?;
+
+                match exp_exp_desc {
+                    ExpDesc::Local(src) => Ok(ExpDesc::Unop(ByteCode::Neg, src)),
+                    global @ ExpDesc::Global(_) => {
+                        global.discharge(&top, self, compile_context)?;
+                        Ok(ExpDesc::Unop(ByteCode::Neg, stack_top))
+                    }
+                    ExpDesc::Integer(integer) => Ok(ExpDesc::Integer(-integer)),
+                    ExpDesc::Float(float) => Ok(ExpDesc::Float(-float)),
+                    other => {
+                        other.discharge(&top, self, compile_context)?;
+                        Ok(top)
+                    }
+                }
+            }
             make_deconstruct!(
                 _op => TokenType::BitXor,
-                _rhs => TokenType::Exp
-            ) => Err(Error::Unimplemented),
+                rhs => TokenType::Exp
+            ) => {
+                let (stack_top, top) = match exp_desc {
+                    ExpDesc::Local(top) => (*top, exp_desc.clone()),
+                    _ => {
+                        let stack_top = compile_context.stack_top;
+                        let top = compile_context.reserve_stack_top();
+                        (usize::from(stack_top), top)
+                    }
+                };
+                let exp_exp_desc = self.exp(rhs, compile_context, &top)?;
+
+                match exp_exp_desc {
+                    ExpDesc::Local(src) => Ok(ExpDesc::Unop(ByteCode::BitNot, src)),
+                    global @ ExpDesc::Global(_) => {
+                        global.discharge(&top, self, compile_context)?;
+                        Ok(ExpDesc::Unop(ByteCode::BitNot, stack_top))
+                    }
+                    ExpDesc::Integer(integer) => Ok(ExpDesc::Integer(!integer)),
+                    other => {
+                        other.discharge(&top, self, compile_context)?;
+                        Ok(top)
+                    }
+                }
+            }
             _ => {
                 unreachable!(
                     "Exp did not match any of the productions. Had {:#?}.",

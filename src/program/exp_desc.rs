@@ -11,6 +11,7 @@ pub enum ExpDesc<'a> {
     Integer(i64),
     Float(f64),
     String(&'a str),
+    Unop(fn(u8, u8) -> ByteCode, usize),
     Local(usize),
     Global(usize),
     TableLocal(usize, Box<ExpDesc<'a>>),
@@ -173,6 +174,14 @@ impl<'a> ExpDesc<'a> {
                 program
                     .byte_codes
                     .push(ByteCode::SetGlobalConstant(key, constant));
+
+                Ok(())
+            }
+            (Self::Unop(bytecode, src), Self::Local(dst)) => {
+                let src = u8::try_from(*src)?;
+                let dst = u8::try_from(*dst)?;
+
+                program.byte_codes.push(bytecode(dst, src));
 
                 Ok(())
             }
