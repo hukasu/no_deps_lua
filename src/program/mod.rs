@@ -1142,10 +1142,59 @@ impl Program {
                 }
             }
             make_deconstruct!(
-                _lhs => TokenType::Exp,
+                lhs => TokenType::Exp,
                 _op => TokenType::Div,
-                _rhs => TokenType::Exp
-            ) => Err(Error::Unimplemented),
+                rhs => TokenType::Exp
+            ) => {
+                let (lhs_dst, lhs_top) = match exp_desc {
+                    ExpDesc::Local(dst) => (u8::try_from(*dst)?, exp_desc.clone()),
+                    ExpDesc::Global(_) => compile_context.reserve_stack_top(),
+                    _ => todo!("mul: see what other cases are needed"),
+                };
+                let lhs = self.exp(lhs, compile_context, &lhs_top)?;
+
+                let (rhs_dst, rhs_top) = compile_context.reserve_stack_top();
+                let rhs = self.exp(rhs, compile_context, &rhs_top)?;
+
+                compile_context.stack_top -= 2;
+
+                match (lhs, rhs) {
+                    (ExpDesc::Integer(lhs_i), ExpDesc::Integer(rhs_i)) => {
+                        Ok(ExpDesc::Float(lhs_i as f64 / rhs_i as f64))
+                    }
+                    (ExpDesc::Float(lhs_f), ExpDesc::Float(rhs_f)) => {
+                        Ok(ExpDesc::Float(lhs_f / rhs_f))
+                    }
+                    (ExpDesc::Integer(lhs_i), ExpDesc::Float(rhs_f)) => {
+                        Ok(ExpDesc::Float(lhs_i as f64 / rhs_f))
+                    }
+                    (ExpDesc::Float(lhs_f), ExpDesc::Integer(rhs_i)) => {
+                        Ok(ExpDesc::Float(lhs_f / rhs_i as f64))
+                    }
+                    (ExpDesc::Nil, _) => Err(Error::NilArithmetic),
+                    (ExpDesc::Boolean(_), _) => Err(Error::BoolArithmetic),
+                    (ExpDesc::String(_), _) => Err(Error::StringArithmetic),
+                    (ExpDesc::TableLocal(_, _) | ExpDesc::TableGlobal(_, _), _) => {
+                        Err(Error::TableArithmetic)
+                    }
+                    (_, ExpDesc::Nil) => Err(Error::NilArithmetic),
+                    (_, ExpDesc::Boolean(_)) => Err(Error::BoolArithmetic),
+                    (_, ExpDesc::String(_)) => Err(Error::StringArithmetic),
+                    (_, ExpDesc::TableLocal(_, _) | ExpDesc::TableGlobal(_, _)) => {
+                        Err(Error::TableArithmetic)
+                    }
+                    (lhs, rhs) => {
+                        lhs.discharge(&lhs_top, self, compile_context)?;
+                        rhs.discharge(&rhs_top, self, compile_context)?;
+
+                        Ok(ExpDesc::Binop(
+                            ByteCode::Div,
+                            usize::from(lhs_dst),
+                            usize::from(rhs_dst),
+                        ))
+                    }
+                }
+            }
             make_deconstruct!(
                 _lhs => TokenType::Exp,
                 _op => TokenType::Idiv,

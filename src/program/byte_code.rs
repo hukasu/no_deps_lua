@@ -133,6 +133,13 @@ pub enum ByteCode {
     /// `lhs`: Location on stack of left-hand operand  
     /// `rhs`: Location on stack of right-hand operand
     Mul(u8, u8, u8),
+    /// `DIV`  
+    /// Performs arithmetic division.
+    ///
+    /// `dst`: Location on stack to store result of operation  
+    /// `lhs`: Location on stack of left-hand operand  
+    /// `rhs`: Location on stack of right-hand operand
+    Div(u8, u8, u8),
     /// `UNM`  
     /// Performs negation.
     ///

@@ -599,7 +599,7 @@ local a,b,c = 1.1, 2.0, 100
 
 print(100+g) -- commutative, AddInt
 print(a-1)
--- print(100/c) -- result is float
+print(100/c) -- result is float
 -- print(100>>b) -- 2.0 will be convert to int 2
 -- print(100>>a) -- panic
 "#,
@@ -631,6 +631,11 @@ print(a-1)
             ByteCode::Sub(4, 4, 5),
             ByteCode::Call(3, 1),
             // print(100/c) -- result is float
+            ByteCode::GetGlobal(3, 2),
+            ByteCode::LoadInt(4, 100),
+            ByteCode::Move(5, 2),
+            ByteCode::Div(4, 4, 5),
+            ByteCode::Call(3, 1),
             // print(100>>b) -- 2.0 will be convert to int 2
             // print(100>>a) -- panic
         ]
