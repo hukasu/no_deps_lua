@@ -6,6 +6,10 @@ pub enum Error {
     StringDecode,
     OrphanExp,
     NilTableIndex,
+    NilArithmetic,
+    BoolArithmetic,
+    StringArithmetic,
+    TableArithmetic,
     StackOverflow,
     Unimplemented,
 }
@@ -24,6 +28,18 @@ impl Display for Error {
             }
             Self::NilTableIndex => {
                 write!(f, "Can't use Nil as index to a table.")
+            }
+            Self::NilArithmetic => {
+                write!(f, "Can't use Nil in arithmetic operations.")
+            }
+            Self::BoolArithmetic => {
+                write!(f, "Can't use Boolean in arithmetic operations.")
+            }
+            Self::StringArithmetic => {
+                write!(f, "Can't use String in arithmetic operations.")
+            }
+            Self::TableArithmetic => {
+                write!(f, "Can't use Table in arithmetic operations.")
             }
             Self::StackOverflow => {
                 write!(f, "Tried accessing index outside stack bounds.")

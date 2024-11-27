@@ -8,9 +8,17 @@ pub enum Error {
     InvalidFunction(Value),
     ExpectedName,
     ExpectedTable,
+    // Unary operators
     InvalidLenOperand,
     InvalidNegOperand,
     InvalidBitNotOperand,
+    // Binary operators
+    NilArithmetic,
+    BoolArithmetic,
+    StringArithmetic,
+    TableArithmetic,
+    FunctionArithmetic,
+    // Other
     StackOverflow,
     IntegerConversion,
 }
@@ -24,6 +32,11 @@ impl Display for Error {
             Self::ExpectedTable => write!(f, "Tried accessing a value as a Table."),
             Self::InvalidLenOperand => write!(f, "Len can only operate over String."),
             Self::InvalidNegOperand => write!(f, "Neg can only operate over Integers and Floats."),
+            Self::NilArithmetic => write!(f, "{}", crate::program::Error::NilArithmetic),
+            Self::BoolArithmetic => write!(f, "{}", crate::program::Error::BoolArithmetic),
+            Self::StringArithmetic => write!(f, "{}", crate::program::Error::StringArithmetic),
+            Self::TableArithmetic => write!(f, "{}", crate::program::Error::TableArithmetic),
+            Self::FunctionArithmetic => write!(f, "Can't use Function in arithmetic operations."),
             Self::InvalidBitNotOperand => write!(f, "BitNot can only operate over Integers."),
             Self::StackOverflow => write!(f, "Vm's stack has overflown."),
             Self::IntegerConversion => write!(

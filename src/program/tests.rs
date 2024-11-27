@@ -62,7 +62,7 @@ print(123456.0)
             ByteCode::Call(0, 1),
             // print(false)
             ByteCode::GetGlobal(0, 0),
-            ByteCode::LoadBool(1, false),
+            ByteCode::LoadFalse(1),
             ByteCode::Call(0, 1),
             // print(123)
             ByteCode::GetGlobal(0, 0),
@@ -569,15 +569,15 @@ print(not print)
             ByteCode::Call(2, 1),
             // print(not false)
             ByteCode::GetGlobal(2, 3),
-            ByteCode::LoadBool(3, true),
+            ByteCode::LoadTrue(3),
             ByteCode::Call(2, 1),
             // print(not nil)
             ByteCode::GetGlobal(2, 3),
-            ByteCode::LoadBool(3, true),
+            ByteCode::LoadTrue(3),
             ByteCode::Call(2, 1),
             // print(not not nil)
             ByteCode::GetGlobal(2, 3),
-            ByteCode::LoadBool(3, false),
+            ByteCode::LoadFalse(3),
             ByteCode::Call(2, 1),
             // print(not print)
             ByteCode::GetGlobal(2, 3),
