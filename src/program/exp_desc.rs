@@ -1,10 +1,10 @@
 use alloc::boxed::Box;
 
-use crate::ext::Unescape;
+use crate::ext::{FloatExt, Unescape};
 
 use super::{compile_context::CompileContext, ByteCode, Error, Program};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ExpDesc<'a> {
     Nil,
     Boolean(bool),
@@ -12,6 +12,7 @@ pub enum ExpDesc<'a> {
     Float(f64),
     String(&'a str),
     Unop(fn(u8, u8) -> ByteCode, usize),
+    Binop(fn(u8, u8, u8) -> ByteCode, usize, usize),
     Local(usize),
     Global(usize),
     TableLocal(usize, Box<ExpDesc<'a>>),
@@ -42,7 +43,11 @@ impl<'a> ExpDesc<'a> {
             (Self::Boolean(boolean), Self::Local(dst)) => {
                 let dst = u8::try_from(*dst)?;
 
-                program.byte_codes.push(ByteCode::LoadBool(dst, *boolean));
+                if *boolean {
+                    program.byte_codes.push(ByteCode::LoadTrue(dst));
+                } else {
+                    program.byte_codes.push(ByteCode::LoadFalse(dst));
+                }
 
                 Ok(())
             }
@@ -137,13 +142,20 @@ impl<'a> ExpDesc<'a> {
             }
             (Self::Float(float), Self::Local(dst)) => {
                 let dst = u8::try_from(*dst)?;
-                let position = program.push_constant(*float)?;
 
-                program
-                    .byte_codes
-                    .push(ByteCode::LoadConstant(dst, position));
-
-                Ok(())
+                match float.to_i16() {
+                    Some(i) => {
+                        program.byte_codes.push(ByteCode::LoadFloat(dst, i));
+                        Ok(())
+                    }
+                    _ => {
+                        let position = program.push_constant(*float)?;
+                        program
+                            .byte_codes
+                            .push(ByteCode::LoadConstant(dst, position));
+                        Ok(())
+                    }
+                }
             }
             (Self::Float(float), Self::Global(key)) => {
                 let key = u8::try_from(*key)?;
@@ -182,6 +194,15 @@ impl<'a> ExpDesc<'a> {
                 let dst = u8::try_from(*dst)?;
 
                 program.byte_codes.push(bytecode(dst, src));
+
+                Ok(())
+            }
+            (Self::Binop(bytecode, lhs, rhs), Self::Local(dst)) => {
+                let lhs = u8::try_from(*lhs)?;
+                let rhs = u8::try_from(*rhs)?;
+                let dst = u8::try_from(*dst)?;
+
+                program.byte_codes.push(bytecode(dst, lhs, rhs));
 
                 Ok(())
             }
@@ -388,7 +409,7 @@ impl<'a> ExpDesc<'a> {
                 }
             }
             (src @ Self::TableGlobal(_, _), dst @ Self::TableGlobal(_, _)) => {
-                let dst_local = compile_context.reserve_stack_top();
+                let (_, dst_local) = compile_context.reserve_stack_top();
 
                 src.discharge(&dst_local, program, compile_context)?;
                 dst_local.discharge(dst, program, compile_context)?;

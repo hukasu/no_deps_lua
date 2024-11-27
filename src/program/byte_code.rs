@@ -98,44 +98,51 @@ pub enum ByteCode {
     /// `array_len`: Amount of items to allocate on the list  
     /// `table_len`: Amount of items to allocate for the map
     NewTable(u8, u8, u8),
+    /// `ADDI`  
     /// Performs arithmetic addition.
     ///
     /// `dst`: Location on stack to store result of operation  
     /// `lhs`: Location on stack of left-hand operand  
     /// `rhs`: Location on stack of right-hand operand
     AddInteger(u8, u8, u8),
+    /// `ADDK`  
     /// Performs arithmetic addition.
     ///
     /// `dst`: Location on stack to store result of operation  
     /// `lhs`: Location on stack of left-hand operand  
     /// `rhs`: Location on stack of right-hand operand
     AddConstant(u8, u8, u8),
+    /// `ADD`  
     /// Performs arithmetic addition.
     ///
     /// `dst`: Location on stack to store result of operation  
     /// `lhs`: Location on stack of left-hand operand  
     /// `rhs`: Location on stack of right-hand operand
     Add(u8, u8, u8),
+    /// `UNM`  
     /// Performs negation.
     ///
     /// `dst`: Location on stack to store result of operation  
     /// `src`: Location on stack to load value
     Neg(u8, u8),
+    /// `BNOT`
     /// Performs bit-wise not.
     ///
     /// `dst`: Location on stack to store result of operation  
     /// `src`: Location on stack to load value
     BitNot(u8, u8),
-    /// Performs length calculation on String.
-    ///
-    /// `dst`: Location on stack to store result of operation  
-    /// `src`: Location on stack to load value
-    Len(u8, u8),
+    /// `NOT`  
     /// Performs logical negation.
     ///
     /// `dst`: Location on stack to store result of operation  
     /// `src`: Location on stack to load value
     Not(u8, u8),
+    /// `LEN`  
+    /// Performs length calculation on String.
+    ///
+    /// `dst`: Location on stack to store result of operation  
+    /// `src`: Location on stack to load value
+    Len(u8, u8),
     /// `CALL`  
     /// Calls a function
     ///

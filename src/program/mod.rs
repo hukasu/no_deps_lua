@@ -372,7 +372,7 @@ impl Program {
             ) => {
                 let mut new_locals = [(*name).into()].to_vec();
 
-                let stack_top = compile_context.reserve_stack_top();
+                let (_, stack_top) = compile_context.reserve_stack_top();
                 let mut exp_descs = [stack_top].to_vec();
 
                 self.attnamelist_cont(
@@ -414,7 +414,7 @@ impl Program {
             ) => {
                 new_locals.push((*name).into());
 
-                let stack_top = compile_context.reserve_stack_top();
+                let (_, stack_top) = compile_context.reserve_stack_top();
                 exp_descs.push(stack_top);
 
                 self.attnamelist_cont(attnamelist_cont, compile_context, new_locals, exp_descs)
@@ -682,7 +682,7 @@ impl Program {
                 _rsquare=> TokenType::RSquare
             ) => {
                 let var_exp_desc = self.var(var, compile_context)?;
-                let top = compile_context.reserve_stack_top();
+                let (_, top) = compile_context.reserve_stack_top();
                 let exp_exp_desc = self.exp(exp, compile_context, &top)?;
                 compile_context.stack_top -= 1;
                 match var_exp_desc {
@@ -812,7 +812,7 @@ impl Program {
                 explist_cont => TokenType::ExplistCont
             ) => {
                 let (exp_desc, tail) = maybe_exp_descs.map_or_else(
-                    || (compile_context.reserve_stack_top(), None),
+                    || (compile_context.reserve_stack_top().1, None),
                     |exp_descs| (exp_descs[0].clone(), Some(&exp_descs[1..])),
                 );
 
@@ -851,7 +851,7 @@ impl Program {
                 explist_cont => TokenType::ExplistCont
             ) => {
                 let (exp_desc, tail) = maybe_exp_descs.map_or_else(
-                    || (compile_context.reserve_stack_top(), None),
+                    || (compile_context.reserve_stack_top().1, None),
                     |exp_descs| (exp_descs[0].clone(), Some(&exp_descs[1..])),
                 );
 
@@ -980,10 +980,59 @@ impl Program {
                 _rhs => TokenType::Exp
             ) => Err(Error::Unimplemented),
             make_deconstruct!(
-                _lhs => TokenType::Exp,
+                lhs => TokenType::Exp,
                 _op => TokenType::Add,
-                _rhs => TokenType::Exp
-            ) => Err(Error::Unimplemented),
+                rhs => TokenType::Exp
+            ) => {
+                let (lhs_dst, lhs_top) = match exp_desc {
+                    ExpDesc::Local(dst) => (u8::try_from(*dst)?, exp_desc.clone()),
+                    ExpDesc::Global(_) => compile_context.reserve_stack_top(),
+                    _ => todo!("add: see what other cases are needed"),
+                };
+                let lhs = self.exp(lhs, compile_context, &lhs_top)?;
+
+                let (rhs_dst, rhs_top) = compile_context.reserve_stack_top();
+                let rhs = self.exp(rhs, compile_context, &rhs_top)?;
+
+                compile_context.stack_top -= 2;
+
+                match (lhs, rhs) {
+                    (ExpDesc::Integer(lhs_i), ExpDesc::Integer(rhs_i)) => {
+                        Ok(ExpDesc::Integer(lhs_i + rhs_i))
+                    }
+                    (ExpDesc::Float(lhs_f), ExpDesc::Float(rhs_f)) => {
+                        Ok(ExpDesc::Float(lhs_f + rhs_f))
+                    }
+                    (ExpDesc::Integer(lhs_i), ExpDesc::Float(rhs_f)) => {
+                        Ok(ExpDesc::Float(lhs_i as f64 + rhs_f))
+                    }
+                    (ExpDesc::Float(lhs_f), ExpDesc::Integer(rhs_i)) => {
+                        Ok(ExpDesc::Float(lhs_f + rhs_i as f64))
+                    }
+                    (ExpDesc::Nil, _) => Err(Error::NilArithmetic),
+                    (ExpDesc::Boolean(_), _) => Err(Error::BoolArithmetic),
+                    (ExpDesc::String(_), _) => Err(Error::StringArithmetic),
+                    (ExpDesc::TableLocal(_, _) | ExpDesc::TableGlobal(_, _), _) => {
+                        Err(Error::TableArithmetic)
+                    }
+                    (_, ExpDesc::Nil) => Err(Error::NilArithmetic),
+                    (_, ExpDesc::Boolean(_)) => Err(Error::BoolArithmetic),
+                    (_, ExpDesc::String(_)) => Err(Error::StringArithmetic),
+                    (_, ExpDesc::TableLocal(_, _) | ExpDesc::TableGlobal(_, _)) => {
+                        Err(Error::TableArithmetic)
+                    }
+                    (lhs, rhs) => {
+                        lhs.discharge(&lhs_top, self, compile_context)?;
+                        rhs.discharge(&rhs_top, self, compile_context)?;
+
+                        Ok(ExpDesc::Binop(
+                            ByteCode::Add,
+                            usize::from(lhs_dst),
+                            usize::from(rhs_dst),
+                        ))
+                    }
+                }
+            }
             make_deconstruct!(
                 _lhs => TokenType::Exp,
                 _op => TokenType::Sub,
@@ -1021,8 +1070,7 @@ impl Program {
                 let (stack_top, top) = match exp_desc {
                     ExpDesc::Local(top) => (*top, exp_desc.clone()),
                     _ => {
-                        let stack_top = compile_context.stack_top;
-                        let top = compile_context.reserve_stack_top();
+                        let (stack_top, top) = compile_context.reserve_stack_top();
                         (usize::from(stack_top), top)
                     }
                 };
@@ -1049,8 +1097,7 @@ impl Program {
                 let (stack_top, top) = match exp_desc {
                     ExpDesc::Local(top) => (*top, exp_desc.clone()),
                     _ => {
-                        let stack_top = compile_context.stack_top;
-                        let top = compile_context.reserve_stack_top();
+                        let (stack_top, top) = compile_context.reserve_stack_top();
                         (usize::from(stack_top), top)
                     }
                 };
@@ -1079,8 +1126,7 @@ impl Program {
                 let (stack_top, top) = match exp_desc {
                     ExpDesc::Local(top) => (*top, exp_desc.clone()),
                     _ => {
-                        let stack_top = compile_context.stack_top;
-                        let top = compile_context.reserve_stack_top();
+                        let (stack_top, top) = compile_context.reserve_stack_top();
                         (usize::from(stack_top), top)
                     }
                 };
@@ -1107,8 +1153,7 @@ impl Program {
                 let (stack_top, top) = match exp_desc {
                     ExpDesc::Local(top) => (*top, exp_desc.clone()),
                     _ => {
-                        let stack_top = compile_context.stack_top;
-                        let top = compile_context.reserve_stack_top();
+                        let (stack_top, top) = compile_context.reserve_stack_top();
                         (usize::from(stack_top), top)
                     }
                 };
@@ -1148,7 +1193,11 @@ impl Program {
                 args => TokenType::Args
             ) => {
                 let top = self.var(var, compile_context)?;
-                top.discharge(&compile_context.reserve_stack_top(), self, compile_context)?;
+                top.discharge(
+                    &compile_context.reserve_stack_top().1,
+                    self,
+                    compile_context,
+                )?;
 
                 self.args(args, compile_context)?;
 
@@ -1214,7 +1263,7 @@ impl Program {
             make_deconstruct!(
                 tableconstructor => TokenType::Tableconstructor
             ) => {
-                let top = compile_context.reserve_stack_top();
+                let (_, top) = compile_context.reserve_stack_top();
                 self.tableconstructor(tableconstructor, compile_context, &top)?;
                 // Already on top of the stack, no need to move
                 Ok(())
@@ -1222,7 +1271,7 @@ impl Program {
             make_deconstruct!(
                 _string => TokenType::String(string)
             ) => self.string(string).discharge(
-                &compile_context.reserve_stack_top(),
+                &compile_context.reserve_stack_top().1,
                 self,
                 compile_context,
             ),
@@ -1560,15 +1609,13 @@ impl Program {
                 _assing => TokenType::Assign,
                 exp => TokenType::Exp
             ) => {
-                let dst = compile_context.stack_top;
-
-                let key_top = compile_context.reserve_stack_top();
+                let (dst, key_top) = compile_context.reserve_stack_top();
                 self.exp(key, compile_context, &key_top)?.discharge(
                     &key_top,
                     self,
                     compile_context,
                 )?;
-                let exp_top = compile_context.reserve_stack_top();
+                let (_, exp_top) = compile_context.reserve_stack_top();
                 self.exp(exp, compile_context, &exp_top)?.discharge(
                     &exp_top,
                     self,
@@ -1595,9 +1642,7 @@ impl Program {
                 _assign => TokenType::Assign,
                 exp => TokenType::Exp
             ) => {
-                let dst = compile_context.stack_top;
-
-                let top = compile_context.reserve_stack_top();
+                let (dst, top) = compile_context.reserve_stack_top();
                 self.exp(exp, compile_context, &top)?
                     .discharge(&top, self, compile_context)?;
 
@@ -1611,7 +1656,7 @@ impl Program {
             make_deconstruct!(
                 exp => TokenType::Exp
             ) => {
-                let top = compile_context.reserve_stack_top();
+                let (_, top) = compile_context.reserve_stack_top();
                 self.exp(exp, compile_context, &top)?
                     .discharge(&top, self, compile_context)?;
 

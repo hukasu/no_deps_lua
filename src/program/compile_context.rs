@@ -11,9 +11,9 @@ pub struct CompileContext {
 }
 
 impl CompileContext {
-    pub fn reserve_stack_top<'a>(&mut self) -> ExpDesc<'a> {
+    pub fn reserve_stack_top<'a>(&mut self) -> (u8, ExpDesc<'a>) {
         let top = self.stack_top;
         self.stack_top += 1;
-        ExpDesc::Local(usize::from(top))
+        (top, ExpDesc::Local(usize::from(top)))
     }
 }

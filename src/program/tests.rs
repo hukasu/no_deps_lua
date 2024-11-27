@@ -588,3 +588,47 @@ print(not print)
     );
     crate::Lua::execute(&program).unwrap();
 }
+
+#[test]
+fn chapter5_binops() {
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
+    let program = Program::parse(
+        r#"
+g = 10
+local a,b,c = 1.1, 2.0, 100
+
+print(100+g) -- commutative, AddInt
+-- print(a-1)
+-- print(100/c) -- result is float
+-- print(100>>b) -- 2.0 will be convert to int 2
+-- print(100>>a) -- panic
+"#,
+    )
+    .unwrap();
+    assert_eq!(
+        &program.constants,
+        &["g".into(), 1.1f64.into(), "print".into()]
+    );
+    assert_eq!(
+        &program.byte_codes,
+        &[
+            // g = 10
+            ByteCode::SetGlobalInteger(0, 10),
+            // local a,b,c = 1.1, 2.0, 100
+            ByteCode::LoadConstant(0, 1),
+            ByteCode::LoadFloat(1, 2),
+            ByteCode::LoadInt(2, 100),
+            // print(100+g) -- commutative, AddInt
+            ByteCode::GetGlobal(3, 2),
+            ByteCode::LoadInt(4, 100),
+            ByteCode::GetGlobal(5, 0),
+            ByteCode::Add(4, 4, 5),
+            ByteCode::Call(3, 1),
+            // print(a-1)
+            // print(100/c) -- result is float
+            // print(100>>b) -- 2.0 will be convert to int 2
+            // print(100>>a) -- panic
+        ]
+    );
+    crate::Lua::execute(&program).unwrap();
+}
