@@ -119,6 +119,13 @@ pub enum ByteCode {
     /// `lhs`: Location on stack of left-hand operand  
     /// `rhs`: Location on stack of right-hand operand
     Add(u8, u8, u8),
+    /// `SUB`  
+    /// Performs arithmetic subtraction.
+    ///
+    /// `dst`: Location on stack to store result of operation  
+    /// `lhs`: Location on stack of left-hand operand  
+    /// `rhs`: Location on stack of right-hand operand
+    Sub(u8, u8, u8),
     /// `UNM`  
     /// Performs negation.
     ///
