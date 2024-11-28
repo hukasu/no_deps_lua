@@ -6,10 +6,18 @@ pub enum Error {
     StringDecode,
     OrphanExp,
     NilTableIndex,
+    // Binary arithmetic operators
     NilArithmetic,
     BoolArithmetic,
     StringArithmetic,
     TableArithmetic,
+    // Binary bitwise operators
+    FloatBitwise,
+    NilBitwise,
+    BoolBitwise,
+    StringBitwise,
+    TableBitwise,
+    // Others
     StackOverflow,
     Unimplemented,
 }
@@ -39,6 +47,21 @@ impl Display for Error {
                 write!(f, "Can't use String in arithmetic operations.")
             }
             Self::TableArithmetic => {
+                write!(f, "Can't use Table in arithmetic operations.")
+            }
+            Self::FloatBitwise => {
+                write!(f, "Can't use Float in bitwise operations.")
+            }
+            Self::NilBitwise => {
+                write!(f, "Can't use Nil in bitwise operations.")
+            }
+            Self::BoolBitwise => {
+                write!(f, "Can't use Boolean in bitwise operations.")
+            }
+            Self::StringBitwise => {
+                write!(f, "Can't use String in bitwise operations.")
+            }
+            Self::TableBitwise => {
                 write!(f, "Can't use Table in arithmetic operations.")
             }
             Self::StackOverflow => {

@@ -1,3 +1,4 @@
+mod binops;
 mod byte_code;
 mod compile_context;
 mod error;
@@ -517,7 +518,6 @@ impl Program {
 
     fn label(&mut self, label: &Token, _compile_context: &CompileContext) -> Result<(), Error> {
         match label.tokens.as_slice() {
-            [] => Ok(()),
             make_deconstruct!(
                 _doublecolon1=> TokenType::DoubleColon,
                 _name=> TokenType::Name(_),
@@ -676,16 +676,17 @@ impl Program {
         match var.tokens.as_slice() {
             make_deconstruct!(_name=> TokenType::Name(name)) => self.name(name, compile_context),
             make_deconstruct!(
-                var=> TokenType::Var,
-                _lsquare=> TokenType::LSquare,
-                exp=> TokenType::Exp,
-                _rsquare=> TokenType::RSquare
+                prefixexp => TokenType::Prefixexp,
+                _lsquare => TokenType::LSquare,
+                exp => TokenType::Exp,
+                _rsquare => TokenType::RSquare,
             ) => {
-                let var_exp_desc = self.var(var, compile_context)?;
+                let (_, prefix_top) = compile_context.reserve_stack_top();
+                let prefixexp_exp_desc = self.prefixexp(prefixexp, compile_context, &prefix_top)?;
                 let (_, top) = compile_context.reserve_stack_top();
                 let exp_exp_desc = self.exp(exp, compile_context, &top)?;
-                compile_context.stack_top -= 1;
-                match var_exp_desc {
+                compile_context.stack_top -= 2;
+                match prefixexp_exp_desc {
                     ExpDesc::Local(table) => Ok(ExpDesc::TableLocal(table, Box::new(exp_exp_desc))),
                     ExpDesc::Global(table) => {
                         Ok(ExpDesc::TableGlobal(table, Box::new(exp_exp_desc)))
@@ -697,28 +698,16 @@ impl Program {
                 }
             }
             make_deconstruct!(
-                _functioncall=> TokenType::Functioncall,
-                _lsquare=> TokenType::LSquare,
-                _exp=> TokenType::Exp,
-                _rsquare=> TokenType::RSquare
-            ) => Err(Error::Unimplemented),
-            make_deconstruct!(
-                _lparen=> TokenType::LParen,
-                _exp1=> TokenType::Exp,
-                _rparen=> TokenType::RParen,
-                _lsquare=> TokenType::LSquare,
-                _exp2=> TokenType::Exp,
-                _rsquare=> TokenType::RSquare
-            ) => Err(Error::Unimplemented),
-            make_deconstruct!(
-                var=> TokenType::Var,
-                _dot=> TokenType::Dot,
-                _name=> TokenType::Name(name)
+                prefixexp => TokenType::Prefixexp,
+                _dot => TokenType::Dot,
+                _name => TokenType::Name(name),
             ) => {
-                let var_exp_desc = self.var(var, compile_context)?;
-
+                let (_, prefix_top) = compile_context.reserve_stack_top();
+                let prefixexp_exp_desc = self.prefixexp(prefixexp, compile_context, &prefix_top)?;
                 let name_exp_desc = self.string(name);
-                match var_exp_desc {
+                compile_context.stack_top -= 1;
+
+                match prefixexp_exp_desc {
                     ExpDesc::Local(table) => {
                         Ok(ExpDesc::TableLocal(table, Box::new(name_exp_desc)))
                     }
@@ -731,18 +720,7 @@ impl Program {
                     }
                 }
             }
-            make_deconstruct!(
-                _functioncall=> TokenType::Functioncall,
-                _dot=> TokenType::Dot,
-                _name=> TokenType::Name(_)
-            ) => Err(Error::Unimplemented),
-            make_deconstruct!(
-                _lparen=> TokenType::LParen,
-                _exp=> TokenType::Exp,
-                _rparen=> TokenType::RParen,
-                _dot=> TokenType::Dot,
-                _name=> TokenType::Name(_)
-            ) => Err(Error::Unimplemented),
+
             _ => {
                 unreachable!(
                     "Var did not match any of the productions. Had {:#?}.",
@@ -894,100 +872,25 @@ impl Program {
                 Ok(self.integer(*integer))
             }
             make_deconstruct!(_float => TokenType::Float(float)) => Ok(self.float(*float)),
+            make_deconstruct!(_float => TokenType::Dots) => Err(Error::Unimplemented),
             make_deconstruct!(_functiondef => TokenType::Functiondef) => Err(Error::Unimplemented),
-            make_deconstruct!(var => TokenType::Var) => self.var(var, compile_context),
-            make_deconstruct!(functioncall => TokenType::Functioncall) => {
-                self.functioncall(functioncall, compile_context)?;
-                // TODO verify what needs to be returned here
-                Ok(ExpDesc::Nil)
+            make_deconstruct!(prefixexp => TokenType::Prefixexp) => {
+                self.prefixexp(prefixexp, compile_context, exp_desc)
             }
-            make_deconstruct!(
-                _lparen => TokenType::LParen,
-                exp => TokenType::Exp,
-                _rparen => TokenType::RParen
-            ) => self.exp(exp, compile_context, exp_desc),
             make_deconstruct!(
                 tableconstructor => TokenType::Tableconstructor
             ) => self.tableconstructor(tableconstructor, compile_context, exp_desc),
             make_deconstruct!(
-                _lhs => TokenType::Exp,
-                _op => TokenType::Or,
-                _rhs => TokenType::Exp
-            ) => Err(Error::Unimplemented),
-            make_deconstruct!(
-                _lhs => TokenType::Exp,
-                _op => TokenType::And,
-                _rhs => TokenType::Exp
-            ) => Err(Error::Unimplemented),
-            make_deconstruct!(
-                _lhs => TokenType::Exp,
-                _op => TokenType::Less,
-                _rhs => TokenType::Exp
-            ) => Err(Error::Unimplemented),
-            make_deconstruct!(
-                _lhs => TokenType::Exp,
-                _op => TokenType::Greater,
-                _rhs => TokenType::Exp
-            ) => Err(Error::Unimplemented),
-            make_deconstruct!(
-                _lhs => TokenType::Exp,
-                _op => TokenType::Leq,
-                _rhs => TokenType::Exp
-            ) => Err(Error::Unimplemented),
-            make_deconstruct!(
-                _lhs => TokenType::Exp,
-                _op => TokenType::Geq,
-                _rhs => TokenType::Exp
-            ) => Err(Error::Unimplemented),
-            make_deconstruct!(
-                _lhs => TokenType::Exp,
-                _op => TokenType::Eq,
-                _rhs => TokenType::Exp
-            ) => Err(Error::Unimplemented),
-            make_deconstruct!(
-                _lhs => TokenType::Exp,
-                _op => TokenType::Neq,
-                _rhs => TokenType::Exp
-            ) => Err(Error::Unimplemented),
-            make_deconstruct!(
-                _lhs => TokenType::Exp,
-                _op => TokenType::BitOr,
-                _rhs => TokenType::Exp
-            ) => Err(Error::Unimplemented),
-            make_deconstruct!(
-                _lhs => TokenType::Exp,
-                _op => TokenType::BitXor,
-                _rhs => TokenType::Exp
-            ) => Err(Error::Unimplemented),
-            make_deconstruct!(
-                _lhs => TokenType::Exp,
-                _op => TokenType::BitAnd,
-                _rhs => TokenType::Exp
-            ) => Err(Error::Unimplemented),
-            make_deconstruct!(
-                _lhs => TokenType::Exp,
-                _op => TokenType::ShiftL,
-                _rhs => TokenType::Exp
-            ) => Err(Error::Unimplemented),
-            make_deconstruct!(
-                _lhs => TokenType::Exp,
-                _op => TokenType::ShiftR,
-                _rhs => TokenType::Exp
-            ) => Err(Error::Unimplemented),
-            make_deconstruct!(
-                _lhs => TokenType::Exp,
-                _op => TokenType::Concat,
-                _rhs => TokenType::Exp
-            ) => Err(Error::Unimplemented),
-            make_deconstruct!(
                 lhs => TokenType::Exp,
-                _op => TokenType::Add,
+                op => TokenType::Binop,
                 rhs => TokenType::Exp
             ) => {
+                let op = self.binop(op)?;
+
                 let (lhs_dst, lhs_top) = match exp_desc {
                     ExpDesc::Local(dst) => (u8::try_from(*dst)?, exp_desc.clone()),
                     ExpDesc::Global(_) => compile_context.reserve_stack_top(),
-                    _ => todo!("add: see what other cases are needed"),
+                    _ => todo!("binop: see what other cases are needed"),
                 };
                 let lhs = self.exp(lhs, compile_context, &lhs_top)?;
 
@@ -996,224 +899,47 @@ impl Program {
 
                 compile_context.stack_top -= 2;
 
-                match (lhs, rhs) {
-                    (ExpDesc::Integer(lhs_i), ExpDesc::Integer(rhs_i)) => {
-                        Ok(ExpDesc::Integer(lhs_i + rhs_i))
-                    }
-                    (ExpDesc::Float(lhs_f), ExpDesc::Float(rhs_f)) => {
-                        Ok(ExpDesc::Float(lhs_f + rhs_f))
-                    }
-                    (ExpDesc::Integer(lhs_i), ExpDesc::Float(rhs_f)) => {
-                        Ok(ExpDesc::Float(lhs_i as f64 + rhs_f))
-                    }
-                    (ExpDesc::Float(lhs_f), ExpDesc::Integer(rhs_i)) => {
-                        Ok(ExpDesc::Float(lhs_f + rhs_i as f64))
-                    }
-                    (ExpDesc::Nil, _) => Err(Error::NilArithmetic),
-                    (ExpDesc::Boolean(_), _) => Err(Error::BoolArithmetic),
-                    (ExpDesc::String(_), _) => Err(Error::StringArithmetic),
-                    (ExpDesc::TableLocal(_, _) | ExpDesc::TableGlobal(_, _), _) => {
-                        Err(Error::TableArithmetic)
-                    }
-                    (_, ExpDesc::Nil) => Err(Error::NilArithmetic),
-                    (_, ExpDesc::Boolean(_)) => Err(Error::BoolArithmetic),
-                    (_, ExpDesc::String(_)) => Err(Error::StringArithmetic),
-                    (_, ExpDesc::TableLocal(_, _) | ExpDesc::TableGlobal(_, _)) => {
-                        Err(Error::TableArithmetic)
-                    }
-                    (lhs, rhs) => {
-                        lhs.discharge(&lhs_top, self, compile_context)?;
-                        rhs.discharge(&rhs_top, self, compile_context)?;
-
-                        Ok(ExpDesc::Binop(
-                            ByteCode::Add,
-                            usize::from(lhs_dst),
-                            usize::from(rhs_dst),
-                        ))
-                    }
-                }
-            }
-            make_deconstruct!(
-                lhs => TokenType::Exp,
-                _op => TokenType::Sub,
-                rhs => TokenType::Exp
-            ) => {
-                let (lhs_dst, lhs_top) = match exp_desc {
-                    ExpDesc::Local(dst) => (u8::try_from(*dst)?, exp_desc.clone()),
-                    ExpDesc::Global(_) => compile_context.reserve_stack_top(),
-                    _ => todo!("sub: see what other cases are needed"),
+                let func = match op {
+                    TokenType::Add => binops::binop_add,
+                    TokenType::Sub => binops::binop_sub,
+                    TokenType::Mul => binops::binop_mul,
+                    TokenType::Mod => binops::binop_mod,
+                    TokenType::Pow => binops::binop_pow,
+                    TokenType::Div => binops::binop_div,
+                    TokenType::Idiv => binops::binop_idiv,
+                    TokenType::BitAnd => binops::binop_bitand,
+                    TokenType::BitOr => binops::binop_bitor,
+                    TokenType::BitXor => binops::binop_bitxor,
+                    TokenType::ShiftL => binops::binop_shiftl,
+                    TokenType::ShiftR => binops::binop_shiftr,
+                    TokenType::Or => return Err(Error::Unimplemented),
+                    TokenType::And => return Err(Error::Unimplemented),
+                    TokenType::Less => return Err(Error::Unimplemented),
+                    TokenType::Greater => return Err(Error::Unimplemented),
+                    TokenType::Leq => return Err(Error::Unimplemented),
+                    TokenType::Geq => return Err(Error::Unimplemented),
+                    TokenType::Eq => return Err(Error::Unimplemented),
+                    TokenType::Neq => return Err(Error::Unimplemented),
+                    TokenType::Concat => return Err(Error::Unimplemented),
+                    _ => return Err(Error::Unimplemented),
                 };
-                let lhs = self.exp(lhs, compile_context, &lhs_top)?;
-
-                let (rhs_dst, rhs_top) = compile_context.reserve_stack_top();
-                let rhs = self.exp(rhs, compile_context, &rhs_top)?;
-
-                compile_context.stack_top -= 2;
-
-                match (lhs, rhs) {
-                    (ExpDesc::Integer(lhs_i), ExpDesc::Integer(rhs_i)) => {
-                        Ok(ExpDesc::Integer(lhs_i - rhs_i))
-                    }
-                    (ExpDesc::Float(lhs_f), ExpDesc::Float(rhs_f)) => {
-                        Ok(ExpDesc::Float(lhs_f - rhs_f))
-                    }
-                    (ExpDesc::Integer(lhs_i), ExpDesc::Float(rhs_f)) => {
-                        Ok(ExpDesc::Float(lhs_i as f64 - rhs_f))
-                    }
-                    (ExpDesc::Float(lhs_f), ExpDesc::Integer(rhs_i)) => {
-                        Ok(ExpDesc::Float(lhs_f - rhs_i as f64))
-                    }
-                    (ExpDesc::Nil, _) => Err(Error::NilArithmetic),
-                    (ExpDesc::Boolean(_), _) => Err(Error::BoolArithmetic),
-                    (ExpDesc::String(_), _) => Err(Error::StringArithmetic),
-                    (ExpDesc::TableLocal(_, _) | ExpDesc::TableGlobal(_, _), _) => {
-                        Err(Error::TableArithmetic)
-                    }
-                    (_, ExpDesc::Nil) => Err(Error::NilArithmetic),
-                    (_, ExpDesc::Boolean(_)) => Err(Error::BoolArithmetic),
-                    (_, ExpDesc::String(_)) => Err(Error::StringArithmetic),
-                    (_, ExpDesc::TableLocal(_, _) | ExpDesc::TableGlobal(_, _)) => {
-                        Err(Error::TableArithmetic)
-                    }
-                    (lhs, rhs) => {
-                        lhs.discharge(&lhs_top, self, compile_context)?;
-                        rhs.discharge(&rhs_top, self, compile_context)?;
-
-                        Ok(ExpDesc::Binop(
-                            ByteCode::Sub,
-                            usize::from(lhs_dst),
-                            usize::from(rhs_dst),
-                        ))
-                    }
-                }
+                func(
+                    self,
+                    compile_context,
+                    &lhs,
+                    &rhs,
+                    &lhs_top,
+                    &rhs_top,
+                    lhs_dst,
+                    rhs_dst,
+                )
             }
             make_deconstruct!(
-                lhs => TokenType::Exp,
-                _op => TokenType::Mul,
+                op => TokenType::Unop,
                 rhs => TokenType::Exp
             ) => {
-                let (lhs_dst, lhs_top) = match exp_desc {
-                    ExpDesc::Local(dst) => (u8::try_from(*dst)?, exp_desc.clone()),
-                    ExpDesc::Global(_) => compile_context.reserve_stack_top(),
-                    _ => todo!("mul: see what other cases are needed"),
-                };
-                let lhs = self.exp(lhs, compile_context, &lhs_top)?;
+                let op = self.unop(op)?;
 
-                let (rhs_dst, rhs_top) = compile_context.reserve_stack_top();
-                let rhs = self.exp(rhs, compile_context, &rhs_top)?;
-
-                compile_context.stack_top -= 2;
-
-                match (lhs, rhs) {
-                    (ExpDesc::Integer(lhs_i), ExpDesc::Integer(rhs_i)) => {
-                        Ok(ExpDesc::Integer(lhs_i * rhs_i))
-                    }
-                    (ExpDesc::Float(lhs_f), ExpDesc::Float(rhs_f)) => {
-                        Ok(ExpDesc::Float(lhs_f * rhs_f))
-                    }
-                    (ExpDesc::Integer(lhs_i), ExpDesc::Float(rhs_f)) => {
-                        Ok(ExpDesc::Float(lhs_i as f64 * rhs_f))
-                    }
-                    (ExpDesc::Float(lhs_f), ExpDesc::Integer(rhs_i)) => {
-                        Ok(ExpDesc::Float(lhs_f * rhs_i as f64))
-                    }
-                    (ExpDesc::Nil, _) => Err(Error::NilArithmetic),
-                    (ExpDesc::Boolean(_), _) => Err(Error::BoolArithmetic),
-                    (ExpDesc::String(_), _) => Err(Error::StringArithmetic),
-                    (ExpDesc::TableLocal(_, _) | ExpDesc::TableGlobal(_, _), _) => {
-                        Err(Error::TableArithmetic)
-                    }
-                    (_, ExpDesc::Nil) => Err(Error::NilArithmetic),
-                    (_, ExpDesc::Boolean(_)) => Err(Error::BoolArithmetic),
-                    (_, ExpDesc::String(_)) => Err(Error::StringArithmetic),
-                    (_, ExpDesc::TableLocal(_, _) | ExpDesc::TableGlobal(_, _)) => {
-                        Err(Error::TableArithmetic)
-                    }
-                    (lhs, rhs) => {
-                        lhs.discharge(&lhs_top, self, compile_context)?;
-                        rhs.discharge(&rhs_top, self, compile_context)?;
-
-                        Ok(ExpDesc::Binop(
-                            ByteCode::Mul,
-                            usize::from(lhs_dst),
-                            usize::from(rhs_dst),
-                        ))
-                    }
-                }
-            }
-            make_deconstruct!(
-                lhs => TokenType::Exp,
-                _op => TokenType::Div,
-                rhs => TokenType::Exp
-            ) => {
-                let (lhs_dst, lhs_top) = match exp_desc {
-                    ExpDesc::Local(dst) => (u8::try_from(*dst)?, exp_desc.clone()),
-                    ExpDesc::Global(_) => compile_context.reserve_stack_top(),
-                    _ => todo!("mul: see what other cases are needed"),
-                };
-                let lhs = self.exp(lhs, compile_context, &lhs_top)?;
-
-                let (rhs_dst, rhs_top) = compile_context.reserve_stack_top();
-                let rhs = self.exp(rhs, compile_context, &rhs_top)?;
-
-                compile_context.stack_top -= 2;
-
-                match (lhs, rhs) {
-                    (ExpDesc::Integer(lhs_i), ExpDesc::Integer(rhs_i)) => {
-                        Ok(ExpDesc::Float(lhs_i as f64 / rhs_i as f64))
-                    }
-                    (ExpDesc::Float(lhs_f), ExpDesc::Float(rhs_f)) => {
-                        Ok(ExpDesc::Float(lhs_f / rhs_f))
-                    }
-                    (ExpDesc::Integer(lhs_i), ExpDesc::Float(rhs_f)) => {
-                        Ok(ExpDesc::Float(lhs_i as f64 / rhs_f))
-                    }
-                    (ExpDesc::Float(lhs_f), ExpDesc::Integer(rhs_i)) => {
-                        Ok(ExpDesc::Float(lhs_f / rhs_i as f64))
-                    }
-                    (ExpDesc::Nil, _) => Err(Error::NilArithmetic),
-                    (ExpDesc::Boolean(_), _) => Err(Error::BoolArithmetic),
-                    (ExpDesc::String(_), _) => Err(Error::StringArithmetic),
-                    (ExpDesc::TableLocal(_, _) | ExpDesc::TableGlobal(_, _), _) => {
-                        Err(Error::TableArithmetic)
-                    }
-                    (_, ExpDesc::Nil) => Err(Error::NilArithmetic),
-                    (_, ExpDesc::Boolean(_)) => Err(Error::BoolArithmetic),
-                    (_, ExpDesc::String(_)) => Err(Error::StringArithmetic),
-                    (_, ExpDesc::TableLocal(_, _) | ExpDesc::TableGlobal(_, _)) => {
-                        Err(Error::TableArithmetic)
-                    }
-                    (lhs, rhs) => {
-                        lhs.discharge(&lhs_top, self, compile_context)?;
-                        rhs.discharge(&rhs_top, self, compile_context)?;
-
-                        Ok(ExpDesc::Binop(
-                            ByteCode::Div,
-                            usize::from(lhs_dst),
-                            usize::from(rhs_dst),
-                        ))
-                    }
-                }
-            }
-            make_deconstruct!(
-                _lhs => TokenType::Exp,
-                _op => TokenType::Idiv,
-                _rhs => TokenType::Exp
-            ) => Err(Error::Unimplemented),
-            make_deconstruct!(
-                _lhs => TokenType::Exp,
-                _op => TokenType::Mod,
-                _rhs => TokenType::Exp
-            ) => Err(Error::Unimplemented),
-            make_deconstruct!(
-                _lhs => TokenType::Exp,
-                _op => TokenType::Pow,
-                _rhs => TokenType::Exp
-            ) => Err(Error::Unimplemented),
-            make_deconstruct!(
-                _op => TokenType::Not,
-                rhs => TokenType::Exp
-            ) => {
                 let (stack_top, top) = match exp_desc {
                     ExpDesc::Local(top) => (*top, exp_desc.clone()),
                     _ => {
@@ -1223,99 +949,63 @@ impl Program {
                 };
                 let exp_exp_desc = self.exp(rhs, compile_context, &top)?;
 
-                match exp_exp_desc {
-                    ExpDesc::Local(src) => Ok(ExpDesc::Unop(ByteCode::Not, src)),
-                    global @ ExpDesc::Global(_) => {
+                match (exp_exp_desc, op) {
+                    (ExpDesc::Local(src), TokenType::Not) => Ok(ExpDesc::Unop(ByteCode::Not, src)),
+                    (global @ ExpDesc::Global(_), TokenType::Not) => {
                         global.discharge(&top, self, compile_context)?;
                         Ok(ExpDesc::Unop(ByteCode::Not, stack_top))
                     }
-                    ExpDesc::Nil => Ok(ExpDesc::Boolean(true)),
-                    ExpDesc::Boolean(boolean) => Ok(ExpDesc::Boolean(!boolean)),
-                    other => {
+                    (ExpDesc::Nil, TokenType::Not) => Ok(ExpDesc::Boolean(true)),
+                    (ExpDesc::Boolean(boolean), TokenType::Not) => Ok(ExpDesc::Boolean(!boolean)),
+                    (other, TokenType::Not) => {
+                        // TODO check what to do here
                         other.discharge(&top, self, compile_context)?;
                         Ok(top)
                     }
-                }
-            }
-            make_deconstruct!(
-                _op => TokenType::Len,
-                rhs => TokenType::Exp
-            ) => {
-                let (stack_top, top) = match exp_desc {
-                    ExpDesc::Local(top) => (*top, exp_desc.clone()),
-                    _ => {
-                        let (stack_top, top) = compile_context.reserve_stack_top();
-                        (usize::from(stack_top), top)
-                    }
-                };
-                let exp_exp_desc = self.exp(rhs, compile_context, &top)?;
-
-                match exp_exp_desc {
-                    ExpDesc::Local(src) => Ok(ExpDesc::Unop(ByteCode::Len, src)),
-                    global @ ExpDesc::Global(_) => {
+                    (ExpDesc::Local(src), TokenType::Len) => Ok(ExpDesc::Unop(ByteCode::Len, src)),
+                    (global @ ExpDesc::Global(_), TokenType::Len) => {
                         global.discharge(&top, self, compile_context)?;
                         Ok(ExpDesc::Unop(ByteCode::Len, stack_top))
                     }
-                    ExpDesc::String(string) => {
+                    (ExpDesc::String(string), TokenType::Len) => {
                         let string = string.unescape()?;
                         Ok(ExpDesc::Integer(i64::try_from(string.len())?))
                     }
-                    other => {
+                    (other, TokenType::Len) => {
+                        // TODO check what to do here
                         other.discharge(&top, self, compile_context)?;
                         Ok(top)
                     }
-                }
-            }
-            make_deconstruct!(
-                _op => TokenType::Sub,
-                rhs => TokenType::Exp
-            ) => {
-                let (stack_top, top) = match exp_desc {
-                    ExpDesc::Local(top) => (*top, exp_desc.clone()),
-                    _ => {
-                        let (stack_top, top) = compile_context.reserve_stack_top();
-                        (usize::from(stack_top), top)
-                    }
-                };
-                let exp_exp_desc = self.exp(rhs, compile_context, &top)?;
-
-                match exp_exp_desc {
-                    ExpDesc::Local(src) => Ok(ExpDesc::Unop(ByteCode::Neg, src)),
-                    global @ ExpDesc::Global(_) => {
+                    (ExpDesc::Local(src), TokenType::Sub) => Ok(ExpDesc::Unop(ByteCode::Neg, src)),
+                    (global @ ExpDesc::Global(_), TokenType::Sub) => {
                         global.discharge(&top, self, compile_context)?;
                         Ok(ExpDesc::Unop(ByteCode::Neg, stack_top))
                     }
-                    ExpDesc::Integer(integer) => Ok(ExpDesc::Integer(-integer)),
-                    ExpDesc::Float(float) => Ok(ExpDesc::Float(-float)),
-                    other => {
+                    (ExpDesc::Integer(integer), TokenType::Sub) => Ok(ExpDesc::Integer(-integer)),
+                    (ExpDesc::Float(float), TokenType::Sub) => Ok(ExpDesc::Float(-float)),
+                    (other, TokenType::Sub) => {
+                        // TODO check what to do here
                         other.discharge(&top, self, compile_context)?;
                         Ok(top)
                     }
-                }
-            }
-            make_deconstruct!(
-                _op => TokenType::BitXor,
-                rhs => TokenType::Exp
-            ) => {
-                let (stack_top, top) = match exp_desc {
-                    ExpDesc::Local(top) => (*top, exp_desc.clone()),
-                    _ => {
-                        let (stack_top, top) = compile_context.reserve_stack_top();
-                        (usize::from(stack_top), top)
+                    (ExpDesc::Local(src), TokenType::BitXor) => {
+                        Ok(ExpDesc::Unop(ByteCode::BitNot, src))
                     }
-                };
-                let exp_exp_desc = self.exp(rhs, compile_context, &top)?;
-
-                match exp_exp_desc {
-                    ExpDesc::Local(src) => Ok(ExpDesc::Unop(ByteCode::BitNot, src)),
-                    global @ ExpDesc::Global(_) => {
+                    (global @ ExpDesc::Global(_), TokenType::BitXor) => {
                         global.discharge(&top, self, compile_context)?;
                         Ok(ExpDesc::Unop(ByteCode::BitNot, stack_top))
                     }
-                    ExpDesc::Integer(integer) => Ok(ExpDesc::Integer(!integer)),
-                    other => {
+                    (ExpDesc::Integer(integer), TokenType::BitXor) => {
+                        Ok(ExpDesc::Integer(!integer))
+                    }
+                    (other, TokenType::BitXor) => {
+                        // TODO check what to do here
                         other.discharge(&top, self, compile_context)?;
                         Ok(top)
+                    }
+                    _ => {
+                        log::error!("Could't process Unop.");
+                        Err(Error::Unimplemented)
                     }
                 }
             }
@@ -1323,6 +1013,35 @@ impl Program {
                 unreachable!(
                     "Exp did not match any of the productions. Had {:#?}.",
                     exp.tokens.iter().map(|t| &t.token_type).collect::<Vec<_>>()
+                );
+            }
+        }
+    }
+
+    fn prefixexp<'a>(
+        &mut self,
+        prefixexp: &Token<'a>,
+        compile_context: &mut CompileContext,
+        exp_desc: &ExpDesc<'a>,
+    ) -> Result<ExpDesc<'a>, Error> {
+        match prefixexp.tokens.as_slice() {
+            make_deconstruct!(var => TokenType::Var) => self.var(var, compile_context),
+            make_deconstruct!(functioncall => TokenType::Functioncall) => self
+                .functioncall(functioncall, compile_context)
+                .map(|()| ExpDesc::Nil),
+            make_deconstruct!(
+                _lparen => TokenType::LParen,
+                exp => TokenType::Exp,
+                _rparen => TokenType::RParen,
+            ) => self.exp(exp, compile_context, exp_desc),
+            _ => {
+                unreachable!(
+                    "Prefixexp did not match any of the productions. Had {:#?}.",
+                    prefixexp
+                        .tokens
+                        .iter()
+                        .map(|t| &t.token_type)
+                        .collect::<Vec<_>>()
                 );
             }
         }
@@ -1336,15 +1055,12 @@ impl Program {
         let func_index = compile_context.stack_top;
         match functioncall.tokens.as_slice() {
             make_deconstruct!(
-                var => TokenType::Var,
+                prefixexp => TokenType::Prefixexp,
                 args => TokenType::Args
             ) => {
-                let top = self.var(var, compile_context)?;
-                top.discharge(
-                    &compile_context.reserve_stack_top().1,
-                    self,
-                    compile_context,
-                )?;
+                let (_, prefixexp_top) = compile_context.reserve_stack_top();
+                let top = self.prefixexp(prefixexp, compile_context, &prefixexp_top)?;
+                top.discharge(&prefixexp_top, self, compile_context)?;
 
                 self.args(args, compile_context)?;
 
@@ -1354,31 +1070,7 @@ impl Program {
                 Ok(())
             }
             make_deconstruct!(
-                _functioncall => TokenType::Functioncall,
-                _args => TokenType::Args
-            ) => Err(Error::Unimplemented),
-            make_deconstruct!(
-                _lparen => TokenType::LParen,
-                _exp => TokenType::Exp,
-                _rparen => TokenType::RParen,
-                _args => TokenType::Args
-            ) => Err(Error::Unimplemented),
-            make_deconstruct!(
-                _var => TokenType::Var,
-                _colon => TokenType::Colon,
-                _name => TokenType::Name(_),
-                _args => TokenType::Args
-            ) => Err(Error::Unimplemented),
-            make_deconstruct!(
-                _functioncall => TokenType::Functioncall,
-                _colon => TokenType::Colon,
-                _name => TokenType::Name(_),
-                _args => TokenType::Args
-            ) => Err(Error::Unimplemented),
-            make_deconstruct!(
-                _lparen => TokenType::LParen,
-                _exp => TokenType::Exp,
-                _rparen => TokenType::RParen,
+                _prefixexp => TokenType::Prefixexp,
                 _colon => TokenType::Colon,
                 _name => TokenType::Name(_),
                 _args => TokenType::Args
@@ -1541,17 +1233,11 @@ impl Program {
 
     fn parlist(&mut self, parlist: &Token, _compile_context: &CompileContext) -> Result<(), Error> {
         match parlist.tokens.as_slice() {
-            [Token {
-                tokens: _,
-                token_type: TokenType::Namelist,
-            }, Token {
-                tokens: _,
-                token_type: TokenType::ParlistCont,
-            }] => Err(Error::Unimplemented),
-            [Token {
-                tokens: _,
-                token_type: TokenType::Dots,
-            }] => Err(Error::Unimplemented),
+            make_deconstruct!(
+                _name => TokenType::Name(_),
+                _parlist_cont => TokenType::ParlistCont,
+            ) => Err(Error::Unimplemented),
+            make_deconstruct!(_dots => TokenType::Dots) => Err(Error::Unimplemented),
             _ => {
                 unreachable!(
                     "Parlist did not match any of the productions. Had {:#?}.",
@@ -1572,13 +1258,15 @@ impl Program {
     ) -> Result<(), Error> {
         match parlist_cont.tokens.as_slice() {
             [] => Ok(()),
-            [Token {
-                tokens: _,
-                token_type: TokenType::Comma,
-            }, Token {
-                tokens: _,
-                token_type: TokenType::Dots,
-            }] => Err(Error::Unimplemented),
+            make_deconstruct!(
+                _comma => TokenType::Comma,
+                _name => TokenType::Name(_),
+                _parlist_cont => TokenType::ParlistCont,
+            ) => Err(Error::Unimplemented),
+            make_deconstruct!(
+                _comma => TokenType::Comma,
+                _dots => TokenType::Dots,
+            ) => Err(Error::Unimplemented),
             _ => {
                 unreachable!(
                     "ParlistCont did not match any of the productions. Had {:#?}.",
@@ -1839,6 +1527,65 @@ impl Program {
                     "Fieldsep did not match any of the productions. Had {:#?}.",
                     fieldsep
                         .tokens
+                        .iter()
+                        .map(|t| &t.token_type)
+                        .collect::<Vec<_>>()
+                );
+            }
+        }
+    }
+
+    fn binop<'a>(&mut self, binop: &Token<'a>) -> Result<TokenType<'a>, Error> {
+        match binop.tokens.as_slice() {
+            [Token {
+                tokens: _,
+                token_type:
+                    token @ (TokenType::Or
+                    | TokenType::And
+                    | TokenType::Less
+                    | TokenType::Greater
+                    | TokenType::Leq
+                    | TokenType::Geq
+                    | TokenType::Eq
+                    | TokenType::Neq
+                    | TokenType::BitOr
+                    | TokenType::BitXor
+                    | TokenType::BitAnd
+                    | TokenType::ShiftL
+                    | TokenType::ShiftR
+                    | TokenType::Concat
+                    | TokenType::Add
+                    | TokenType::Sub
+                    | TokenType::Mul
+                    | TokenType::Div
+                    | TokenType::Idiv
+                    | TokenType::Mod
+                    | TokenType::Pow),
+            }] => Ok(*token),
+            _ => {
+                unreachable!(
+                    "Binop did not match any of the productions. Had {:#?}.",
+                    binop
+                        .tokens
+                        .iter()
+                        .map(|t| &t.token_type)
+                        .collect::<Vec<_>>()
+                );
+            }
+        }
+    }
+
+    fn unop<'a>(&mut self, unop: &Token<'a>) -> Result<TokenType<'a>, Error> {
+        match unop.tokens.as_slice() {
+            [Token {
+                tokens: _,
+                token_type:
+                    token @ (TokenType::BitXor | TokenType::Sub | TokenType::Len | TokenType::Not),
+            }] => Ok(*token),
+            _ => {
+                unreachable!(
+                    "Unop did not match any of the productions. Had {:#?}.",
+                    unop.tokens
                         .iter()
                         .map(|t| &t.token_type)
                         .collect::<Vec<_>>()

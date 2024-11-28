@@ -133,6 +133,20 @@ pub enum ByteCode {
     /// `lhs`: Location on stack of left-hand operand  
     /// `rhs`: Location on stack of right-hand operand
     Mul(u8, u8, u8),
+    /// `MOD`  
+    /// Performs arithmetic modulus.
+    ///
+    /// `dst`: Location on stack to store result of operation  
+    /// `lhs`: Location on stack of left-hand operand  
+    /// `rhs`: Location on stack of right-hand operand
+    Mod(u8, u8, u8),
+    /// `POW`  
+    /// Performs arithmetic power.
+    ///
+    /// `dst`: Location on stack to store result of operation  
+    /// `lhs`: Location on stack of left-hand operand  
+    /// `rhs`: Location on stack of right-hand operand
+    Pow(u8, u8, u8),
     /// `DIV`  
     /// Performs arithmetic division.
     ///
@@ -140,6 +154,48 @@ pub enum ByteCode {
     /// `lhs`: Location on stack of left-hand operand  
     /// `rhs`: Location on stack of right-hand operand
     Div(u8, u8, u8),
+    /// `IDIV`  
+    /// Performs arithmetic whole division.
+    ///
+    /// `dst`: Location on stack to store result of operation  
+    /// `lhs`: Location on stack of left-hand operand  
+    /// `rhs`: Location on stack of right-hand operand
+    Idiv(u8, u8, u8),
+    /// `BAND`  
+    /// Performs bitwise `and`.
+    ///
+    /// `dst`: Location on stack to store result of operation  
+    /// `lhs`: Location on stack of left-hand operand  
+    /// `rhs`: Location on stack of right-hand operand
+    BitAnd(u8, u8, u8),
+    /// `BOR`  
+    /// Performs bitwise `or`.
+    ///
+    /// `dst`: Location on stack to store result of operation  
+    /// `lhs`: Location on stack of left-hand operand  
+    /// `rhs`: Location on stack of right-hand operand
+    BitOr(u8, u8, u8),
+    /// `BXOR`  
+    /// Performs bitwise `xor`.
+    ///
+    /// `dst`: Location on stack to store result of operation  
+    /// `lhs`: Location on stack of left-hand operand  
+    /// `rhs`: Location on stack of right-hand operand
+    BitXor(u8, u8, u8),
+    /// `SHL`  
+    /// Performs bitwise shift left.
+    ///
+    /// `dst`: Location on stack to store result of operation  
+    /// `lhs`: Location on stack of left-hand operand  
+    /// `rhs`: Location on stack of right-hand operand
+    ShiftL(u8, u8, u8),
+    /// `SHR`  
+    /// Performs bitwise shift right.
+    ///
+    /// `dst`: Location on stack to store result of operation  
+    /// `lhs`: Location on stack of left-hand operand  
+    /// `rhs`: Location on stack of right-hand operand
+    ShiftR(u8, u8, u8),
     /// `UNM`  
     /// Performs negation.
     ///

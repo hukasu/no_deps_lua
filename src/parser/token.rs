@@ -10,7 +10,7 @@ pub struct Token<'a> {
     pub(crate) token_type: TokenType<'a>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TokenType<'a> {
     // Terminals
     And,
@@ -275,7 +275,7 @@ pub enum TokenType<'a> {
     Unop,
 }
 
-impl<'a> Display for TokenType<'a> {
+impl Display for TokenType<'_> {
     #[allow(clippy::too_many_lines)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
