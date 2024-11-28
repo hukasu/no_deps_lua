@@ -241,6 +241,7 @@ pub enum TokenType<'a> {
     /// 90 exp :== exp Pow exp
     /// ```
     Exp,
+    Prefixexp,
     /// Functioncall
     ///
     /// Reduced from Productions
@@ -270,6 +271,8 @@ pub enum TokenType<'a> {
     FieldlistCont,
     Field,
     Fieldsep,
+    Binop,
+    Unop,
 }
 
 impl<'a> Display for TokenType<'a> {
@@ -365,6 +368,7 @@ impl<'a> Display for TokenType<'a> {
             Self::Explist => write!(f, "explist"),
             Self::ExplistCont => write!(f, "explist_cont"),
             Self::Exp => write!(f, "exp"),
+            Self::Prefixexp => write!(f, "prefixexp"),
             Self::Functioncall => write!(f, "functioncall"),
             Self::Args => write!(f, "args"),
             Self::ArgsExplist => write!(f, "args_explist"),
@@ -379,6 +383,8 @@ impl<'a> Display for TokenType<'a> {
             Self::FieldlistCont => write!(f, "fieldlist_cont"),
             Self::Field => write!(f, "field"),
             Self::Fieldsep => write!(f, "fieldsep"),
+            Self::Binop => write!(f, "binop"),
+            Self::Unop => write!(f, "unop"),
         }
     }
 }
