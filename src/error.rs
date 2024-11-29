@@ -25,6 +25,11 @@ pub enum Error {
     StringBitwise,
     TableBitwise,
     FunctionBitwise,
+    // Concat
+    NilConcat,
+    BoolConcat,
+    TableConcat,
+    FunctionConcat,
     // Other
     StackOverflow,
     IntegerConversion,
@@ -48,9 +53,13 @@ impl Display for Error {
             Self::FloatBitwise => write!(f, "{}", crate::program::Error::FloatBitwise),
             Self::NilBitwise => write!(f, "{}", crate::program::Error::NilBitwise),
             Self::BoolBitwise => write!(f, "{}", crate::program::Error::BoolBitwise),
-            Self::StringBitwise => write!(f, "{}", crate::program::Error::StringArithmetic),
-            Self::TableBitwise => write!(f, "{}", crate::program::Error::TableArithmetic),
-            Self::FunctionBitwise => write!(f, "Can't use Function in arithmetic operations."),
+            Self::StringBitwise => write!(f, "{}", crate::program::Error::StringBitwise),
+            Self::TableBitwise => write!(f, "{}", crate::program::Error::TableBitwise),
+            Self::FunctionBitwise => write!(f, "Can't use Function in bitwise operations."),
+            Self::NilConcat => write!(f, "{}", crate::program::Error::NilConcat),
+            Self::BoolConcat => write!(f, "{}", crate::program::Error::BoolConcat),
+            Self::TableConcat => write!(f, "{}", crate::program::Error::TableConcat),
+            Self::FunctionConcat => write!(f, "Can't use Function in concat operations."),
             Self::StackOverflow => write!(f, "Vm's stack has overflown."),
             Self::IntegerConversion => write!(
                 f,

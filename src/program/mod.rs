@@ -920,7 +920,7 @@ impl Program {
                     TokenType::Geq => return Err(Error::Unimplemented),
                     TokenType::Eq => return Err(Error::Unimplemented),
                     TokenType::Neq => return Err(Error::Unimplemented),
-                    TokenType::Concat => return Err(Error::Unimplemented),
+                    TokenType::Concat => binops::binop_concat,
                     _ => return Err(Error::Unimplemented),
                 };
                 func(

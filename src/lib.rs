@@ -14,11 +14,9 @@ extern crate alloc;
 
 use core::{cell::RefCell, cmp::Ordering};
 
-use alloc::{rc::Rc, vec::Vec};
-use ext::FloatExt;
-use table::Table;
+use alloc::{format, rc::Rc, vec::Vec};
 
-use self::{program::ByteCode, value::Value};
+use self::{ext::FloatExt, program::ByteCode, table::Table, value::Value};
 
 pub use {error::Error, program::Program};
 
@@ -536,7 +534,25 @@ impl Lua {
                     };
                     vm.set_stack(*dst, value)?;
                 }
-
+                ByteCode::Concat(dst, lhs, rhs) => {
+                    let value = match (&vm.stack[usize::from(*lhs)], &vm.stack[usize::from(*rhs)]) {
+                        (Value::Nil, _) => return Err(Error::NilConcat),
+                        (Value::Boolean(_), _) => return Err(Error::BoolConcat),
+                        (Value::Table(_), _) => return Err(Error::TableConcat),
+                        (Value::Function(_), _) => return Err(Error::FunctionConcat),
+                        (_, Value::Nil) => return Err(Error::NilConcat),
+                        (_, Value::Boolean(_)) => return Err(Error::BoolConcat),
+                        (_, Value::Table(_)) => return Err(Error::TableConcat),
+                        (_, Value::Function(_)) => return Err(Error::FunctionConcat),
+                        (Value::Float(lhs), Value::Float(rhs)) => {
+                            format!("{:?}{:?}", lhs, rhs).as_str().into()
+                        }
+                        (Value::Float(lhs), rhs) => format!("{:?}{}", lhs, rhs).as_str().into(),
+                        (lhs, Value::Float(rhs)) => format!("{}{:?}", lhs, rhs).as_str().into(),
+                        (lhs, rhs) => format!("{}{}", lhs, rhs).as_str().into(),
+                    };
+                    vm.set_stack(*dst, value)?;
+                }
                 ByteCode::Call(func, _args) => {
                     vm.func_index = *func as usize;
                     let func = &vm.stack[vm.func_index];

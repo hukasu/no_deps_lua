@@ -17,6 +17,10 @@ pub enum Error {
     BoolBitwise,
     StringBitwise,
     TableBitwise,
+    // Concat
+    NilConcat,
+    BoolConcat,
+    TableConcat,
     // Others
     StackOverflow,
     Unimplemented,
@@ -63,6 +67,15 @@ impl Display for Error {
             }
             Self::TableBitwise => {
                 write!(f, "Can't use Table in arithmetic operations.")
+            }
+            Self::NilConcat => {
+                write!(f, "Can't use Nil in concat operations.")
+            }
+            Self::BoolConcat => {
+                write!(f, "Can't use Boolean in concat operations.")
+            }
+            Self::TableConcat => {
+                write!(f, "Can't use Table in concat operations.")
             }
             Self::StackOverflow => {
                 write!(f, "Tried accessing index outside stack bounds.")

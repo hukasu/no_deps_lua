@@ -6,3 +6,7 @@
 
 # Parser
 * Fix Shift-Reduces
+
+# VM
+* Change `print` to print `Display` instead of `Debug` of values
+* Improve concat results

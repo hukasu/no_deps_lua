@@ -654,3 +654,62 @@ print(100>>a) -- panic
         .inspect_err(|err| log::error!("{err}"))
         .expect_err("Last print should fail");
 }
+
+#[test]
+fn chapter5_concat() {
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
+    let program = Program::parse(
+        r#"
+print('hello, '..'world')
+print('hello, ' .. 123)
+print(3.14 .. 15926)
+local a = true
+print('hello' .. a) -- panic
+"#,
+    )
+    .unwrap();
+    assert_eq!(
+        &program.constants,
+        &[
+            "print".into(),
+            "hello, ".into(),
+            "world".into(),
+            #[allow(clippy::approx_constant)]
+            3.14f64.into(),
+            "hello".into(),
+        ]
+    );
+    assert_eq!(
+        &program.byte_codes,
+        &[
+            // print('hello, '..'world')
+            ByteCode::GetGlobal(0, 0),
+            ByteCode::LoadConstant(1, 1),
+            ByteCode::LoadConstant(2, 2),
+            ByteCode::Concat(1, 1, 2),
+            ByteCode::Call(0, 1),
+            // print('hello, ' .. 123)
+            ByteCode::GetGlobal(0, 0),
+            ByteCode::LoadConstant(1, 1),
+            ByteCode::LoadInt(2, 123),
+            ByteCode::Concat(1, 1, 2),
+            ByteCode::Call(0, 1),
+            // print(3.14 .. 15926)
+            ByteCode::GetGlobal(0, 0),
+            ByteCode::LoadConstant(1, 3),
+            ByteCode::LoadInt(2, 15926),
+            ByteCode::Concat(1, 1, 2),
+            ByteCode::Call(0, 1),
+            // print('hello' .. true) -- panic
+            ByteCode::LoadTrue(0),
+            ByteCode::GetGlobal(1, 0),
+            ByteCode::LoadConstant(2, 4),
+            ByteCode::Move(3, 0),
+            ByteCode::Concat(2, 2, 3),
+            ByteCode::Call(1, 1),
+        ]
+    );
+    crate::Lua::execute(&program)
+        .inspect_err(|err| log::error!("{err}"))
+        .expect_err("Last print should fail");
+}

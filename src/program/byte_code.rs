@@ -220,6 +220,13 @@ pub enum ByteCode {
     /// `dst`: Location on stack to store result of operation  
     /// `src`: Location on stack to load value
     Len(u8, u8),
+    /// `CONCAT`  
+    /// Performs concatenation.
+    ///
+    /// `dst`: Location on stack to store result of operation  
+    /// `lhs`: Location on stack of left-hand operand  
+    /// `rhs`: Location on stack of right-hand operand
+    Concat(u8, u8, u8),
     /// `CALL`  
     /// Calls a function
     ///

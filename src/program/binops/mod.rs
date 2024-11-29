@@ -32,6 +32,18 @@ fn bitwise_errors(lhs: &ExpDesc, rhs: &ExpDesc) -> Result<(), Error> {
     }
 }
 
+fn concat_errors(lhs: &ExpDesc, rhs: &ExpDesc) -> Result<(), Error> {
+    match (lhs, rhs) {
+        (ExpDesc::Nil, _) => Err(Error::NilConcat),
+        (ExpDesc::Boolean(_), _) => Err(Error::BoolConcat),
+        (ExpDesc::TableLocal(_, _) | ExpDesc::TableGlobal(_, _), _) => Err(Error::TableConcat),
+        (_, ExpDesc::Nil) => Err(Error::NilConcat),
+        (_, ExpDesc::Boolean(_)) => Err(Error::BoolConcat),
+        (_, ExpDesc::TableLocal(_, _) | ExpDesc::TableGlobal(_, _)) => Err(Error::TableConcat),
+        _ => Ok(()),
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn binop_add<'a>(
     program: &mut Program,
@@ -453,4 +465,26 @@ pub fn binop_shiftr<'a>(
             ))
         }
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn binop_concat<'a>(
+    program: &mut Program,
+    compile_context: &mut CompileContext,
+    lhs: &ExpDesc,
+    rhs: &ExpDesc,
+    lhs_top: &ExpDesc,
+    rhs_top: &ExpDesc,
+    lhs_dst: u8,
+    rhs_dst: u8,
+) -> Result<ExpDesc<'a>, Error> {
+    concat_errors(lhs, rhs)?;
+    lhs.discharge(lhs_top, program, compile_context)?;
+    rhs.discharge(rhs_top, program, compile_context)?;
+
+    Ok(ExpDesc::Binop(
+        ByteCode::Concat,
+        usize::from(lhs_dst),
+        usize::from(rhs_dst),
+    ))
 }
