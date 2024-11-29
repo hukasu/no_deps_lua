@@ -365,41 +365,42 @@ impl<'a> Iterator for Lex<'a> {
                         lexeme_type: LexemeType::Comma,
                     }));
                 }
-                '.' => match self.chars.peek() {
-                    Some('.') => {
-                        self.chars.next();
-                        match self.chars.peek() {
-                            Some('.') => {
-                                self.chars.next();
-                                self.seek += 1;
-                                self.start += 1;
-                                self.column += 1;
-                                break Some(Ok(Lexeme {
-                                    line: self.line,
-                                    column: self.column - 2,
-                                    start: self.start - 1,
-                                    lexeme_type: LexemeType::Dots,
-                                }));
-                            }
-                            _ => {
-                                break Some(Ok(Lexeme {
-                                    line: self.line,
-                                    column: self.column - 1,
-                                    start: self.start,
-                                    lexeme_type: LexemeType::Concat,
-                                }));
-                            }
+                '.' => {
+                    if self.chars.peek() != Some(&'.') {
+                        {
+                            break Some(Ok(Lexeme {
+                                line: self.line,
+                                column: self.column,
+                                start: self.start,
+                                lexeme_type: LexemeType::Dot,
+                            }));
                         }
                     }
-                    _ => {
-                        break Some(Ok(Lexeme {
-                            line: self.line,
-                            column: self.column,
-                            start: self.start,
-                            lexeme_type: LexemeType::Dot,
-                        }));
+                    self.chars.next();
+                    self.seek += 1;
+                    self.column += 1;
+
+                    if self.chars.peek() != Some(&'.') {
+                        {
+                            break Some(Ok(Lexeme {
+                                line: self.line,
+                                column: self.column,
+                                start: self.start,
+                                lexeme_type: LexemeType::Concat,
+                            }));
+                        }
                     }
-                },
+                    self.chars.next();
+                    self.seek += 1;
+                    self.column += 1;
+
+                    break Some(Ok(Lexeme {
+                        line: self.line,
+                        column: self.column - 2,
+                        start: self.start - 1,
+                        lexeme_type: LexemeType::Dots,
+                    }));
+                }
                 short_string_start @ '"' | short_string_start @ '\'' => {
                     while let Some(c) = self.chars.peek().copied() {
                         match c {

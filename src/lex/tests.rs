@@ -1,3 +1,5 @@
+use alloc::vec::Vec;
+
 use super::*;
 
 #[test]
@@ -429,4 +431,174 @@ print "hello again...""#,
             column: 18
         }))
     );
+}
+
+#[test]
+fn concat_program() {
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
+    let mut lex = Lex::new(
+        r#"
+print('hello, '..'world')
+print('hello, ' .. 123)
+print(3.14 .. 15926)
+print('hello' .. true) -- panic
+"#,
+    );
+    let lexemes = &[
+        Ok(Lexeme {
+            line: 1,
+            column: 5,
+            start: 1,
+            lexeme_type: LexemeType::Name("print"),
+        }),
+        Ok(Lexeme {
+            line: 1,
+            column: 6,
+            start: 6,
+            lexeme_type: LexemeType::LParen,
+        }),
+        Ok(Lexeme {
+            line: 1,
+            column: 15,
+            start: 7,
+            lexeme_type: LexemeType::String("hello, "),
+        }),
+        Ok(Lexeme {
+            line: 1,
+            column: 17,
+            start: 16,
+            lexeme_type: LexemeType::Concat,
+        }),
+        Ok(Lexeme {
+            line: 1,
+            column: 24,
+            start: 18,
+            lexeme_type: LexemeType::String("world"),
+        }),
+        Ok(Lexeme {
+            line: 1,
+            column: 25,
+            start: 25,
+            lexeme_type: LexemeType::RParen,
+        }),
+        Ok(Lexeme {
+            line: 2,
+            column: 5,
+            start: 27,
+            lexeme_type: LexemeType::Name("print"),
+        }),
+        Ok(Lexeme {
+            line: 2,
+            column: 6,
+            start: 32,
+            lexeme_type: LexemeType::LParen,
+        }),
+        Ok(Lexeme {
+            line: 2,
+            column: 15,
+            start: 33,
+            lexeme_type: LexemeType::String("hello, "),
+        }),
+        Ok(Lexeme {
+            line: 2,
+            column: 18,
+            start: 43,
+            lexeme_type: LexemeType::Concat,
+        }),
+        Ok(Lexeme {
+            line: 2,
+            column: 22,
+            start: 46,
+            lexeme_type: LexemeType::Integer(123),
+        }),
+        Ok(Lexeme {
+            line: 2,
+            column: 23,
+            start: 49,
+            lexeme_type: LexemeType::RParen,
+        }),
+        Ok(Lexeme {
+            line: 3,
+            column: 5,
+            start: 51,
+            lexeme_type: LexemeType::Name("print"),
+        }),
+        Ok(Lexeme {
+            line: 3,
+            column: 6,
+            start: 56,
+            lexeme_type: LexemeType::LParen,
+        }),
+        #[allow(clippy::approx_constant)]
+        Ok(Lexeme {
+            line: 3,
+            column: 10,
+            start: 57,
+            lexeme_type: LexemeType::Float(3.14),
+        }),
+        Ok(Lexeme {
+            line: 3,
+            column: 13,
+            start: 62,
+            lexeme_type: LexemeType::Concat,
+        }),
+        Ok(Lexeme {
+            line: 3,
+            column: 19,
+            start: 65,
+            lexeme_type: LexemeType::Integer(15926),
+        }),
+        Ok(Lexeme {
+            line: 3,
+            column: 20,
+            start: 70,
+            lexeme_type: LexemeType::RParen,
+        }),
+        Ok(Lexeme {
+            line: 4,
+            column: 5,
+            start: 72,
+            lexeme_type: LexemeType::Name("print"),
+        }),
+        Ok(Lexeme {
+            line: 4,
+            column: 6,
+            start: 77,
+            lexeme_type: LexemeType::LParen,
+        }),
+        Ok(Lexeme {
+            line: 4,
+            column: 13,
+            start: 78,
+            lexeme_type: LexemeType::String("hello"),
+        }),
+        Ok(Lexeme {
+            line: 4,
+            column: 16,
+            start: 86,
+            lexeme_type: LexemeType::Concat,
+        }),
+        Ok(Lexeme {
+            line: 4,
+            column: 21,
+            start: 89,
+            lexeme_type: LexemeType::True,
+        }),
+        Ok(Lexeme {
+            line: 4,
+            column: 22,
+            start: 93,
+            lexeme_type: LexemeType::RParen,
+        }),
+        Ok(Lexeme {
+            line: 5,
+            column: 0,
+            start: 104,
+            lexeme_type: LexemeType::Eof,
+        }),
+    ];
+    let result = (&mut lex).collect::<Vec<_>>();
+    assert_eq!(result, lexemes);
+    assert!(lex.next().is_none());
+    assert_eq!(lex.remaining(), 0);
 }
