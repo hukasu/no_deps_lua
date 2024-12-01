@@ -1,5 +1,6 @@
 #![no_std]
 
+mod byte_code;
 mod error;
 mod ext;
 mod lex;
@@ -15,8 +16,9 @@ extern crate alloc;
 use core::{cell::RefCell, cmp::Ordering};
 
 use alloc::{format, rc::Rc, vec::Vec};
+use byte_code::ByteCode;
 
-use self::{ext::FloatExt, program::ByteCode, table::Table, value::Value};
+use self::{ext::FloatExt, table::Table, value::Value};
 
 pub use {error::Error, program::Program};
 

@@ -1,5 +1,4 @@
 mod binops;
-mod byte_code;
 mod compile_context;
 mod error;
 mod exp_desc;
@@ -9,13 +8,14 @@ mod tests;
 use alloc::{boxed::Box, vec::Vec};
 
 use crate::{
+    byte_code::ByteCode,
     ext::Unescape,
     parser::{Parser, Token, TokenType},
 };
 
 use super::value::Value;
 
-pub use self::{byte_code::ByteCode, error::Error};
+pub use self::error::Error;
 use self::{compile_context::CompileContext, exp_desc::ExpDesc};
 
 macro_rules! make_deconstruct {
