@@ -17,6 +17,7 @@ pub enum ExpDesc<'a> {
     Global(usize),
     TableLocal(usize, Box<ExpDesc<'a>>),
     TableGlobal(usize, Box<ExpDesc<'a>>),
+    IfCondition(usize),
 }
 
 impl<'a> ExpDesc<'a> {
@@ -415,6 +416,14 @@ impl<'a> ExpDesc<'a> {
                 dst_local.discharge(dst, program, compile_context)?;
 
                 compile_context.stack_top -= 1;
+
+                Ok(())
+            }
+            (src @ Self::Global(_), Self::IfCondition(dst)) => {
+                src.discharge(&ExpDesc::Local(*dst), program, compile_context)?;
+
+                let dst = u8::try_from(*dst)?;
+                program.byte_codes.push(ByteCode::Test(dst, 0));
 
                 Ok(())
             }

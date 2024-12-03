@@ -198,13 +198,44 @@ impl Program {
             ) => Err(Error::Unimplemented),
             make_deconstruct!(
                 _if=> TokenType::If,
-                _exp=> TokenType::Exp,
+                exp=> TokenType::Exp,
                 _then=> TokenType::Then,
-                _block=> TokenType::Block,
+                block=> TokenType::Block,
                 _stat_elseif=> TokenType::StatElseif,
                 _stat_else=> TokenType::StatElse,
                 _end=> TokenType::End
-            ) => Err(Error::Unimplemented),
+            ) => {
+                let (top_index, top) = compile_context.reserve_stack_top();
+                let cond = self.exp(exp, compile_context, &top)?;
+                cond.discharge(
+                    &ExpDesc::IfCondition(usize::from(top_index)),
+                    self,
+                    compile_context,
+                )?;
+
+                let jump = self.byte_codes.len();
+                self.byte_codes.push(ByteCode::Jmp(0));
+
+                // Finish use of condition
+                compile_context.stack_top = top_index;
+
+                let locals = compile_context.locals.len();
+                self.block(block, compile_context)?;
+                compile_context.stack_top -= u8::try_from(compile_context.locals.len() - locals)
+                    .inspect_err(|_| {
+                        log::error!("Failed to rewind stack top after `if`s block.")
+                    })?;
+                compile_context.locals.truncate(locals);
+
+                let end_of_block = self.byte_codes.len();
+
+                // Update jump to have the correct number
+                self.byte_codes[jump] = ByteCode::Jmp(
+                    u16::try_from(end_of_block - (jump + 1)).map_err(|_| Error::LongJump)?,
+                );
+
+                Ok(())
+            }
             make_deconstruct!(
                 _for=> TokenType::For,
                 _name=> TokenType::Name(_),

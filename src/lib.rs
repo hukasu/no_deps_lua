@@ -24,6 +24,7 @@ pub use {error::Error, program::Program};
 #[derive(Debug)]
 pub struct Lua {
     func_index: usize,
+    program_counter: usize,
     globals: Vec<(Value, Value)>,
     stack: Vec<Value>,
 }
@@ -34,6 +35,7 @@ impl Lua {
 
         Self {
             func_index: 0,
+            program_counter: 0,
             globals,
             stack: Vec::new(),
         }
@@ -57,10 +59,21 @@ impl Lua {
         }
     }
 
+    fn read_bytecode<'a>(&mut self, program: &'a Program) -> Option<&'a ByteCode> {
+        program
+            .byte_codes
+            .get(self.program_counter)
+            .inspect(|_| self.program_counter += 1)
+    }
+
     pub fn execute(program: &Program) -> Result<(), Error> {
         let mut vm = Self::new();
 
-        for code in &program.byte_codes {
+        loop {
+            let Some(code) = vm.read_bytecode(program) else {
+                break;
+            };
+
             match code {
                 move_bytecode @ ByteCode::Move(_, _) => {
                     move_bytecode.move_bytecode(&mut vm, program)?
@@ -112,6 +125,8 @@ impl Lua {
                 not @ ByteCode::Not(_, _) => not.not(&mut vm, program)?,
                 len @ ByteCode::Len(_, _) => len.len(&mut vm, program)?,
                 concat @ ByteCode::Concat(_, _, _) => concat.concat(&mut vm, program)?,
+                jmp @ ByteCode::Jmp(_) => jmp.jmp(&mut vm, program)?,
+                test @ ByteCode::Test(_, _) => test.test(&mut vm, program)?,
                 call @ ByteCode::Call(_, _) => call.call(&mut vm, program)?,
                 set_list @ ByteCode::SetList(_, _) => set_list.set_list(&mut vm, program)?,
                 set_global_constant @ ByteCode::SetGlobalConstant(_, _) => {

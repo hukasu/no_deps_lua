@@ -235,6 +235,17 @@ pub enum ByteCode {
     /// `lhs`: Location on stack of left-hand operand  
     /// `rhs`: Location on stack of right-hand operand
     Concat(u8, u8, u8),
+    /// `JMP`  
+    /// Performs jump.
+    ///
+    /// `jump`: Number of intructions to jump
+    Jmp(u16),
+    /// `TEST`  
+    /// Performs test.
+    ///
+    /// `src`: Location on stack of the value that if going to be tested  
+    /// `test`: Test to perform  
+    Test(u8, u8),
     /// `CALL`  
     /// Calls a function
     ///
@@ -826,6 +837,28 @@ impl ByteCode {
             (lhs, rhs) => format!("{}{}", lhs, rhs).as_str().into(),
         };
         vm.set_stack(*dst, value)
+    }
+
+    pub fn jmp(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+        validate_bytecode!(self, ByteCode::Jmp(jump));
+
+        vm.program_counter += usize::from(*jump);
+
+        Ok(())
+    }
+
+    pub fn test(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+        validate_bytecode!(self, ByteCode::Test(src, test));
+
+        let cond = &vm.stack[*src as usize];
+        match (cond, test) {
+            (Value::Nil | Value::Boolean(false), 0) => (),
+            (Value::Nil | Value::Boolean(false), 1) => vm.program_counter += 1,
+            (_, 1) => (),
+            _ => vm.program_counter += 1,
+        };
+
+        Ok(())
     }
 
     pub fn call(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {

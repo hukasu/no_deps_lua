@@ -23,6 +23,7 @@ pub enum Error {
     TableConcat,
     // Others
     StackOverflow,
+    LongJump,
     Unimplemented,
 }
 
@@ -79,6 +80,9 @@ impl Display for Error {
             }
             Self::StackOverflow => {
                 write!(f, "Tried accessing index outside stack bounds.")
+            }
+            Self::LongJump => {
+                write!(f, "Jump is longer than a i16.")
             }
             Self::Unimplemented => {
                 write!(f, "Feature is not implemented.")

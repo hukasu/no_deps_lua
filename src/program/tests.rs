@@ -713,3 +713,61 @@ print('hello' .. a) -- panic
         .inspect_err(|err| log::error!("{err}"))
         .expect_err("Last print should fail");
 }
+
+#[test]
+fn chapter6_if() {
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
+    let program = Program::parse(
+        r#"
+if a then
+    print "skip this"
+end
+if print then
+    local a = "I am true"
+    print(a)
+end
+
+print (a) -- should be nil
+"#,
+    )
+    .unwrap();
+    assert_eq!(
+        &program.constants,
+        &[
+            "a".into(),
+            "print".into(),
+            "skip this".into(),
+            "I am true".into(),
+        ]
+    );
+    assert_eq!(
+        &program.byte_codes,
+        &[
+            // if a then
+            ByteCode::GetGlobal(0, 0),
+            ByteCode::Test(0, 0),
+            ByteCode::Jmp(3),
+            // print "skip this"
+            ByteCode::GetGlobal(0, 1),
+            ByteCode::LoadConstant(1, 2),
+            ByteCode::Call(0, 1),
+            // end
+            // if print then
+            ByteCode::GetGlobal(0, 1),
+            ByteCode::Test(0, 0),
+            ByteCode::Jmp(4),
+            // local a = "I am true"
+            ByteCode::LoadConstant(0, 3),
+            // print(a)
+            ByteCode::GetGlobal(1, 1),
+            ByteCode::Move(2, 0),
+            ByteCode::Call(1, 1),
+            // end
+            // print (a) -- should be nil
+            ByteCode::GetGlobal(0, 1),
+            ByteCode::GetGlobal(1, 0),
+            ByteCode::Call(0, 1),
+        ]
+    );
+    crate::Lua::execute(&program).expect("Should run");
+}
