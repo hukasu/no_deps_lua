@@ -771,3 +771,104 @@ print (a) -- should be nil
     );
     crate::Lua::execute(&program).expect("Should run");
 }
+
+#[test]
+fn chapter6_if_else() {
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
+    let program = Program::parse(
+        r#"
+local a,b = 123
+if b then
+  print "not here"
+elseif g then
+  print "not here"
+elseif a then
+  print "yes, here"
+else
+  print "not here"
+end
+
+if b then
+  print "not here"
+else
+  print "yes, here"
+end
+
+if b then
+  print "yes, here"
+end
+"#,
+    )
+    .unwrap();
+    assert_eq!(
+        &program.constants,
+        &[
+            "print".into(),
+            "not here".into(),
+            "g".into(),
+            "yes, here".into(),
+        ]
+    );
+    assert_eq!(
+        &program.byte_codes,
+        &[
+            // local a,b = 123
+            ByteCode::LoadInt(0, 123),
+            ByteCode::LoadNil(1),
+            // if b then
+            ByteCode::Test(1, 0),
+            ByteCode::Jmp(4),
+            //   print "not here"
+            ByteCode::GetGlobal(2, 0),
+            ByteCode::LoadConstant(3, 1),
+            ByteCode::Call(2, 1),
+            ByteCode::Jmp(16),
+            // elseif g then
+            ByteCode::GetGlobal(2, 2),
+            ByteCode::Test(2, 0),
+            ByteCode::Jmp(4),
+            //   print "not here"
+            ByteCode::GetGlobal(2, 0),
+            ByteCode::LoadConstant(3, 1),
+            ByteCode::Call(2, 1),
+            ByteCode::Jmp(9),
+            // elseif a then
+            ByteCode::Test(0, 0),
+            ByteCode::Jmp(4),
+            //   print "yes, here"
+            ByteCode::GetGlobal(2, 0),
+            ByteCode::LoadConstant(3, 3),
+            ByteCode::Call(2, 1),
+            ByteCode::Jmp(3),
+            // else
+            //   print "not here"
+            ByteCode::GetGlobal(2, 0),
+            ByteCode::LoadConstant(3, 1),
+            ByteCode::Call(2, 1),
+            // end
+            // if b then
+            ByteCode::Test(1, 0),
+            ByteCode::Jmp(4),
+            //   print "not here"
+            ByteCode::GetGlobal(2, 0),
+            ByteCode::LoadConstant(3, 1),
+            ByteCode::Call(2, 1),
+            ByteCode::Jmp(3),
+            // else
+            //   print "yes, here"
+            ByteCode::GetGlobal(2, 0),
+            ByteCode::LoadConstant(3, 3),
+            ByteCode::Call(2, 1),
+            // end
+            // if b then
+            ByteCode::Test(1, 0),
+            ByteCode::Jmp(3),
+            //   print "yes, here"
+            ByteCode::GetGlobal(2, 0),
+            ByteCode::LoadConstant(3, 3),
+            ByteCode::Call(2, 1),
+            // end
+        ]
+    );
+    crate::Lua::execute(&program).expect("Should run");
+}

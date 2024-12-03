@@ -274,6 +274,12 @@ impl<'a> ExpDesc<'a> {
                     }
                 }
             }
+            (Self::Local(src), Self::IfCondition(_)) => {
+                let src = u8::try_from(*src)?;
+                program.byte_codes.push(ByteCode::Test(src, 0));
+
+                Ok(())
+            }
             (Self::Global(key), Self::Local(dst)) => {
                 let key = u8::try_from(*key)?;
                 let dst = u8::try_from(*dst)?;
@@ -320,6 +326,14 @@ impl<'a> ExpDesc<'a> {
                         Err(Error::Unimplemented)
                     }
                 }
+            }
+            (src @ Self::Global(_), Self::IfCondition(dst)) => {
+                src.discharge(&ExpDesc::Local(*dst), program, compile_context)?;
+
+                let dst = u8::try_from(*dst)?;
+                program.byte_codes.push(ByteCode::Test(dst, 0));
+
+                Ok(())
             }
             (Self::TableLocal(table, exp), Self::Local(dst)) => {
                 let table = u8::try_from(*table)?;
@@ -416,14 +430,6 @@ impl<'a> ExpDesc<'a> {
                 dst_local.discharge(dst, program, compile_context)?;
 
                 compile_context.stack_top -= 1;
-
-                Ok(())
-            }
-            (src @ Self::Global(_), Self::IfCondition(dst)) => {
-                src.discharge(&ExpDesc::Local(*dst), program, compile_context)?;
-
-                let dst = u8::try_from(*dst)?;
-                program.byte_codes.push(ByteCode::Test(dst, 0));
 
                 Ok(())
             }

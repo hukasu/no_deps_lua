@@ -201,7 +201,7 @@ impl Program {
                 exp(TokenType::Exp),
                 _then(TokenType::Then),
                 block(TokenType::Block),
-                _stat_if(TokenType::StatIf),
+                stat_if(TokenType::StatIf),
                 _end(TokenType::End)
             ) => {
                 let (top_index, top) = compile_context.reserve_stack_top();
@@ -227,11 +227,28 @@ impl Program {
                 compile_context.locals.truncate(locals);
 
                 let end_of_block = self.byte_codes.len();
-
                 // Update jump to have the correct number
-                self.byte_codes[jump] = ByteCode::Jmp(
-                    u16::try_from(end_of_block - (jump + 1)).map_err(|_| Error::LongJump)?,
-                );
+
+                let jump_end = self.byte_codes.len();
+                self.byte_codes.push(ByteCode::Jmp(0));
+
+                self.stat_if(stat_if, compile_context)?;
+                let end_of_if = self.byte_codes.len();
+
+                if end_of_block == (end_of_if - 1) {
+                    self.byte_codes[jump] = ByteCode::Jmp(
+                        u16::try_from(end_of_block - (jump + 1)).map_err(|_| Error::LongJump)?,
+                    );
+                    // Last else, so no need to jump
+                    self.byte_codes.pop();
+                } else {
+                    self.byte_codes[jump] = ByteCode::Jmp(
+                        u16::try_from(end_of_block - jump).map_err(|_| Error::LongJump)?,
+                    );
+                    self.byte_codes[jump_end] = ByteCode::Jmp(
+                        u16::try_from(end_of_if - (jump_end + 1)).map_err(|_| Error::LongJump)?,
+                    );
+                }
 
                 Ok(())
             }
@@ -292,18 +309,78 @@ impl Program {
         }
     }
 
-    fn stat_if(&mut self, stat_if: &Token, _compile_context: &CompileContext) -> Result<(), Error> {
+    fn stat_if(
+        &mut self,
+        stat_if: &Token,
+        compile_context: &mut CompileContext,
+    ) -> Result<(), Error> {
         match stat_if.tokens.as_slice() {
             [] => Ok(()),
             make_deconstruct!(
                 _elseif(TokenType::Elseif),
-                _exp(TokenType::Exp),
+                exp(TokenType::Exp),
                 _then(TokenType::Then),
-                _block(TokenType::Block),
-                _stat_elseif(TokenType::StatIf)
-            ) => Err(Error::Unimplemented),
-            make_deconstruct!(_else(TokenType::Else), _block(TokenType::Block)) => {
-                Err(Error::Unimplemented)
+                block(TokenType::Block),
+                stat_if(TokenType::StatIf)
+            ) => {
+                let (top_index, top) = compile_context.reserve_stack_top();
+                let cond = self.exp(exp, compile_context, &top)?;
+                cond.discharge(
+                    &ExpDesc::IfCondition(usize::from(top_index)),
+                    self,
+                    compile_context,
+                )?;
+
+                let jump = self.byte_codes.len();
+                self.byte_codes.push(ByteCode::Jmp(0));
+
+                // Finish use of condition
+                compile_context.stack_top = top_index;
+
+                let locals = compile_context.locals.len();
+                self.block(block, compile_context)?;
+                compile_context.stack_top -= u8::try_from(compile_context.locals.len() - locals)
+                    .inspect_err(|_| {
+                        log::error!("Failed to rewind stack top after `elseif`s block.")
+                    })?;
+                compile_context.locals.truncate(locals);
+
+                let end_of_block = self.byte_codes.len();
+
+                let jump_end = self.byte_codes.len();
+                self.byte_codes.push(ByteCode::Jmp(0));
+
+                self.stat_if(stat_if, compile_context)?;
+                let end_of_if = self.byte_codes.len();
+
+                // Update jumps to have the correct number
+                if end_of_block == (end_of_if - 1) {
+                    self.byte_codes[jump] = ByteCode::Jmp(
+                        u16::try_from(end_of_block - (jump + 1)).map_err(|_| Error::LongJump)?,
+                    );
+                    // Last else, so no need to jump
+                    self.byte_codes.pop();
+                } else {
+                    self.byte_codes[jump] = ByteCode::Jmp(
+                        u16::try_from(end_of_block - jump).map_err(|_| Error::LongJump)?,
+                    );
+                    self.byte_codes[jump_end] = ByteCode::Jmp(
+                        u16::try_from(end_of_if - (jump_end + 1)).map_err(|_| Error::LongJump)?,
+                    );
+                }
+
+                Ok(())
+            }
+            make_deconstruct!(_else(TokenType::Else), block(TokenType::Block)) => {
+                let locals = compile_context.locals.len();
+                self.block(block, compile_context)?;
+                compile_context.stack_top -= u8::try_from(compile_context.locals.len() - locals)
+                    .inspect_err(|_| {
+                        log::error!("Failed to rewind stack top after `else`s block.")
+                    })?;
+                compile_context.locals.truncate(locals);
+
+                Ok(())
             }
             _ => {
                 unreachable!(
@@ -348,7 +425,12 @@ impl Program {
         exp_descs: &[ExpDesc],
     ) -> Result<(), Error> {
         match stat_attexplist.tokens.as_slice() {
-            [] => Ok(()),
+            [] => {
+                for exp_desc in exp_descs {
+                    { ExpDesc::Nil }.discharge(exp_desc, self, compile_context)?;
+                }
+                Ok(())
+            }
             make_deconstruct!(_assign(TokenType::Assign), explist(TokenType::Explist)) => {
                 self.explist(explist, compile_context, Some(exp_descs))
             }
@@ -824,7 +906,14 @@ impl Program {
         maybe_exp_descs: Option<&[ExpDesc<'a>]>,
     ) -> Result<(), Error> {
         match explist_cont.tokens.as_slice() {
-            [] => Ok(()),
+            [] => {
+                if let Some(exp_descs) = maybe_exp_descs {
+                    for exp_desc in exp_descs {
+                        { ExpDesc::Nil }.discharge(exp_desc, self, compile_context)?;
+                    }
+                }
+                Ok(())
+            }
             make_deconstruct!(
                 _comma(TokenType::Comma),
                 exp(TokenType::Exp),
