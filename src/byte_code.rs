@@ -239,7 +239,7 @@ pub enum ByteCode {
     /// Performs jump.
     ///
     /// `jump`: Number of intructions to jump
-    Jmp(u16),
+    Jmp(i16),
     /// `TEST`  
     /// Performs test.
     ///
@@ -842,7 +842,11 @@ impl ByteCode {
     pub fn jmp(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::Jmp(jump));
 
-        vm.program_counter += usize::from(*jump);
+        if jump.is_negative() {
+            vm.program_counter -= isize::from(*jump).unsigned_abs();
+        } else {
+            vm.program_counter += usize::try_from(*jump)?;
+        }
 
         Ok(())
     }

@@ -872,3 +872,38 @@ end
     );
     crate::Lua::execute(&program).expect("Should run");
 }
+
+#[test]
+fn chapter6_while() {
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
+    let program = Program::parse(
+        r#"
+local a = 123
+while a do
+  print(a)
+  a = not a
+end
+"#,
+    )
+    .unwrap();
+    assert_eq!(&program.constants, &["print".into(),]);
+    assert_eq!(
+        &program.byte_codes,
+        &[
+            // local a = 123
+            ByteCode::LoadInt(0, 123),
+            // while a do
+            ByteCode::Test(0, 0),
+            ByteCode::Jmp(5),
+            //   print(a)
+            ByteCode::GetGlobal(1, 0),
+            ByteCode::Move(2, 0),
+            ByteCode::Call(1, 1),
+            //   a = not a
+            ByteCode::Not(0, 0),
+            // end
+            ByteCode::Jmp(-7),
+        ]
+    );
+    crate::Lua::execute(&program).expect("Should run");
+}

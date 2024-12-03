@@ -185,11 +185,45 @@ impl Program {
             ) => Err(Error::Unimplemented),
             make_deconstruct!(
                 _while(TokenType::While),
-                _exp(TokenType::Exp),
+                exp(TokenType::Exp),
                 _do(TokenType::Do),
-                _block(TokenType::Block),
+                block(TokenType::Block),
                 _end(TokenType::End)
-            ) => Err(Error::Unimplemented),
+            ) => {
+                let (top_index, top) = compile_context.reserve_stack_top();
+                let cond = self.exp(exp, compile_context, &top)?;
+                cond.discharge(
+                    &ExpDesc::IfCondition(usize::from(top_index)),
+                    self,
+                    compile_context,
+                )?;
+
+                // Finish use of condition
+                compile_context.stack_top = top_index;
+
+                let jump = self.byte_codes.len();
+                self.byte_codes.push(ByteCode::Jmp(0));
+
+                let locals = compile_context.locals.len();
+                self.block(block, compile_context)?;
+                compile_context.stack_top -= u8::try_from(compile_context.locals.len() - locals)
+                    .inspect_err(|_| {
+                        log::error!("Failed to rewind stack top after `while`s block.")
+                    })?;
+                compile_context.locals.truncate(locals);
+
+                let jump_end = self.byte_codes.len();
+
+                self.byte_codes[jump] =
+                    ByteCode::Jmp(i16::try_from(jump_end - jump).map_err(|_| Error::LongJump)?);
+
+                self.byte_codes.push(ByteCode::Jmp(
+                    i16::try_from(isize::try_from(jump)? - isize::try_from(jump_end)? - 2)
+                        .map_err(|_| Error::LongJump)?,
+                ));
+
+                Ok(())
+            }
             make_deconstruct!(
                 _repeat(TokenType::Repeat),
                 _block(TokenType::Block),
@@ -212,11 +246,11 @@ impl Program {
                     compile_context,
                 )?;
 
-                let jump = self.byte_codes.len();
-                self.byte_codes.push(ByteCode::Jmp(0));
-
                 // Finish use of condition
                 compile_context.stack_top = top_index;
+
+                let jump = self.byte_codes.len();
+                self.byte_codes.push(ByteCode::Jmp(0));
 
                 let locals = compile_context.locals.len();
                 self.block(block, compile_context)?;
@@ -237,16 +271,16 @@ impl Program {
 
                 if end_of_block == (end_of_if - 1) {
                     self.byte_codes[jump] = ByteCode::Jmp(
-                        u16::try_from(end_of_block - (jump + 1)).map_err(|_| Error::LongJump)?,
+                        i16::try_from(end_of_block - (jump + 1)).map_err(|_| Error::LongJump)?,
                     );
                     // Last else, so no need to jump
                     self.byte_codes.pop();
                 } else {
                     self.byte_codes[jump] = ByteCode::Jmp(
-                        u16::try_from(end_of_block - jump).map_err(|_| Error::LongJump)?,
+                        i16::try_from(end_of_block - jump).map_err(|_| Error::LongJump)?,
                     );
                     self.byte_codes[jump_end] = ByteCode::Jmp(
-                        u16::try_from(end_of_if - (jump_end + 1)).map_err(|_| Error::LongJump)?,
+                        i16::try_from(end_of_if - (jump_end + 1)).map_err(|_| Error::LongJump)?,
                     );
                 }
 
@@ -356,16 +390,16 @@ impl Program {
                 // Update jumps to have the correct number
                 if end_of_block == (end_of_if - 1) {
                     self.byte_codes[jump] = ByteCode::Jmp(
-                        u16::try_from(end_of_block - (jump + 1)).map_err(|_| Error::LongJump)?,
+                        i16::try_from(end_of_block - (jump + 1)).map_err(|_| Error::LongJump)?,
                     );
                     // Last else, so no need to jump
                     self.byte_codes.pop();
                 } else {
                     self.byte_codes[jump] = ByteCode::Jmp(
-                        u16::try_from(end_of_block - jump).map_err(|_| Error::LongJump)?,
+                        i16::try_from(end_of_block - jump).map_err(|_| Error::LongJump)?,
                     );
                     self.byte_codes[jump_end] = ByteCode::Jmp(
-                        u16::try_from(end_of_if - (jump_end + 1)).map_err(|_| Error::LongJump)?,
+                        i16::try_from(end_of_if - (jump_end + 1)).map_err(|_| Error::LongJump)?,
                     );
                 }
 
