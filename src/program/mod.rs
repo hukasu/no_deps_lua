@@ -19,7 +19,7 @@ pub use self::error::Error;
 use self::{compile_context::CompileContext, exp_desc::ExpDesc};
 
 macro_rules! make_deconstruct {
-    ($($name:ident => $token:pat),+$(,)?) => {
+    ($($name:ident($token:pat$(,)?)),+$(,)?) => {
         [$($name @ Token {
             tokens: _,
             token_type: $token,
@@ -72,7 +72,7 @@ impl Program {
         compile_context: &mut CompileContext,
     ) -> Result<(), Error> {
         match chunk.tokens.as_slice() {
-            make_deconstruct!(block=> TokenType::Block) => self.block(block, compile_context),
+            make_deconstruct!(block(TokenType::Block)) => self.block(block, compile_context),
             _ => {
                 unreachable!(
                     "Chunk did not match any of the productions. Had {:#?}.",
@@ -93,8 +93,8 @@ impl Program {
     ) -> Result<(), Error> {
         match block.tokens.as_slice() {
             make_deconstruct!(
-                block_stat => TokenType::BlockStat,
-                block_retstat=> TokenType::BlockRetstat
+                block_stat(TokenType::BlockStat),
+                block_retstat(TokenType::BlockRetstat)
             ) => self
                 .block_stat(block_stat, compile_context)
                 .and_then(|()| self.block_retstat(block_retstat, compile_context)),
@@ -118,7 +118,7 @@ impl Program {
     ) -> Result<(), Error> {
         match block.tokens.as_slice() {
             [] => Ok(()),
-            make_deconstruct!(stat=> TokenType::Stat, blockstat=> TokenType::BlockStat) => self
+            make_deconstruct!(stat(TokenType::Stat), blockstat(TokenType::BlockStat)) => self
                 .stat(stat, compile_context)
                 .and_then(|()| self.block_stat(blockstat, compile_context)),
             _ => {
@@ -141,7 +141,7 @@ impl Program {
     ) -> Result<(), Error> {
         match block_retstat.tokens.as_slice() {
             [] => Ok(()),
-            make_deconstruct!(_retstat=> TokenType::Retstat) => Err(Error::Unimplemented),
+            make_deconstruct!(_retstat(TokenType::Retstat)) => Err(Error::Unimplemented),
             _ => {
                 unreachable!(
                     "BlockRetstat did not match any production. Had {:#?}.",
@@ -161,49 +161,48 @@ impl Program {
         compile_context: &mut CompileContext,
     ) -> Result<(), Error> {
         match stat.tokens.as_slice() {
-            make_deconstruct!(_semicolon=> TokenType::SemiColon) => Ok(()),
+            make_deconstruct!(_semicolon(TokenType::SemiColon)) => Ok(()),
             make_deconstruct!(
-                varlist=> TokenType::Varlist,
-                _assing=> TokenType::Assign,
-                explist=> TokenType::Explist
+                varlist(TokenType::Varlist),
+                _assing(TokenType::Assign),
+                explist(TokenType::Explist)
             ) => {
                 let exp_descs = self.varlist(varlist, compile_context)?;
                 self.explist(explist, compile_context, Some(&exp_descs))
             }
-            make_deconstruct!(functioncall=> TokenType::Functioncall) => {
+            make_deconstruct!(functioncall(TokenType::Functioncall)) => {
                 self.functioncall(functioncall, compile_context)
             }
-            make_deconstruct!(_label=> TokenType::Label) => Err(Error::Unimplemented),
-            make_deconstruct!(_break=> TokenType::Break) => Err(Error::Unimplemented),
-            make_deconstruct!(_goto=> TokenType::Goto, _name=> TokenType::Name(_)) => {
+            make_deconstruct!(_label(TokenType::Label)) => Err(Error::Unimplemented),
+            make_deconstruct!(_break(TokenType::Break)) => Err(Error::Unimplemented),
+            make_deconstruct!(_goto(TokenType::Goto), _name(TokenType::Name(_))) => {
                 Err(Error::Unimplemented)
             }
             make_deconstruct!(
-                _do=> TokenType::Do,
-                _block=> TokenType::Block,
-                _end=> TokenType::End
+                _do(TokenType::Do),
+                _block(TokenType::Block),
+                _end(TokenType::End)
             ) => Err(Error::Unimplemented),
             make_deconstruct!(
-                _while=> TokenType::While,
-                _exp=> TokenType::Exp,
-                _do=> TokenType::Do,
-                _block=> TokenType::Block,
-                _end=> TokenType::End
+                _while(TokenType::While),
+                _exp(TokenType::Exp),
+                _do(TokenType::Do),
+                _block(TokenType::Block),
+                _end(TokenType::End)
             ) => Err(Error::Unimplemented),
             make_deconstruct!(
-                _repeat=> TokenType::Repeat,
-                _block=> TokenType::Block,
-                _until=> TokenType::Until,
-                _exp=> TokenType::Exp
+                _repeat(TokenType::Repeat),
+                _block(TokenType::Block),
+                _until(TokenType::Until),
+                _exp(TokenType::Exp)
             ) => Err(Error::Unimplemented),
             make_deconstruct!(
-                _if=> TokenType::If,
-                exp=> TokenType::Exp,
-                _then=> TokenType::Then,
-                block=> TokenType::Block,
-                _stat_elseif=> TokenType::StatElseif,
-                _stat_else=> TokenType::StatElse,
-                _end=> TokenType::End
+                _if(TokenType::If),
+                exp(TokenType::Exp),
+                _then(TokenType::Then),
+                block(TokenType::Block),
+                _stat_if(TokenType::StatIf),
+                _end(TokenType::End)
             ) => {
                 let (top_index, top) = compile_context.reserve_stack_top();
                 let cond = self.exp(exp, compile_context, &top)?;
@@ -237,41 +236,41 @@ impl Program {
                 Ok(())
             }
             make_deconstruct!(
-                _for=> TokenType::For,
-                _name=> TokenType::Name(_),
-                _assign=> TokenType::Assign,
-                _exp1=> TokenType::Exp,
-                _comma=> TokenType::Comma,
-                _exp2=> TokenType::Exp,
-                _stat_forexp=> TokenType::StatForexp,
-                _do=> TokenType::Do,
-                _block=> TokenType::Block,
-                _end=> TokenType::End
+                _for(TokenType::For),
+                _name(TokenType::Name(_)),
+                _assign(TokenType::Assign),
+                _exp1(TokenType::Exp),
+                _comma(TokenType::Comma),
+                _exp2(TokenType::Exp),
+                _stat_forexp(TokenType::StatForexp),
+                _do(TokenType::Do),
+                _block(TokenType::Block),
+                _end(TokenType::End)
             ) => Err(Error::Unimplemented),
             make_deconstruct!(
-                _for=> TokenType::For,
-                _namelist=> TokenType::Namelist,
-                _in=> TokenType::In,
-                _explist=> TokenType::Explist,
-                _do=> TokenType::Do,
-                _block=> TokenType::Block,
-                _end=> TokenType::End
+                _for(TokenType::For),
+                _namelist(TokenType::Namelist),
+                _in(TokenType::In),
+                _explist(TokenType::Explist),
+                _do(TokenType::Do),
+                _block(TokenType::Block),
+                _end(TokenType::End)
             ) => Err(Error::Unimplemented),
             make_deconstruct!(
-                _function=> TokenType::Function,
-                _funcname=> TokenType::Funcname,
-                _funcbody=> TokenType::Funcbody
+                _function(TokenType::Function),
+                _funcname(TokenType::Funcname),
+                _funcbody(TokenType::Funcbody)
             ) => Err(Error::Unimplemented),
             make_deconstruct!(
-                _local=> TokenType::Local,
-                _function=> TokenType::Function,
-                _name=> TokenType::Name(_),
-                _funcbody=> TokenType::Funcbody
+                _local(TokenType::Local),
+                _function(TokenType::Function),
+                _name(TokenType::Name(_)),
+                _funcbody(TokenType::Funcbody)
             ) => Err(Error::Unimplemented),
             make_deconstruct!(
-                _local=> TokenType::Local,
-                attnamelist=> TokenType::Attnamelist,
-                stat_attexplist=> TokenType::StatAttexplist
+                _local(TokenType::Local),
+                attnamelist(TokenType::Attnamelist),
+                stat_attexplist(TokenType::StatAttexplist)
             ) => {
                 let (new_locals, exp_descs) = self.attnamelist(attnamelist, compile_context)?;
                 self.stat_attexplist(stat_attexplist, compile_context, &exp_descs)?;
@@ -293,47 +292,23 @@ impl Program {
         }
     }
 
-    fn stat_elseif(
-        &mut self,
-        stat_elseif: &Token,
-        _compile_context: &CompileContext,
-    ) -> Result<(), Error> {
-        match stat_elseif.tokens.as_slice() {
+    fn stat_if(&mut self, stat_if: &Token, _compile_context: &CompileContext) -> Result<(), Error> {
+        match stat_if.tokens.as_slice() {
             [] => Ok(()),
             make_deconstruct!(
-                _elseif=> TokenType::Elseif,
-                _exp=> TokenType::Exp,
-                _then=> TokenType::Then,
-                _block=> TokenType::Block,
-                _stat_elseif=> TokenType::StatElseif
+                _elseif(TokenType::Elseif),
+                _exp(TokenType::Exp),
+                _then(TokenType::Then),
+                _block(TokenType::Block),
+                _stat_elseif(TokenType::StatIf)
             ) => Err(Error::Unimplemented),
-            _ => {
-                unreachable!(
-                    "StatElseif did not match any of the productions. Had {:#?}.",
-                    stat_elseif
-                        .tokens
-                        .iter()
-                        .map(|t| &t.token_type)
-                        .collect::<Vec<_>>()
-                );
+            make_deconstruct!(_else(TokenType::Else), _block(TokenType::Block)) => {
+                Err(Error::Unimplemented)
             }
-        }
-    }
-
-    fn stat_else(
-        &mut self,
-        stat_else: &Token,
-        _compile_context: &CompileContext,
-    ) -> Result<(), Error> {
-        match stat_else.tokens.as_slice() {
-            [] => Ok(()),
-            make_deconstruct!(
-                _else=> TokenType::Else,
-                _block=> TokenType::Block) => Err(Error::Unimplemented),
             _ => {
                 unreachable!(
-                    "StatElse did not match any of the productions. Had {:#?}.",
-                    stat_else
+                    "StatIf did not match any of the productions. Had {:#?}.",
+                    stat_if
                         .tokens
                         .iter()
                         .map(|t| &t.token_type)
@@ -350,9 +325,9 @@ impl Program {
     ) -> Result<(), Error> {
         match stat_else.tokens.as_slice() {
             [] => Ok(()),
-            make_deconstruct!(
-                _comma=> TokenType::Comma,
-                _exp=> TokenType::Exp) => Err(Error::Unimplemented),
+            make_deconstruct!(_comma(TokenType::Comma), _exp(TokenType::Exp)) => {
+                Err(Error::Unimplemented)
+            }
             _ => {
                 unreachable!(
                     "StatForexp did not match any of the productions. Had {:#?}.",
@@ -374,10 +349,9 @@ impl Program {
     ) -> Result<(), Error> {
         match stat_attexplist.tokens.as_slice() {
             [] => Ok(()),
-            make_deconstruct!(
-                _assign=> TokenType::Assign,
-                explist=> TokenType::Explist
-            ) => self.explist(explist, compile_context, Some(exp_descs)),
+            make_deconstruct!(_assign(TokenType::Assign), explist(TokenType::Explist)) => {
+                self.explist(explist, compile_context, Some(exp_descs))
+            }
             _ => {
                 unreachable!(
                     "StatAttexplist did not match any of the productions. Had {:#?}.",
@@ -398,9 +372,9 @@ impl Program {
     ) -> Result<(Vec<Value>, Vec<ExpDesc<'a>>), Error> {
         match attnamelist.tokens.as_slice() {
             make_deconstruct!(
-                _name=> TokenType::Name(name),
-                _attrib=> TokenType::Attrib,
-                attnamelist_cont=> TokenType::AttnamelistCont
+                _name(TokenType::Name(name)),
+                _attrib(TokenType::Attrib),
+                attnamelist_cont(TokenType::AttnamelistCont)
             ) => {
                 let mut new_locals = [(*name).into()].to_vec();
 
@@ -439,10 +413,10 @@ impl Program {
         match attnamelist_cont.tokens.as_slice() {
             [] => Ok(()),
             make_deconstruct!(
-                _comma=> TokenType::Comma,
-                _name=> TokenType::Name(name),
-                _attrib=> TokenType::Attrib,
-                attnamelist_cont=> TokenType::AttnamelistCont
+                _comma(TokenType::Comma),
+                _name(TokenType::Name(name)),
+                _attrib(TokenType::Attrib),
+                attnamelist_cont(TokenType::AttnamelistCont)
             ) => {
                 new_locals.push((*name).into());
 
@@ -468,9 +442,9 @@ impl Program {
         match attrib.tokens.as_slice() {
             [] => Ok(()),
             make_deconstruct!(
-                _less=> TokenType::Less,
-                _name=> TokenType::Name(_),
-                _greater=> TokenType::Greater
+                _less(TokenType::Less),
+                _name(TokenType::Name(_)),
+                _greater(TokenType::Greater)
             ) => Err(Error::Unimplemented),
             _ => {
                 unreachable!(
@@ -488,9 +462,9 @@ impl Program {
     fn retstat(&mut self, retstat: &Token, _compile_context: &CompileContext) -> Result<(), Error> {
         match retstat.tokens.as_slice() {
             make_deconstruct!(
-                _return=> TokenType::Return,
-                _retstat_explist=> TokenType::RetstatExplist,
-                _retstat_end=> TokenType::RetstatEnd
+                _return(TokenType::Return),
+                _retstat_explist(TokenType::RetstatExplist),
+                _retstat_end(TokenType::RetstatEnd)
             ) => Err(Error::Unimplemented),
             _ => {
                 unreachable!(
@@ -512,7 +486,7 @@ impl Program {
     ) -> Result<(), Error> {
         match retstat_explist.tokens.as_slice() {
             [] => Ok(()),
-            make_deconstruct!(_explist=> TokenType::Explist) => Err(Error::Unimplemented),
+            make_deconstruct!(_explist(TokenType::Explist)) => Err(Error::Unimplemented),
             _ => {
                 unreachable!(
                     "RetstatExplist did not match any of the productions. Had {:#?}.",
@@ -533,7 +507,7 @@ impl Program {
     ) -> Result<(), Error> {
         match retstat_end.tokens.as_slice() {
             [] => Ok(()),
-            make_deconstruct!(_semicolon=> TokenType::SemiColon) => Ok(()),
+            make_deconstruct!(_semicolon(TokenType::SemiColon)) => Ok(()),
             _ => {
                 unreachable!(
                     "RetstatEnd did not match any of the productions. Had {:#?}.",
@@ -550,9 +524,9 @@ impl Program {
     fn label(&mut self, label: &Token, _compile_context: &CompileContext) -> Result<(), Error> {
         match label.tokens.as_slice() {
             make_deconstruct!(
-                _doublecolon1=> TokenType::DoubleColon,
-                _name=> TokenType::Name(_),
-                _doublecolon2=> TokenType::DoubleColon
+                _doublecolon1(TokenType::DoubleColon),
+                _name(TokenType::Name(_)),
+                _doublecolon2(TokenType::DoubleColon)
             ) => Err(Error::Unimplemented),
             _ => {
                 unreachable!(
@@ -574,9 +548,9 @@ impl Program {
     ) -> Result<(), Error> {
         match funcname.tokens.as_slice() {
             make_deconstruct!(
-                _name=> TokenType::Name(_),
-                _funcname_cont=> TokenType::FuncnameCont,
-                _funcname_end=> TokenType::FuncnameEnd
+                _name(TokenType::Name(_)),
+                _funcname_cont(TokenType::FuncnameCont),
+                _funcname_end(TokenType::FuncnameEnd)
             ) => Err(Error::Unimplemented),
             _ => {
                 unreachable!(
@@ -599,9 +573,9 @@ impl Program {
         match attrib.tokens.as_slice() {
             [] => Ok(()),
             make_deconstruct!(
-                _dot=> TokenType::Dot,
-                _name=> TokenType::Name(_),
-                _funcname_cont=> TokenType::FuncnameCont
+                _dot(TokenType::Dot),
+                _name(TokenType::Name(_)),
+                _funcname_cont(TokenType::FuncnameCont)
             ) => Err(Error::Unimplemented),
             _ => {
                 unreachable!(
@@ -623,7 +597,7 @@ impl Program {
     ) -> Result<(), Error> {
         match funcname_end.tokens.as_slice() {
             [] => Ok(()),
-            make_deconstruct!(_colon=> TokenType::Colon, _name=> TokenType::Name(_)) => {
+            make_deconstruct!(_colon(TokenType::Colon), _name(TokenType::Name(_))) => {
                 Err(Error::Unimplemented)
             }
             _ => {
@@ -645,7 +619,7 @@ impl Program {
         compile_context: &mut CompileContext,
     ) -> Result<Vec<ExpDesc<'a>>, Error> {
         match varlist.tokens.as_slice() {
-            make_deconstruct!(var=> TokenType::Var, varlist_cont=> TokenType::VarlistCont) => {
+            make_deconstruct!(var(TokenType::Var), varlist_cont(TokenType::VarlistCont)) => {
                 let mut exp_descs = Vec::new();
 
                 let var_exp_desc = self.var(var, compile_context)?;
@@ -677,9 +651,9 @@ impl Program {
         match varlist_cont.tokens.as_slice() {
             [] => Ok(()),
             make_deconstruct!(
-                _comma=> TokenType::Comma,
-                var=> TokenType::Var,
-                varlist_cont=> TokenType::VarlistCont
+                _comma(TokenType::Comma),
+                var(TokenType::Var),
+                varlist_cont(TokenType::VarlistCont)
             ) => {
                 let var_exp_desc = self.var(var, compile_context)?;
                 exp_descs.push(var_exp_desc);
@@ -705,12 +679,12 @@ impl Program {
         compile_context: &mut CompileContext,
     ) -> Result<ExpDesc<'a>, Error> {
         match var.tokens.as_slice() {
-            make_deconstruct!(_name=> TokenType::Name(name)) => self.name(name, compile_context),
+            make_deconstruct!(_name(TokenType::Name(name))) => self.name(name, compile_context),
             make_deconstruct!(
-                prefixexp => TokenType::Prefixexp,
-                _lsquare => TokenType::LSquare,
-                exp => TokenType::Exp,
-                _rsquare => TokenType::RSquare,
+                prefixexp(TokenType::Prefixexp),
+                _lsquare(TokenType::LSquare),
+                exp(TokenType::Exp),
+                _rsquare(TokenType::RSquare)
             ) => {
                 let (_, prefix_top) = compile_context.reserve_stack_top();
                 let prefixexp_exp_desc = self.prefixexp(prefixexp, compile_context, &prefix_top)?;
@@ -729,9 +703,9 @@ impl Program {
                 }
             }
             make_deconstruct!(
-                prefixexp => TokenType::Prefixexp,
-                _dot => TokenType::Dot,
-                _name => TokenType::Name(name),
+                prefixexp(TokenType::Prefixexp),
+                _dot(TokenType::Dot),
+                _name(TokenType::Name(name))
             ) => {
                 let (_, prefix_top) = compile_context.reserve_stack_top();
                 let prefixexp_exp_desc = self.prefixexp(prefixexp, compile_context, &prefix_top)?;
@@ -768,8 +742,8 @@ impl Program {
     ) -> Result<(), Error> {
         match namelist.tokens.as_slice() {
             make_deconstruct!(
-                _name=> TokenType::Name(_),
-                namelist_cont=> TokenType::NamelistCont
+                _name(TokenType::Name(_)),
+                namelist_cont(TokenType::NamelistCont)
             ) => self.namelist_cont(namelist_cont, compile_context),
             _ => {
                 unreachable!(
@@ -792,9 +766,9 @@ impl Program {
         match namelist_cont.tokens.as_slice() {
             [] => Ok(()),
             make_deconstruct!(
-                _comma=> TokenType::Comma,
-                _name=> TokenType::Name(_),
-                namelist_cont=> TokenType::NamelistCont
+                _comma(TokenType::Comma),
+                _name(TokenType::Name(_)),
+                namelist_cont(TokenType::NamelistCont)
             ) => self.namelist_cont(namelist_cont, compile_context),
             _ => {
                 unreachable!(
@@ -816,10 +790,7 @@ impl Program {
         maybe_exp_descs: Option<&[ExpDesc<'a>]>,
     ) -> Result<(), Error> {
         match explist.tokens.as_slice() {
-            make_deconstruct!(
-                exp => TokenType::Exp,
-                explist_cont => TokenType::ExplistCont
-            ) => {
+            make_deconstruct!(exp(TokenType::Exp), explist_cont(TokenType::ExplistCont)) => {
                 let (exp_desc, tail) = maybe_exp_descs.map_or_else(
                     || (compile_context.reserve_stack_top().1, None),
                     |exp_descs| (exp_descs[0].clone(), Some(&exp_descs[1..])),
@@ -855,9 +826,9 @@ impl Program {
         match explist_cont.tokens.as_slice() {
             [] => Ok(()),
             make_deconstruct!(
-                _comma => TokenType::Comma,
-                exp => TokenType::Exp,
-                explist_cont => TokenType::ExplistCont
+                _comma(TokenType::Comma),
+                exp(TokenType::Exp),
+                explist_cont(TokenType::ExplistCont)
             ) => {
                 let (exp_desc, tail) = maybe_exp_descs.map_or_else(
                     || (compile_context.reserve_stack_top().1, None),
@@ -893,28 +864,24 @@ impl Program {
         exp_desc: &ExpDesc<'a>,
     ) -> Result<ExpDesc<'a>, Error> {
         match exp.tokens.as_slice() {
-            make_deconstruct!(_nil => TokenType::Nil) => Ok(self.nil()),
-            make_deconstruct!(_false => TokenType::False) => Ok(self.boolean(false)),
-            make_deconstruct!(_true => TokenType::True) => Ok(self.boolean(true)),
-            make_deconstruct!(
-                _string => TokenType::String(string)
-            ) => Ok(self.string(string)),
-            make_deconstruct!(_integer => TokenType::Integer(integer)) => {
-                Ok(self.integer(*integer))
-            }
-            make_deconstruct!(_float => TokenType::Float(float)) => Ok(self.float(*float)),
-            make_deconstruct!(_float => TokenType::Dots) => Err(Error::Unimplemented),
-            make_deconstruct!(_functiondef => TokenType::Functiondef) => Err(Error::Unimplemented),
-            make_deconstruct!(prefixexp => TokenType::Prefixexp) => {
+            make_deconstruct!(_nil(TokenType::Nil)) => Ok(self.nil()),
+            make_deconstruct!(_false(TokenType::False)) => Ok(self.boolean(false)),
+            make_deconstruct!(_true(TokenType::True)) => Ok(self.boolean(true)),
+            make_deconstruct!(_string(TokenType::String(string))) => Ok(self.string(string)),
+            make_deconstruct!(_integer(TokenType::Integer(integer))) => Ok(self.integer(*integer)),
+            make_deconstruct!(_float(TokenType::Float(float))) => Ok(self.float(*float)),
+            make_deconstruct!(_float(TokenType::Dots)) => Err(Error::Unimplemented),
+            make_deconstruct!(_functiondef(TokenType::Functiondef)) => Err(Error::Unimplemented),
+            make_deconstruct!(prefixexp(TokenType::Prefixexp)) => {
                 self.prefixexp(prefixexp, compile_context, exp_desc)
             }
+            make_deconstruct!(tableconstructor(TokenType::Tableconstructor)) => {
+                self.tableconstructor(tableconstructor, compile_context, exp_desc)
+            }
             make_deconstruct!(
-                tableconstructor => TokenType::Tableconstructor
-            ) => self.tableconstructor(tableconstructor, compile_context, exp_desc),
-            make_deconstruct!(
-                lhs => TokenType::Exp,
-                op => TokenType::Binop,
-                rhs => TokenType::Exp
+                lhs(TokenType::Exp),
+                op(TokenType::Binop),
+                rhs(TokenType::Exp)
             ) => {
                 let op = self.binop(op)?;
 
@@ -965,10 +932,7 @@ impl Program {
                     rhs_dst,
                 )
             }
-            make_deconstruct!(
-                op => TokenType::Unop,
-                rhs => TokenType::Exp
-            ) => {
+            make_deconstruct!(op(TokenType::Unop), rhs(TokenType::Exp)) => {
                 let op = self.unop(op)?;
 
                 let (stack_top, top) = match exp_desc {
@@ -1056,14 +1020,14 @@ impl Program {
         exp_desc: &ExpDesc<'a>,
     ) -> Result<ExpDesc<'a>, Error> {
         match prefixexp.tokens.as_slice() {
-            make_deconstruct!(var => TokenType::Var) => self.var(var, compile_context),
-            make_deconstruct!(functioncall => TokenType::Functioncall) => self
+            make_deconstruct!(var(TokenType::Var)) => self.var(var, compile_context),
+            make_deconstruct!(functioncall(TokenType::Functioncall)) => self
                 .functioncall(functioncall, compile_context)
                 .map(|()| ExpDesc::Nil),
             make_deconstruct!(
-                _lparen => TokenType::LParen,
-                exp => TokenType::Exp,
-                _rparen => TokenType::RParen,
+                _lparen(TokenType::LParen),
+                exp(TokenType::Exp),
+                _rparen(TokenType::RParen)
             ) => self.exp(exp, compile_context, exp_desc),
             _ => {
                 unreachable!(
@@ -1085,10 +1049,7 @@ impl Program {
     ) -> Result<(), Error> {
         let func_index = compile_context.stack_top;
         match functioncall.tokens.as_slice() {
-            make_deconstruct!(
-                prefixexp => TokenType::Prefixexp,
-                args => TokenType::Args
-            ) => {
+            make_deconstruct!(prefixexp(TokenType::Prefixexp), args(TokenType::Args)) => {
                 let (_, prefixexp_top) = compile_context.reserve_stack_top();
                 let top = self.prefixexp(prefixexp, compile_context, &prefixexp_top)?;
                 top.discharge(&prefixexp_top, self, compile_context)?;
@@ -1101,10 +1062,10 @@ impl Program {
                 Ok(())
             }
             make_deconstruct!(
-                _prefixexp => TokenType::Prefixexp,
-                _colon => TokenType::Colon,
-                _name => TokenType::Name(_),
-                _args => TokenType::Args
+                _prefixexp(TokenType::Prefixexp),
+                _colon(TokenType::Colon),
+                _name(TokenType::Name(_)),
+                _args(TokenType::Args)
             ) => Err(Error::Unimplemented),
             _ => {
                 unreachable!(
@@ -1126,21 +1087,17 @@ impl Program {
     ) -> Result<(), Error> {
         match args.tokens.as_slice() {
             make_deconstruct!(
-                _lparen => TokenType::LParen,
-                args_explist => TokenType::ArgsExplist,
-                _rparen =>TokenType::RParen
+                _lparen(TokenType::LParen),
+                args_explist(TokenType::ArgsExplist),
+                _rparen(TokenType::RParen)
             ) => self.args_explist(args_explist, compile_context),
-            make_deconstruct!(
-                tableconstructor => TokenType::Tableconstructor
-            ) => {
+            make_deconstruct!(tableconstructor(TokenType::Tableconstructor)) => {
                 let (_, top) = compile_context.reserve_stack_top();
                 self.tableconstructor(tableconstructor, compile_context, &top)?;
                 // Already on top of the stack, no need to move
                 Ok(())
             }
-            make_deconstruct!(
-                _string => TokenType::String(string)
-            ) => self.string(string).discharge(
+            make_deconstruct!(_string(TokenType::String(string))) => self.string(string).discharge(
                 &compile_context.reserve_stack_top().1,
                 self,
                 compile_context,
@@ -1164,9 +1121,9 @@ impl Program {
     ) -> Result<(), Error> {
         match args_explist.tokens.as_slice() {
             [] => Ok(()),
-            make_deconstruct!(
-                explist => TokenType::Explist
-            ) => self.explist(explist, compile_context, None),
+            make_deconstruct!(explist(TokenType::Explist)) => {
+                self.explist(explist, compile_context, None)
+            }
             _ => {
                 unreachable!(
                     "ArgsExplist did not match any of the productions. Had {:#?}.",
@@ -1187,8 +1144,8 @@ impl Program {
     ) -> Result<(), Error> {
         match functiondef.tokens.as_slice() {
             make_deconstruct!(
-                _function => TokenType::Function,
-                _funcbody => TokenType::Funcbody
+                _function(TokenType::Function),
+                _funcbody(TokenType::Funcbody)
             ) => Err(Error::Unimplemented),
             _ => {
                 unreachable!(
@@ -1265,10 +1222,10 @@ impl Program {
     fn parlist(&mut self, parlist: &Token, _compile_context: &CompileContext) -> Result<(), Error> {
         match parlist.tokens.as_slice() {
             make_deconstruct!(
-                _name => TokenType::Name(_),
-                _parlist_cont => TokenType::ParlistCont,
+                _name(TokenType::Name(_)),
+                _parlist_cont(TokenType::ParlistCont)
             ) => Err(Error::Unimplemented),
-            make_deconstruct!(_dots => TokenType::Dots) => Err(Error::Unimplemented),
+            make_deconstruct!(_dots(TokenType::Dots)) => Err(Error::Unimplemented),
             _ => {
                 unreachable!(
                     "Parlist did not match any of the productions. Had {:#?}.",
@@ -1290,14 +1247,13 @@ impl Program {
         match parlist_cont.tokens.as_slice() {
             [] => Ok(()),
             make_deconstruct!(
-                _comma => TokenType::Comma,
-                _name => TokenType::Name(_),
-                _parlist_cont => TokenType::ParlistCont,
+                _comma(TokenType::Comma),
+                _name(TokenType::Name(_)),
+                _parlist_cont(TokenType::ParlistCont)
             ) => Err(Error::Unimplemented),
-            make_deconstruct!(
-                _comma => TokenType::Comma,
-                _dots => TokenType::Dots,
-            ) => Err(Error::Unimplemented),
+            make_deconstruct!(_comma(TokenType::Comma), _dots(TokenType::Dots)) => {
+                Err(Error::Unimplemented)
+            }
             _ => {
                 unreachable!(
                     "ParlistCont did not match any of the productions. Had {:#?}.",
@@ -1319,9 +1275,9 @@ impl Program {
     ) -> Result<ExpDesc<'a>, Error> {
         match tableconstructor.tokens.as_slice() {
             make_deconstruct!(
-                _lcurly => TokenType::LCurly,
-                tableconstructor_fieldlist => TokenType::TableconstructorFieldlist,
-                _rcurly => TokenType::RCurly
+                _lcurly(TokenType::LCurly),
+                tableconstructor_fieldlist(TokenType::TableconstructorFieldlist),
+                _rcurly(TokenType::RCurly)
             ) => {
                 let dst = match exp_desc {
                     ExpDesc::Local(dst) => u8::try_from(*dst)?,
@@ -1378,9 +1334,9 @@ impl Program {
     ) -> Result<(u8, u8), Error> {
         match tableconstructor_fieldlist.tokens.as_slice() {
             [] => Ok((0, 0)),
-            make_deconstruct!(
-                fieldlist => TokenType::Fieldlist
-            ) => self.fieldlist(fieldlist, compile_context, table),
+            make_deconstruct!(fieldlist(TokenType::Fieldlist)) => {
+                self.fieldlist(fieldlist, compile_context, table)
+            }
             _ => {
                 unreachable!(
                     "TableconstructorFieldlist did not match any of the productions. Had {:#?}.",
@@ -1402,8 +1358,8 @@ impl Program {
     ) -> Result<(u8, u8), Error> {
         match fieldlist.tokens.as_slice() {
             make_deconstruct!(
-                field => TokenType::Field,
-                fieldlist_cont => TokenType::FieldlistCont
+                field(TokenType::Field),
+                fieldlist_cont(TokenType::FieldlistCont)
             ) => {
                 let (array_item, table_item) = self.field(field, compile_context, table)?;
                 let (array_len, table_len) =
@@ -1433,9 +1389,9 @@ impl Program {
         match fieldlist_cont.tokens.as_slice() {
             [] => Ok((0, 0)),
             make_deconstruct!(
-                fieldsep => TokenType::Fieldsep,
-                field => TokenType::Field,
-                fieldlist_cont => TokenType::FieldlistCont
+                fieldsep(TokenType::Fieldsep),
+                field(TokenType::Field),
+                fieldlist_cont(TokenType::FieldlistCont)
             ) => self
                 .fieldsep(fieldsep)
                 .and_then(|()| self.field(field, compile_context, table))
@@ -1445,9 +1401,9 @@ impl Program {
                             (array_len + array_item, table_len + table_item)
                         })
                 }),
-            make_deconstruct!(
-                fieldsep => TokenType::Fieldsep
-            ) => self.fieldsep(fieldsep).map(|()| (0, 0)),
+            make_deconstruct!(fieldsep(TokenType::Fieldsep)) => {
+                self.fieldsep(fieldsep).map(|()| (0, 0))
+            }
             _ => {
                 unreachable!(
                     "FieldlistCont did not match any of the productions. Had {:#?}.",
@@ -1469,11 +1425,11 @@ impl Program {
     ) -> Result<(u8, u8), Error> {
         match field.tokens.as_slice() {
             make_deconstruct!(
-                _lsquare => TokenType::LSquare,
-                key => TokenType::Exp,
-                _rsquare => TokenType::RSquare,
-                _assing => TokenType::Assign,
-                exp => TokenType::Exp
+                _lsquare(TokenType::LSquare),
+                key(TokenType::Exp),
+                _rsquare(TokenType::RSquare),
+                _assing(TokenType::Assign),
+                exp(TokenType::Exp)
             ) => {
                 let (dst, key_top) = compile_context.reserve_stack_top();
                 self.exp(key, compile_context, &key_top)?.discharge(
@@ -1504,9 +1460,9 @@ impl Program {
                 }
             }
             make_deconstruct!(
-                _name => TokenType::Name(name),
-                _assign => TokenType::Assign,
-                exp => TokenType::Exp
+                _name(TokenType::Name(name)),
+                _assign(TokenType::Assign),
+                exp(TokenType::Exp)
             ) => {
                 let (dst, top) = compile_context.reserve_stack_top();
                 self.exp(exp, compile_context, &top)?
@@ -1519,9 +1475,7 @@ impl Program {
                 compile_context.stack_top = dst;
                 Ok((0, 1))
             }
-            make_deconstruct!(
-                exp => TokenType::Exp
-            ) => {
+            make_deconstruct!(exp(TokenType::Exp)) => {
                 let (_, top) = compile_context.reserve_stack_top();
                 self.exp(exp, compile_context, &top)?
                     .discharge(&top, self, compile_context)?;
@@ -1568,9 +1522,8 @@ impl Program {
 
     fn binop<'a>(&mut self, binop: &Token<'a>) -> Result<TokenType<'a>, Error> {
         match binop.tokens.as_slice() {
-            [Token {
-                tokens: _,
-                token_type:
+            make_deconstruct!(
+                _binop(
                     token @ (TokenType::Or
                     | TokenType::And
                     | TokenType::Less
@@ -1592,7 +1545,8 @@ impl Program {
                     | TokenType::Idiv
                     | TokenType::Mod
                     | TokenType::Pow),
-            }] => Ok(*token),
+                )
+            ) => Ok(*token),
             _ => {
                 unreachable!(
                     "Binop did not match any of the productions. Had {:#?}.",
@@ -1608,11 +1562,11 @@ impl Program {
 
     fn unop<'a>(&mut self, unop: &Token<'a>) -> Result<TokenType<'a>, Error> {
         match unop.tokens.as_slice() {
-            [Token {
-                tokens: _,
-                token_type:
+            make_deconstruct!(
+                _binop(
                     token @ (TokenType::BitXor | TokenType::Sub | TokenType::Len | TokenType::Not),
-            }] => Ok(*token),
+                )
+            ) => Ok(*token),
             _ => {
                 unreachable!(
                     "Unop did not match any of the productions. Had {:#?}.",

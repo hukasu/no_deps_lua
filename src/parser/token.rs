@@ -4,6 +4,8 @@ use alloc::vec::Vec;
 
 use crate::lex::{Lexeme, LexemeType};
 
+use super::{Error, Parser};
+
 #[derive(Debug, Clone)]
 pub struct Token<'a> {
     pub(crate) tokens: Vec<Token<'a>>,
@@ -126,8 +128,7 @@ pub enum TokenType<'a> {
     /// 26  stat :== Local attnamelist stat_attexplist
     /// ```
     Stat,
-    StatElseif,
-    StatElse,
+    StatIf,
     StatForexp,
     StatAttexplist,
     Attnamelist,
@@ -404,8 +405,7 @@ impl Display for TokenType<'_> {
             Self::BlockStat => write!(f, "block_stat"),
             Self::BlockRetstat => write!(f, "block_retstat"),
             Self::Stat => write!(f, "stat"),
-            Self::StatElseif => write!(f, "stat_elseif"),
-            Self::StatElse => write!(f, "stat_else"),
+            Self::StatIf => write!(f, "stat_if"),
             Self::StatForexp => write!(f, "stat_forexp"),
             Self::StatAttexplist => write!(f, "stat_attexplist"),
             Self::Attnamelist => write!(f, "attnamelist"),
@@ -701,6 +701,19 @@ pub enum Precedence {
     Shift,
     /// The lookahead token has lower precedence
     Reduce,
+}
+
+impl Precedence {
+    pub fn resolve<const REDUCE: usize>(
+        self,
+        parser: &mut Parser,
+        shift: usize,
+    ) -> Result<(), Error> {
+        match self {
+            Self::Shift => parser.shift(shift),
+            Self::Reduce => parser.reduce::<REDUCE>(),
+        }
+    }
 }
 
 #[cfg(test)]
