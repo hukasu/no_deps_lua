@@ -44,6 +44,7 @@ impl Program {
         let mut compile_context = CompileContext {
             stack_top: 0,
             locals: Vec::new(),
+            breaks: None,
         };
 
         program.chunk(&chunk, &mut compile_context)?;
@@ -174,7 +175,15 @@ impl Program {
                 self.functioncall(functioncall, compile_context)
             }
             make_deconstruct!(_label(TokenType::Label)) => Err(Error::Unimplemented),
-            make_deconstruct!(_break(TokenType::Break)) => Err(Error::Unimplemented),
+            make_deconstruct!(_break(TokenType::Break)) => match compile_context.breaks.as_mut() {
+                Some(breaks) => {
+                    let bytecode = self.byte_codes.len();
+                    breaks.push(bytecode);
+                    self.byte_codes.push(ByteCode::Jmp(0));
+                    Ok(())
+                }
+                None => Err(Error::BreakOutsideLoop),
+            },
             make_deconstruct!(_goto(TokenType::Goto), _name(TokenType::Name(_))) => {
                 Err(Error::Unimplemented)
             }
@@ -205,12 +214,13 @@ impl Program {
                 self.byte_codes.push(ByteCode::Jmp(0));
 
                 let locals = compile_context.locals.len();
+                let cache_breaks = compile_context.breaks.replace(Vec::with_capacity(16));
+
                 self.block(block, compile_context)?;
                 compile_context.stack_top -= u8::try_from(compile_context.locals.len() - locals)
                     .inspect_err(|_| {
                         log::error!("Failed to rewind stack top after `while`s block.")
                     })?;
-                compile_context.locals.truncate(locals);
 
                 let jump_end = self.byte_codes.len();
 
@@ -221,6 +231,20 @@ impl Program {
                     i16::try_from(isize::try_from(jump)? - isize::try_from(jump_end)? - 2)
                         .map_err(|_| Error::LongJump)?,
                 ));
+
+                let Some(breaks) = compile_context.breaks.take() else {
+                    unreachable!(
+                        "Compile Context breaks should only ever be None outside of loops."
+                    );
+                };
+                for break_bytecode in breaks {
+                    self.byte_codes[break_bytecode] = ByteCode::Jmp(
+                        i16::try_from(jump_end - break_bytecode).map_err(|_| Error::LongJump)?,
+                    );
+                }
+
+                compile_context.locals.truncate(locals);
+                compile_context.breaks = cache_breaks;
 
                 Ok(())
             }

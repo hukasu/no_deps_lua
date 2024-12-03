@@ -22,8 +22,9 @@ pub enum Error {
     BoolConcat,
     TableConcat,
     // Others
-    StackOverflow,
     LongJump,
+    BreakOutsideLoop,
+    StackOverflow,
     Unimplemented,
 }
 
@@ -78,11 +79,14 @@ impl Display for Error {
             Self::TableConcat => {
                 write!(f, "Can't use Table in concat operations.")
             }
-            Self::StackOverflow => {
-                write!(f, "Tried accessing index outside stack bounds.")
-            }
             Self::LongJump => {
                 write!(f, "Jump is longer than a i16.")
+            }
+            Self::BreakOutsideLoop => {
+                write!(f, "Break outside of loop.")
+            }
+            Self::StackOverflow => {
+                write!(f, "Tried accessing index outside stack bounds.")
             }
             Self::Unimplemented => {
                 write!(f, "Feature is not implemented.")

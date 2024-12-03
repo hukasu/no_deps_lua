@@ -8,6 +8,7 @@ use super::exp_desc::ExpDesc;
 pub struct CompileContext {
     pub stack_top: u8,
     pub locals: Vec<Value>,
+    pub breaks: Option<Vec<usize>>,
 }
 
 impl CompileContext {

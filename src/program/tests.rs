@@ -907,3 +907,73 @@ end
     );
     crate::Lua::execute(&program).expect("Should run");
 }
+
+#[test]
+fn chapter6_break() {
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
+    let program = Program::parse(
+        r#"
+local z = 1
+while z do
+  while z do
+    print "break inner"
+    break
+    print "unreachable inner"
+  end
+
+  print "break outer"
+  break
+  print "unreachable outer"
+end
+"#,
+    )
+    .unwrap();
+    assert_eq!(
+        &program.constants,
+        &[
+            "print".into(),
+            "break inner".into(),
+            "unreachable inner".into(),
+            "break outer".into(),
+            "unreachable outer".into(),
+        ]
+    );
+    assert_eq!(
+        &program.byte_codes,
+        &[
+            // local z = 1
+            ByteCode::LoadInt(0, 1),
+            // while z do
+            ByteCode::Test(0, 0),
+            ByteCode::Jmp(18),
+            //   while z do
+            ByteCode::Test(0, 0),
+            ByteCode::Jmp(8),
+            //     print "break inner"
+            ByteCode::GetGlobal(1, 0),
+            ByteCode::LoadConstant(2, 1),
+            ByteCode::Call(1, 1),
+            //     break
+            ByteCode::Jmp(4),
+            //     print "unreachable inner"
+            ByteCode::GetGlobal(1, 0),
+            ByteCode::LoadConstant(2, 2),
+            ByteCode::Call(1, 1),
+            //   end
+            ByteCode::Jmp(-10),
+            //   print "break outer"
+            ByteCode::GetGlobal(1, 0),
+            ByteCode::LoadConstant(2, 3),
+            ByteCode::Call(1, 1),
+            //   break
+            ByteCode::Jmp(4),
+            //   print "unreachable outer"
+            ByteCode::GetGlobal(1, 0),
+            ByteCode::LoadConstant(2, 4),
+            ByteCode::Call(1, 1),
+            // end
+            ByteCode::Jmp(-20),
+        ]
+    );
+    crate::Lua::execute(&program).expect("Should run");
+}
