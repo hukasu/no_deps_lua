@@ -250,10 +250,37 @@ impl Program {
             }
             make_deconstruct!(
                 _repeat(TokenType::Repeat),
-                _block(TokenType::Block),
+                block(TokenType::Block),
                 _until(TokenType::Until),
-                _exp(TokenType::Exp)
-            ) => Err(Error::Unimplemented),
+                exp(TokenType::Exp)
+            ) => {
+                let locals = compile_context.locals.len();
+                let stack_top = compile_context.stack_top;
+                let repeat_start = self.byte_codes.len();
+
+                self.block(block, compile_context)?;
+
+                compile_context.locals.truncate(locals);
+                compile_context.stack_top = stack_top;
+
+                let (top_index, top) = compile_context.reserve_stack_top();
+                let cond = self.exp(exp, compile_context, &top)?;
+                cond.discharge(
+                    &ExpDesc::IfCondition(usize::from(top_index)),
+                    self,
+                    compile_context,
+                )?;
+                // Finish use of condition
+                compile_context.stack_top = top_index;
+
+                let repeat_end = self.byte_codes.len() + 1;
+                self.byte_codes.push(ByteCode::Jmp(
+                    i16::try_from(isize::try_from(repeat_start)? - isize::try_from(repeat_end)?)
+                        .map_err(|_| Error::LongJump)?,
+                ));
+
+                Ok(())
+            }
             make_deconstruct!(
                 _if(TokenType::If),
                 exp(TokenType::Exp),
