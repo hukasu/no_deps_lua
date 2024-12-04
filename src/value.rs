@@ -22,6 +22,16 @@ pub enum Value {
     Function(fn(&mut Lua) -> i32),
 }
 
+impl Value {
+    pub fn try_float(&self) -> Option<Value> {
+        match self {
+            Value::Integer(i) => Some(Value::Float(*i as f64)),
+            Value::Float(f) => Some(Value::Float(*f)),
+            _ => None,
+        }
+    }
+}
+
 impl PartialOrd for Value {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))

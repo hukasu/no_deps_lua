@@ -1,45 +1,35 @@
+use alloc::boxed::Box;
+
 use crate::ext::FloatExt;
 
 use super::{compile_context::CompileContext, exp_desc::ExpDesc, ByteCode, Error, Program};
 
-fn arithmetic_errors(lhs: &ExpDesc, rhs: &ExpDesc) -> Result<(), Error> {
-    match (lhs, rhs) {
-        (ExpDesc::Nil, _) => Err(Error::NilArithmetic),
-        (ExpDesc::Boolean(_), _) => Err(Error::BoolArithmetic),
-        (ExpDesc::String(_), _) => Err(Error::StringArithmetic),
-        (ExpDesc::TableLocal(_, _) | ExpDesc::TableGlobal(_, _), _) => Err(Error::TableArithmetic),
-        (_, ExpDesc::Nil) => Err(Error::NilArithmetic),
-        (_, ExpDesc::Boolean(_)) => Err(Error::BoolArithmetic),
-        (_, ExpDesc::String(_)) => Err(Error::StringArithmetic),
-        (_, ExpDesc::TableLocal(_, _) | ExpDesc::TableGlobal(_, _)) => Err(Error::TableArithmetic),
+fn arithmetic_errors(exp: &ExpDesc) -> Result<(), Error> {
+    match exp {
+        ExpDesc::Nil => Err(Error::NilArithmetic),
+        ExpDesc::Boolean(_) => Err(Error::BoolArithmetic),
+        ExpDesc::String(_) => Err(Error::StringArithmetic),
+        ExpDesc::TableLocal(_, _) | ExpDesc::TableGlobal(_, _) => Err(Error::TableArithmetic),
         _ => Ok(()),
     }
 }
 
-fn bitwise_errors(lhs: &ExpDesc, rhs: &ExpDesc) -> Result<(), Error> {
-    match (lhs, rhs) {
-        (ExpDesc::Float(_), _) => Err(Error::FloatBitwise),
-        (ExpDesc::Nil, _) => Err(Error::NilBitwise),
-        (ExpDesc::Boolean(_), _) => Err(Error::BoolBitwise),
-        (ExpDesc::String(_), _) => Err(Error::StringBitwise),
-        (ExpDesc::TableLocal(_, _) | ExpDesc::TableGlobal(_, _), _) => Err(Error::TableBitwise),
-        (_, ExpDesc::Float(_)) => Err(Error::FloatBitwise),
-        (_, ExpDesc::Nil) => Err(Error::NilBitwise),
-        (_, ExpDesc::Boolean(_)) => Err(Error::BoolBitwise),
-        (_, ExpDesc::String(_)) => Err(Error::StringBitwise),
-        (_, ExpDesc::TableLocal(_, _) | ExpDesc::TableGlobal(_, _)) => Err(Error::TableBitwise),
+fn bitwise_errors(exp: &ExpDesc) -> Result<(), Error> {
+    match exp {
+        ExpDesc::Float(_) => Err(Error::FloatBitwise),
+        ExpDesc::Nil => Err(Error::NilBitwise),
+        ExpDesc::Boolean(_) => Err(Error::BoolBitwise),
+        ExpDesc::String(_) => Err(Error::StringBitwise),
+        ExpDesc::TableLocal(_, _) | ExpDesc::TableGlobal(_, _) => Err(Error::TableBitwise),
         _ => Ok(()),
     }
 }
 
-fn concat_errors(lhs: &ExpDesc, rhs: &ExpDesc) -> Result<(), Error> {
-    match (lhs, rhs) {
-        (ExpDesc::Nil, _) => Err(Error::NilConcat),
-        (ExpDesc::Boolean(_), _) => Err(Error::BoolConcat),
-        (ExpDesc::TableLocal(_, _) | ExpDesc::TableGlobal(_, _), _) => Err(Error::TableConcat),
-        (_, ExpDesc::Nil) => Err(Error::NilConcat),
-        (_, ExpDesc::Boolean(_)) => Err(Error::BoolConcat),
-        (_, ExpDesc::TableLocal(_, _) | ExpDesc::TableGlobal(_, _)) => Err(Error::TableConcat),
+fn concat_errors(exp: &ExpDesc) -> Result<(), Error> {
+    match exp {
+        ExpDesc::Nil => Err(Error::NilConcat),
+        ExpDesc::Boolean(_) => Err(Error::BoolConcat),
+        ExpDesc::TableLocal(_, _) | ExpDesc::TableGlobal(_, _) => Err(Error::TableConcat),
         _ => Ok(()),
     }
 }
@@ -48,13 +38,14 @@ fn concat_errors(lhs: &ExpDesc, rhs: &ExpDesc) -> Result<(), Error> {
 pub fn binop_add<'a>(
     program: &mut Program,
     compile_context: &mut CompileContext,
-    lhs: &ExpDesc,
-    rhs: &ExpDesc,
-    lhs_top: &ExpDesc,
-    rhs_top: &ExpDesc,
+    lhs: &ExpDesc<'a>,
+    rhs: &ExpDesc<'a>,
+    lhs_top: &ExpDesc<'a>,
+    rhs_top: &ExpDesc<'a>,
     lhs_dst: u8,
     rhs_dst: u8,
 ) -> Result<ExpDesc<'a>, Error> {
+    arithmetic_errors(lhs).and_then(|()| arithmetic_errors(rhs))?;
     match (lhs, rhs) {
         (ExpDesc::Integer(lhs_i), ExpDesc::Integer(rhs_i)) => Ok(ExpDesc::Integer(lhs_i + rhs_i)),
         (ExpDesc::Float(lhs_f), ExpDesc::Float(rhs_f)) => Ok(ExpDesc::Float(lhs_f + rhs_f)),
@@ -65,7 +56,6 @@ pub fn binop_add<'a>(
             Ok(ExpDesc::Float(lhs_f + *rhs_i as f64))
         }
         (lhs, rhs) => {
-            arithmetic_errors(lhs, rhs)?;
             lhs.discharge(lhs_top, program, compile_context)?;
             rhs.discharge(rhs_top, program, compile_context)?;
 
@@ -82,13 +72,14 @@ pub fn binop_add<'a>(
 pub fn binop_sub<'a>(
     program: &mut Program,
     compile_context: &mut CompileContext,
-    lhs: &ExpDesc,
-    rhs: &ExpDesc,
-    lhs_top: &ExpDesc,
-    rhs_top: &ExpDesc,
+    lhs: &ExpDesc<'a>,
+    rhs: &ExpDesc<'a>,
+    lhs_top: &ExpDesc<'a>,
+    rhs_top: &ExpDesc<'a>,
     lhs_dst: u8,
     rhs_dst: u8,
 ) -> Result<ExpDesc<'a>, Error> {
+    arithmetic_errors(lhs).and_then(|()| arithmetic_errors(rhs))?;
     match (lhs, rhs) {
         (ExpDesc::Integer(lhs_i), ExpDesc::Integer(rhs_i)) => Ok(ExpDesc::Integer(lhs_i - rhs_i)),
         (ExpDesc::Float(lhs_f), ExpDesc::Float(rhs_f)) => Ok(ExpDesc::Float(lhs_f - rhs_f)),
@@ -99,7 +90,6 @@ pub fn binop_sub<'a>(
             Ok(ExpDesc::Float(lhs_f - *rhs_i as f64))
         }
         (lhs, rhs) => {
-            arithmetic_errors(lhs, rhs)?;
             lhs.discharge(lhs_top, program, compile_context)?;
             rhs.discharge(rhs_top, program, compile_context)?;
 
@@ -116,13 +106,14 @@ pub fn binop_sub<'a>(
 pub fn binop_mul<'a>(
     program: &mut Program,
     compile_context: &mut CompileContext,
-    lhs: &ExpDesc,
-    rhs: &ExpDesc,
-    lhs_top: &ExpDesc,
-    rhs_top: &ExpDesc,
+    lhs: &ExpDesc<'a>,
+    rhs: &ExpDesc<'a>,
+    lhs_top: &ExpDesc<'a>,
+    rhs_top: &ExpDesc<'a>,
     lhs_dst: u8,
     rhs_dst: u8,
 ) -> Result<ExpDesc<'a>, Error> {
+    arithmetic_errors(lhs).and_then(|()| arithmetic_errors(rhs))?;
     match (lhs, rhs) {
         (ExpDesc::Integer(lhs_i), ExpDesc::Integer(rhs_i)) => Ok(ExpDesc::Integer(lhs_i * rhs_i)),
         (ExpDesc::Float(lhs_f), ExpDesc::Float(rhs_f)) => Ok(ExpDesc::Float(lhs_f * rhs_f)),
@@ -132,8 +123,12 @@ pub fn binop_mul<'a>(
         (ExpDesc::Float(lhs_f), ExpDesc::Integer(rhs_i)) => {
             Ok(ExpDesc::Float(lhs_f * *rhs_i as f64))
         }
+        (ExpDesc::Local(lhs_dst), float @ ExpDesc::Float(_)) => Ok(ExpDesc::BinopConstant(
+            ByteCode::MulConstant,
+            *lhs_dst,
+            Box::new(float.clone()),
+        )),
         (lhs, rhs) => {
-            arithmetic_errors(lhs, rhs)?;
             lhs.discharge(lhs_top, program, compile_context)?;
             rhs.discharge(rhs_top, program, compile_context)?;
 
@@ -150,13 +145,14 @@ pub fn binop_mul<'a>(
 pub fn binop_mod<'a>(
     program: &mut Program,
     compile_context: &mut CompileContext,
-    lhs: &ExpDesc,
-    rhs: &ExpDesc,
-    lhs_top: &ExpDesc,
-    rhs_top: &ExpDesc,
+    lhs: &ExpDesc<'a>,
+    rhs: &ExpDesc<'a>,
+    lhs_top: &ExpDesc<'a>,
+    rhs_top: &ExpDesc<'a>,
     lhs_dst: u8,
     rhs_dst: u8,
 ) -> Result<ExpDesc<'a>, Error> {
+    arithmetic_errors(lhs).and_then(|()| arithmetic_errors(rhs))?;
     match (lhs, rhs) {
         (ExpDesc::Integer(lhs_i), ExpDesc::Integer(rhs_i)) => Ok(ExpDesc::Integer(lhs_i % rhs_i)),
         (ExpDesc::Float(lhs_f), ExpDesc::Float(rhs_f)) => Ok(ExpDesc::Float(lhs_f % rhs_f)),
@@ -167,7 +163,6 @@ pub fn binop_mod<'a>(
             Ok(ExpDesc::Float(lhs_f % *rhs_i as f64))
         }
         (lhs, rhs) => {
-            arithmetic_errors(lhs, rhs)?;
             lhs.discharge(lhs_top, program, compile_context)?;
             rhs.discharge(rhs_top, program, compile_context)?;
 
@@ -184,13 +179,14 @@ pub fn binop_mod<'a>(
 pub fn binop_pow<'a>(
     program: &mut Program,
     compile_context: &mut CompileContext,
-    lhs: &ExpDesc,
-    rhs: &ExpDesc,
-    lhs_top: &ExpDesc,
-    rhs_top: &ExpDesc,
+    lhs: &ExpDesc<'a>,
+    rhs: &ExpDesc<'a>,
+    lhs_top: &ExpDesc<'a>,
+    rhs_top: &ExpDesc<'a>,
     lhs_dst: u8,
     rhs_dst: u8,
 ) -> Result<ExpDesc<'a>, Error> {
+    arithmetic_errors(lhs).and_then(|()| arithmetic_errors(rhs))?;
     match (lhs, rhs) {
         (ExpDesc::Integer(lhs_i), ExpDesc::Integer(rhs_i)) => {
             Ok(ExpDesc::Float({ *lhs_i as f64 }.powf(*rhs_i as f64)))
@@ -203,7 +199,6 @@ pub fn binop_pow<'a>(
             Ok(ExpDesc::Float(lhs_f.powf(*rhs_i as f64)))
         }
         (lhs, rhs) => {
-            arithmetic_errors(lhs, rhs)?;
             lhs.discharge(lhs_top, program, compile_context)?;
             rhs.discharge(rhs_top, program, compile_context)?;
 
@@ -220,13 +215,14 @@ pub fn binop_pow<'a>(
 pub fn binop_div<'a>(
     program: &mut Program,
     compile_context: &mut CompileContext,
-    lhs: &ExpDesc,
-    rhs: &ExpDesc,
-    lhs_top: &ExpDesc,
-    rhs_top: &ExpDesc,
+    lhs: &ExpDesc<'a>,
+    rhs: &ExpDesc<'a>,
+    lhs_top: &ExpDesc<'a>,
+    rhs_top: &ExpDesc<'a>,
     lhs_dst: u8,
     rhs_dst: u8,
 ) -> Result<ExpDesc<'a>, Error> {
+    arithmetic_errors(lhs).and_then(|()| arithmetic_errors(rhs))?;
     match (lhs, rhs) {
         (ExpDesc::Integer(lhs_i), ExpDesc::Integer(rhs_i)) => {
             Ok(ExpDesc::Float(*lhs_i as f64 / *rhs_i as f64))
@@ -255,13 +251,14 @@ pub fn binop_div<'a>(
 pub fn binop_idiv<'a>(
     program: &mut Program,
     compile_context: &mut CompileContext,
-    lhs: &ExpDesc,
-    rhs: &ExpDesc,
-    lhs_top: &ExpDesc,
-    rhs_top: &ExpDesc,
+    lhs: &ExpDesc<'a>,
+    rhs: &ExpDesc<'a>,
+    lhs_top: &ExpDesc<'a>,
+    rhs_top: &ExpDesc<'a>,
     lhs_dst: u8,
     rhs_dst: u8,
 ) -> Result<ExpDesc<'a>, Error> {
+    arithmetic_errors(lhs).and_then(|()| arithmetic_errors(rhs))?;
     match (lhs, rhs) {
         (ExpDesc::Integer(lhs_i), ExpDesc::Integer(rhs_i)) => Ok(ExpDesc::Integer(lhs_i / rhs_i)),
         (ExpDesc::Float(lhs_f), ExpDesc::Float(rhs_f)) => {
@@ -274,7 +271,6 @@ pub fn binop_idiv<'a>(
             Ok(ExpDesc::Float((lhs_f / *rhs_i as f64).trunc()))
         }
         (lhs, rhs) => {
-            arithmetic_errors(lhs, rhs)?;
             lhs.discharge(lhs_top, program, compile_context)?;
             rhs.discharge(rhs_top, program, compile_context)?;
 
@@ -291,13 +287,14 @@ pub fn binop_idiv<'a>(
 pub fn binop_bitand<'a>(
     program: &mut Program,
     compile_context: &mut CompileContext,
-    lhs: &ExpDesc,
-    rhs: &ExpDesc,
-    lhs_top: &ExpDesc,
-    rhs_top: &ExpDesc,
+    lhs: &ExpDesc<'a>,
+    rhs: &ExpDesc<'a>,
+    lhs_top: &ExpDesc<'a>,
+    rhs_top: &ExpDesc<'a>,
     lhs_dst: u8,
     rhs_dst: u8,
 ) -> Result<ExpDesc<'a>, Error> {
+    bitwise_errors(lhs).and_then(|()| bitwise_errors(rhs))?;
     match (lhs, rhs) {
         (ExpDesc::Integer(lhs), ExpDesc::Integer(rhs)) => Ok(ExpDesc::Integer(lhs & rhs)),
         (ExpDesc::Integer(lhs), ExpDesc::Float(rhs)) if rhs.zero_frac() => {
@@ -310,7 +307,6 @@ pub fn binop_bitand<'a>(
             Ok(ExpDesc::Integer((*lhs as i64) & (*rhs as i64)))
         }
         (lhs, rhs) => {
-            bitwise_errors(lhs, rhs)?;
             lhs.discharge(lhs_top, program, compile_context)?;
             rhs.discharge(rhs_top, program, compile_context)?;
 
@@ -327,13 +323,14 @@ pub fn binop_bitand<'a>(
 pub fn binop_bitor<'a>(
     program: &mut Program,
     compile_context: &mut CompileContext,
-    lhs: &ExpDesc,
-    rhs: &ExpDesc,
-    lhs_top: &ExpDesc,
-    rhs_top: &ExpDesc,
+    lhs: &ExpDesc<'a>,
+    rhs: &ExpDesc<'a>,
+    lhs_top: &ExpDesc<'a>,
+    rhs_top: &ExpDesc<'a>,
     lhs_dst: u8,
     rhs_dst: u8,
 ) -> Result<ExpDesc<'a>, Error> {
+    bitwise_errors(lhs).and_then(|()| bitwise_errors(rhs))?;
     match (lhs, rhs) {
         (ExpDesc::Integer(lhs), ExpDesc::Integer(rhs)) => Ok(ExpDesc::Integer(lhs | rhs)),
         (ExpDesc::Integer(lhs), ExpDesc::Float(rhs)) if rhs.zero_frac() => {
@@ -346,7 +343,6 @@ pub fn binop_bitor<'a>(
             Ok(ExpDesc::Integer((*lhs as i64) | (*rhs as i64)))
         }
         (lhs, rhs) => {
-            bitwise_errors(lhs, rhs)?;
             lhs.discharge(lhs_top, program, compile_context)?;
             rhs.discharge(rhs_top, program, compile_context)?;
 
@@ -363,13 +359,14 @@ pub fn binop_bitor<'a>(
 pub fn binop_bitxor<'a>(
     program: &mut Program,
     compile_context: &mut CompileContext,
-    lhs: &ExpDesc,
-    rhs: &ExpDesc,
-    lhs_top: &ExpDesc,
-    rhs_top: &ExpDesc,
+    lhs: &ExpDesc<'a>,
+    rhs: &ExpDesc<'a>,
+    lhs_top: &ExpDesc<'a>,
+    rhs_top: &ExpDesc<'a>,
     lhs_dst: u8,
     rhs_dst: u8,
 ) -> Result<ExpDesc<'a>, Error> {
+    bitwise_errors(lhs).and_then(|()| bitwise_errors(rhs))?;
     match (lhs, rhs) {
         (ExpDesc::Integer(lhs), ExpDesc::Integer(rhs)) => Ok(ExpDesc::Integer(lhs ^ rhs)),
         (ExpDesc::Integer(lhs), ExpDesc::Float(rhs)) if rhs.zero_frac() => {
@@ -382,7 +379,6 @@ pub fn binop_bitxor<'a>(
             Ok(ExpDesc::Integer((*lhs as i64) ^ (*rhs as i64)))
         }
         (lhs, rhs) => {
-            bitwise_errors(lhs, rhs)?;
             lhs.discharge(lhs_top, program, compile_context)?;
             rhs.discharge(rhs_top, program, compile_context)?;
 
@@ -399,13 +395,14 @@ pub fn binop_bitxor<'a>(
 pub fn binop_shiftl<'a>(
     program: &mut Program,
     compile_context: &mut CompileContext,
-    lhs: &ExpDesc,
-    rhs: &ExpDesc,
-    lhs_top: &ExpDesc,
-    rhs_top: &ExpDesc,
+    lhs: &ExpDesc<'a>,
+    rhs: &ExpDesc<'a>,
+    lhs_top: &ExpDesc<'a>,
+    rhs_top: &ExpDesc<'a>,
     lhs_dst: u8,
     rhs_dst: u8,
 ) -> Result<ExpDesc<'a>, Error> {
+    bitwise_errors(lhs).and_then(|()| bitwise_errors(rhs))?;
     match (lhs, rhs) {
         (ExpDesc::Integer(lhs), ExpDesc::Integer(rhs)) => Ok(ExpDesc::Integer(lhs << rhs)),
         (ExpDesc::Integer(lhs), ExpDesc::Float(rhs)) if rhs.zero_frac() => {
@@ -418,7 +415,6 @@ pub fn binop_shiftl<'a>(
             Ok(ExpDesc::Integer((*lhs as i64) << (*rhs as i64)))
         }
         (lhs, rhs) => {
-            bitwise_errors(lhs, rhs)?;
             lhs.discharge(lhs_top, program, compile_context)?;
             rhs.discharge(rhs_top, program, compile_context)?;
 
@@ -435,13 +431,14 @@ pub fn binop_shiftl<'a>(
 pub fn binop_shiftr<'a>(
     program: &mut Program,
     compile_context: &mut CompileContext,
-    lhs: &ExpDesc,
-    rhs: &ExpDesc,
-    lhs_top: &ExpDesc,
-    rhs_top: &ExpDesc,
+    lhs: &ExpDesc<'a>,
+    rhs: &ExpDesc<'a>,
+    lhs_top: &ExpDesc<'a>,
+    rhs_top: &ExpDesc<'a>,
     lhs_dst: u8,
     rhs_dst: u8,
 ) -> Result<ExpDesc<'a>, Error> {
+    bitwise_errors(lhs).and_then(|()| bitwise_errors(rhs))?;
     match (lhs, rhs) {
         (ExpDesc::Integer(lhs), ExpDesc::Integer(rhs)) => Ok(ExpDesc::Integer(lhs >> rhs)),
         (ExpDesc::Integer(lhs), ExpDesc::Float(rhs)) if rhs.zero_frac() => {
@@ -454,7 +451,6 @@ pub fn binop_shiftr<'a>(
             Ok(ExpDesc::Integer((*lhs as i64) >> (*rhs as i64)))
         }
         (lhs, rhs) => {
-            bitwise_errors(lhs, rhs)?;
             lhs.discharge(lhs_top, program, compile_context)?;
             rhs.discharge(rhs_top, program, compile_context)?;
 
@@ -471,14 +467,14 @@ pub fn binop_shiftr<'a>(
 pub fn binop_concat<'a>(
     program: &mut Program,
     compile_context: &mut CompileContext,
-    lhs: &ExpDesc,
-    rhs: &ExpDesc,
-    lhs_top: &ExpDesc,
-    rhs_top: &ExpDesc,
+    lhs: &ExpDesc<'a>,
+    rhs: &ExpDesc<'a>,
+    lhs_top: &ExpDesc<'a>,
+    rhs_top: &ExpDesc<'a>,
     lhs_dst: u8,
     rhs_dst: u8,
 ) -> Result<ExpDesc<'a>, Error> {
-    concat_errors(lhs, rhs)?;
+    concat_errors(lhs).and_then(|()| concat_errors(rhs))?;
     lhs.discharge(lhs_top, program, compile_context)?;
     rhs.discharge(rhs_top, program, compile_context)?;
 

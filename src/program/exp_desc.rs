@@ -12,6 +12,7 @@ pub enum ExpDesc<'a> {
     Float(f64),
     String(&'a str),
     Unop(fn(u8, u8) -> ByteCode, usize),
+    BinopConstant(fn(u8, u8, u8) -> ByteCode, usize, Box<ExpDesc<'a>>),
     Binop(fn(u8, u8, u8) -> ByteCode, usize, usize),
     Local(usize),
     Global(usize),
@@ -202,6 +203,22 @@ impl<'a> ExpDesc<'a> {
                 let lhs = u8::try_from(*lhs)?;
                 let rhs = u8::try_from(*rhs)?;
                 let dst = u8::try_from(*dst)?;
+
+                program.byte_codes.push(bytecode(dst, lhs, rhs));
+
+                Ok(())
+            }
+            (Self::BinopConstant(bytecode, lhs, rhs), Self::Local(dst)) => {
+                let lhs = u8::try_from(*lhs)?;
+                let dst = u8::try_from(*dst)?;
+
+                let rhs = match rhs.as_ref() {
+                    ExpDesc::Nil => program.push_constant(()),
+                    ExpDesc::Boolean(boolean) => program.push_constant(*boolean),
+                    ExpDesc::Integer(integer) => program.push_constant(*integer),
+                    ExpDesc::Float(float) => program.push_constant(*float),
+                    _ => unreachable!("Only this values should be available for BinopConstant"),
+                }?;
 
                 program.byte_codes.push(bytecode(dst, lhs, rhs));
 

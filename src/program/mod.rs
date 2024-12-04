@@ -337,16 +337,63 @@ impl Program {
             }
             make_deconstruct!(
                 _for(TokenType::For),
-                _name(TokenType::Name(_)),
+                _name(TokenType::Name(name)),
                 _assign(TokenType::Assign),
-                _exp1(TokenType::Exp),
+                start(TokenType::Exp),
                 _comma(TokenType::Comma),
-                _exp2(TokenType::Exp),
-                _stat_forexp(TokenType::StatForexp),
+                end(TokenType::Exp),
+                stat_forexp(TokenType::StatForexp),
                 _do(TokenType::Do),
-                _block(TokenType::Block),
+                block(TokenType::Block),
                 _end(TokenType::End)
-            ) => Err(Error::Unimplemented),
+            ) => {
+                let locals = compile_context.locals.len();
+
+                // Names can't start with `?`, so using it for internal symbols
+                compile_context.locals.push("?start".into());
+                compile_context.locals.push("?end".into());
+                compile_context.locals.push("?step".into());
+                compile_context.locals.push((*name).into());
+
+                let (for_stack, start_stack) = compile_context.reserve_stack_top();
+                self.exp(start, compile_context, &start_stack)?.discharge(
+                    &start_stack,
+                    self,
+                    compile_context,
+                )?;
+                let (_, end_stack) = compile_context.reserve_stack_top();
+                self.exp(end, compile_context, &end_stack)?.discharge(
+                    &end_stack,
+                    self,
+                    compile_context,
+                )?;
+                let step = self.stat_forexp(stat_forexp, compile_context)?;
+                let (_, step_stack) = compile_context.reserve_stack_top();
+                step.discharge(&step_stack, self, compile_context)?;
+
+                // Reserve 1 slot for counter
+                compile_context.stack_top += 1;
+
+                let counter_bytecode = self.byte_codes.len();
+                self.byte_codes.push(ByteCode::ForPrepare(for_stack, 0));
+
+                self.block(block, compile_context)?;
+
+                let end_bytecode = self.byte_codes.len();
+                self.byte_codes.push(ByteCode::ForLoop(
+                    for_stack,
+                    u16::try_from(end_bytecode - counter_bytecode)?,
+                ));
+                self.byte_codes[counter_bytecode] = ByteCode::ForPrepare(
+                    for_stack,
+                    u16::try_from(end_bytecode - (counter_bytecode + 1))?,
+                );
+
+                compile_context.stack_top = for_stack;
+                compile_context.locals.truncate(locals);
+
+                Ok(())
+            }
             make_deconstruct!(
                 _for(TokenType::For),
                 _namelist(TokenType::Namelist),
@@ -478,20 +525,24 @@ impl Program {
         }
     }
 
-    fn stat_forexp(
+    fn stat_forexp<'a>(
         &mut self,
-        stat_else: &Token,
-        _compile_context: &CompileContext,
-    ) -> Result<(), Error> {
-        match stat_else.tokens.as_slice() {
-            [] => Ok(()),
-            make_deconstruct!(_comma(TokenType::Comma), _exp(TokenType::Exp)) => {
-                Err(Error::Unimplemented)
+        stat_forexp: &Token<'a>,
+        compile_context: &mut CompileContext,
+    ) -> Result<ExpDesc<'a>, Error> {
+        match stat_forexp.tokens.as_slice() {
+            [] => Ok(ExpDesc::Integer(1)),
+            make_deconstruct!(_comma(TokenType::Comma), exp(TokenType::Exp)) => {
+                let (_, top) = compile_context.reserve_stack_top();
+                let exp_desc = self.exp(exp, compile_context, &top)?;
+                compile_context.stack_top -= 1;
+
+                Ok(exp_desc)
             }
             _ => {
                 unreachable!(
                     "StatForexp did not match any of the productions. Had {:#?}.",
-                    stat_else
+                    stat_forexp
                         .tokens
                         .iter()
                         .map(|t| &t.token_type)
@@ -1067,7 +1118,11 @@ impl Program {
                 let (rhs_dst, rhs_top) = compile_context.reserve_stack_top();
                 let rhs = self.exp(rhs, compile_context, &rhs_top)?;
 
-                compile_context.stack_top -= 2;
+                compile_context.stack_top -= if matches!(exp_desc, ExpDesc::Local(_)) {
+                    1
+                } else {
+                    2
+                };
 
                 let func = match op {
                     TokenType::Add => binops::binop_add,

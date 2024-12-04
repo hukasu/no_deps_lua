@@ -1011,3 +1011,110 @@ until a
     );
     crate::Lua::execute(&program).expect("Should run");
 }
+
+#[test]
+fn chapter6_for() {
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
+    let program = Program::parse(
+        r#"
+-- 1~3
+for i = 1, 3, 1 do
+    print(i)
+end
+
+-- negetive step, 1~-2
+for i = 1, -2, -1 do
+    print(i)
+end
+
+-- float limit, 1~3
+for i = 1, 3.2 do
+    print(i)
+end
+
+-- float i, 1.0~3.0
+for i = 1.0, 3 do
+    print(i)
+end
+
+-- special case, should not run
+local max = 9223372036854775807
+for i = max, max*10.0, -1 do
+    print (i)
+end
+"#,
+    )
+    .unwrap();
+    assert_eq!(
+        &program.constants,
+        &[
+            "print".into(),
+            3.2f64.into(),
+            9223372036854775807i64.into(),
+            10.0f64.into()
+        ]
+    );
+    assert_eq!(
+        &program.byte_codes,
+        &[
+            // for i = 1, 3, 1 do
+            ByteCode::LoadInt(0, 1),
+            ByteCode::LoadInt(1, 3),
+            ByteCode::LoadInt(2, 1),
+            ByteCode::ForPrepare(0, 3),
+            //     print(i)
+            ByteCode::GetGlobal(4, 0),
+            ByteCode::Move(5, 3),
+            ByteCode::Call(4, 1),
+            // end
+            ByteCode::ForLoop(0, 4),
+            // for i = 1, -2, -1 do
+            ByteCode::LoadInt(0, 1),
+            ByteCode::LoadInt(1, -2),
+            ByteCode::LoadInt(2, -1),
+            ByteCode::ForPrepare(0, 3),
+            //     print(i)
+            ByteCode::GetGlobal(4, 0),
+            ByteCode::Move(5, 3),
+            ByteCode::Call(4, 1),
+            // end
+            ByteCode::ForLoop(0, 4),
+            // for i = 1, 3.2 do
+            ByteCode::LoadInt(0, 1),
+            ByteCode::LoadConstant(1, 1),
+            ByteCode::LoadInt(2, 1),
+            ByteCode::ForPrepare(0, 3),
+            //     print(i)
+            ByteCode::GetGlobal(4, 0),
+            ByteCode::Move(5, 3),
+            ByteCode::Call(4, 1),
+            // end
+            ByteCode::ForLoop(0, 4),
+            // for i = 1.0, 3 do
+            ByteCode::LoadFloat(0, 1),
+            ByteCode::LoadInt(1, 3),
+            ByteCode::LoadInt(2, 1),
+            ByteCode::ForPrepare(0, 3),
+            //     print(i)
+            ByteCode::GetGlobal(4, 0),
+            ByteCode::Move(5, 3),
+            ByteCode::Call(4, 1),
+            // end
+            ByteCode::ForLoop(0, 4),
+            // local max = 9223372036854775807
+            ByteCode::LoadConstant(0, 2),
+            // for i = max, max*10.0, -1 do
+            ByteCode::Move(1, 0),
+            ByteCode::MulConstant(2, 0, 3),
+            ByteCode::LoadInt(3, -1),
+            ByteCode::ForPrepare(1, 3),
+            //     print (i)
+            ByteCode::GetGlobal(5, 0),
+            ByteCode::Move(6, 4),
+            ByteCode::Call(5, 1),
+            // end
+            ByteCode::ForLoop(1, 4),
+        ]
+    );
+    crate::Lua::execute(&program).expect("Should run");
+}

@@ -107,19 +107,26 @@ pub enum ByteCode {
     /// `table_len`: Amount of items to allocate for the map
     NewTable(u8, u8, u8),
     /// `ADDI`  
-    /// Performs arithmetic addition.
+    /// Performs arithmetic addition with an integer.
     ///
     /// `dst`: Location on stack to store result of operation  
     /// `lhs`: Location on stack of left-hand operand  
     /// `int`: Integer value to add
     AddInteger(u8, u8, u8),
     /// `ADDK`  
-    /// Performs arithmetic addition.
+    /// Performs arithmetic addition with a constant.
     ///
     /// `dst`: Location on stack to store result of operation  
     /// `lhs`: Location on stack of left-hand operand  
     /// `constant`: Location on `constant` of right-hand operand
     AddConstant(u8, u8, u8),
+    /// `MULK`  
+    /// Performs arithmetic multiplication with a constant.
+    ///
+    /// `dst`: Location on stack to store result of operation  
+    /// `lhs`: Location on stack of left-hand operand  
+    /// `constant`: Location on `constant` of right-hand operand
+    MulConstant(u8, u8, u8),
     /// `ADD`  
     /// Performs arithmetic addition.
     ///
@@ -252,6 +259,18 @@ pub enum ByteCode {
     /// `func`: Location on the stack where the function was loaded  
     /// `args`: Count of arguments
     Call(u8, u8),
+    /// `FORLOOP`  
+    /// Increment counter and jumps back to start of loop
+    ///
+    /// `for`: Location on the stack counter information is stored  
+    /// `jump`: Number of byte codes to jump to reach start of for block
+    ForLoop(u8, u16),
+    /// `FORPREP`  
+    /// Prepares for loop counter
+    ///
+    /// `for`: Location on the stack counter information is stored  
+    /// `jump`: Number of byte codes to jump to reach end of for loop
+    ForPrepare(u8, u16),
     /// `SETLIST`  
     /// Stores multiple values from the stack into the table
     ///
@@ -489,13 +508,66 @@ impl ByteCode {
     pub fn add_integer(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::AddInteger(dst, lhs, int));
 
-        todo!("AddInteger")
+        let res = match &vm.stack[*lhs as usize] {
+            Value::Integer(l) => Value::Integer(l + i64::from(*int)),
+            Value::Float(l) => Value::Float(l + *int as f64),
+            Value::Nil => return Err(Error::NilArithmetic),
+            Value::Boolean(_) => return Err(Error::BoolArithmetic),
+            Value::String(_) | Value::ShortString(_) => return Err(Error::StringArithmetic),
+            Value::Table(_) => return Err(Error::TableArithmetic),
+            Value::Function(_) => return Err(Error::FunctionArithmetic),
+        };
+        vm.set_stack(*dst, res)
     }
 
-    pub fn add_constant(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    pub fn add_constant(&self, vm: &mut Lua, program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::AddConstant(dst, lhs, constant));
 
-        todo!("AddInteger")
+        let res = match (
+            &vm.stack[*lhs as usize],
+            &program.constants[*constant as usize],
+        ) {
+            (Value::Integer(l), Value::Integer(r)) => Value::Integer(l + r),
+            (Value::Integer(l), Value::Float(r)) => Value::Float(*l as f64 + r),
+            (Value::Float(l), Value::Integer(r)) => Value::Float(l + *r as f64),
+            (Value::Float(l), Value::Float(r)) => Value::Float(l + r),
+            (Value::Nil, _) => return Err(Error::NilArithmetic),
+            (Value::Boolean(_), _) => return Err(Error::BoolArithmetic),
+            (Value::String(_) | Value::ShortString(_), _) => return Err(Error::StringArithmetic),
+            (Value::Table(_), _) => return Err(Error::TableArithmetic),
+            (Value::Function(_), _) => return Err(Error::FunctionArithmetic),
+            (_, Value::Nil) => return Err(Error::NilArithmetic),
+            (_, Value::Boolean(_)) => return Err(Error::BoolArithmetic),
+            (_, Value::String(_) | Value::ShortString(_)) => return Err(Error::StringArithmetic),
+            (_, Value::Table(_)) => return Err(Error::TableArithmetic),
+            (_, Value::Function(_)) => return Err(Error::FunctionArithmetic),
+        };
+        vm.set_stack(*dst, res)
+    }
+
+    pub fn mul_constant(&self, vm: &mut Lua, program: &Program) -> Result<(), Error> {
+        validate_bytecode!(self, ByteCode::MulConstant(dst, lhs, constant));
+
+        let res = match (
+            &vm.stack[*lhs as usize],
+            &program.constants[*constant as usize],
+        ) {
+            (Value::Integer(l), Value::Integer(r)) => Value::Integer(l * r),
+            (Value::Integer(l), Value::Float(r)) => Value::Float(*l as f64 * r),
+            (Value::Float(l), Value::Integer(r)) => Value::Float(l * *r as f64),
+            (Value::Float(l), Value::Float(r)) => Value::Float(l * r),
+            (Value::Nil, _) => return Err(Error::NilArithmetic),
+            (Value::Boolean(_), _) => return Err(Error::BoolArithmetic),
+            (Value::String(_) | Value::ShortString(_), _) => return Err(Error::StringArithmetic),
+            (Value::Table(_), _) => return Err(Error::TableArithmetic),
+            (Value::Function(_), _) => return Err(Error::FunctionArithmetic),
+            (_, Value::Nil) => return Err(Error::NilArithmetic),
+            (_, Value::Boolean(_)) => return Err(Error::BoolArithmetic),
+            (_, Value::String(_) | Value::ShortString(_)) => return Err(Error::StringArithmetic),
+            (_, Value::Table(_)) => return Err(Error::TableArithmetic),
+            (_, Value::Function(_)) => return Err(Error::FunctionArithmetic),
+        };
+        vm.set_stack(*dst, res)
     }
 
     pub fn add(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
@@ -875,6 +947,76 @@ impl ByteCode {
             Ok(())
         } else {
             Err(Error::InvalidFunction(func.clone()))
+        }
+    }
+
+    pub fn for_loop(&self, vm: &mut Lua, program: &Program) -> Result<(), Error> {
+        validate_bytecode!(self, ByteCode::ForLoop(for_stack, jmp));
+
+        if let Value::Integer(counter) = &mut vm.stack[usize::from(*for_stack) + 1] {
+            if counter != &0 {
+                *counter -= 1;
+                ByteCode::Add(for_stack + 3, for_stack + 3, for_stack + 2).add(vm, program)?;
+                vm.program_counter -= usize::from(*jmp);
+            }
+            Ok(())
+        } else {
+            log::error!("For loop counter should be an Integer.");
+            Err(Error::ForZeroStep)
+        }
+    }
+
+    pub fn for_prepare(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+        validate_bytecode!(self, ByteCode::ForPrepare(for_stack, jmp));
+
+        let init = &vm.stack[usize::from(*for_stack)];
+        let limit = &vm.stack[usize::from(*for_stack + 1)];
+        let step = &vm.stack[usize::from(*for_stack + 2)];
+
+        if let (&Value::Integer(init), &Value::Integer(step)) = (init, step) {
+            if step == 0 {
+                return Err(Error::ForZeroStep);
+            }
+
+            let count = match limit {
+                Value::Integer(i) => (i - init) / step,
+                Value::Float(i) => (*i as i64 - init) / step,
+                _ => {
+                    log::error!("For loop limit can't be converted to Float.");
+                    return Err(Error::TryFloatConversion);
+                }
+            };
+
+            vm.set_stack(for_stack + 1, Value::Integer(count))?;
+            vm.set_stack(for_stack + 3, Value::Integer(init))?;
+            if count <= 0 {
+                vm.program_counter += usize::from(*jmp) + 1;
+            }
+            Ok(())
+        } else {
+            let Some(Value::Float(init)) = init.try_float() else {
+                log::error!("For loop init can't be converted to Float.");
+                return Err(Error::TryFloatConversion);
+            };
+            let Some(Value::Float(limit)) = limit.try_float() else {
+                log::error!("For loop limit can't be converted to Float.");
+                return Err(Error::TryFloatConversion);
+            };
+            let Some(Value::Float(step)) = step.try_float() else {
+                log::error!("For loop step can't be converted to Float.");
+                return Err(Error::TryFloatConversion);
+            };
+
+            let count = ((limit - init) / step).trunc();
+
+            vm.set_stack(*for_stack, Value::Float(init))?;
+            vm.set_stack(for_stack + 1, Value::Integer(count as i64))?;
+            vm.set_stack(for_stack + 2, Value::Float(step))?;
+            vm.set_stack(for_stack + 3, Value::Float(init))?;
+            if count <= 0.0 {
+                vm.program_counter += usize::from(*jmp) + 1;
+            }
+            Ok(())
         }
     }
 

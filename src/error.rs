@@ -31,8 +31,10 @@ pub enum Error {
     TableConcat,
     FunctionConcat,
     // Other
-    StackOverflow,
+    TryFloatConversion,
     IntegerConversion,
+    ForZeroStep,
+    StackOverflow,
 }
 
 impl Display for Error {
@@ -60,11 +62,13 @@ impl Display for Error {
             Self::BoolConcat => write!(f, "{}", crate::program::Error::BoolConcat),
             Self::TableConcat => write!(f, "{}", crate::program::Error::TableConcat),
             Self::FunctionConcat => write!(f, "Can't use Function in concat operations."),
-            Self::StackOverflow => write!(f, "Vm's stack has overflown."),
+            Self::TryFloatConversion => write!(f, "Failed to convert Value to Value::Float."),
             Self::IntegerConversion => write!(
                 f,
                 "Tried converting an integer that does not fit into a i64."
             ),
+            Self::ForZeroStep => write!(f, "For loop had a step of zero."),
+            Self::StackOverflow => write!(f, "Vm's stack has overflown."),
         }
     }
 }

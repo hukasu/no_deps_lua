@@ -106,6 +106,9 @@ impl Lua {
                 add_constant @ ByteCode::AddConstant(_, _, _) => {
                     add_constant.add_constant(&mut vm, program)?
                 }
+                mul_constant @ ByteCode::MulConstant(_, _, _) => {
+                    mul_constant.mul_constant(&mut vm, program)?
+                }
                 add @ ByteCode::Add(_, _, _) => add.add(&mut vm, program)?,
                 sub @ ByteCode::Sub(_, _, _) => sub.sub(&mut vm, program)?,
                 mul @ ByteCode::Mul(_, _, _) => mul.mul(&mut vm, program)?,
@@ -128,6 +131,8 @@ impl Lua {
                 jmp @ ByteCode::Jmp(_) => jmp.jmp(&mut vm, program)?,
                 test @ ByteCode::Test(_, _) => test.test(&mut vm, program)?,
                 call @ ByteCode::Call(_, _) => call.call(&mut vm, program)?,
+                forloop @ ByteCode::ForLoop(_, _) => forloop.for_loop(&mut vm, program)?,
+                forprep @ ByteCode::ForPrepare(_, _) => forprep.for_prepare(&mut vm, program)?,
                 set_list @ ByteCode::SetList(_, _) => set_list.set_list(&mut vm, program)?,
                 set_global_constant @ ByteCode::SetGlobalConstant(_, _) => {
                     set_global_constant.set_global_constant(&mut vm, program)?
