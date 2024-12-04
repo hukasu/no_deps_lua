@@ -7,13 +7,11 @@ pub struct State<const N: usize>;
 impl<const N: usize> State<N> {
     fn get_previous_binop<'a>(parser: &Parser<'a>) -> TokenType<'a> {
         let ord = &parser.stack[parser.stack.len() - 2];
-        log::trace!("{:?}", ord);
 
         let Token {
             tokens: _,
             token_type: token,
         } = ord.tokens[0];
-        log::trace!("{:?}", token);
 
         token
     }
