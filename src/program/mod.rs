@@ -81,6 +81,13 @@ impl Program {
                 if compile_context.gotos.is_empty() {
                     Ok(())
                 } else {
+                    for goto in compile_context.gotos.iter() {
+                        log::error!(
+                            target: "no_deps_lua::parser",
+                            "Goto `{}` did not point to a label.",
+                            goto.name
+                        );
+                    }
                     Err(Error::UnmatchedGoto)
                 }
             }
