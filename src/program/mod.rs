@@ -189,9 +189,17 @@ impl Program {
             }
             make_deconstruct!(
                 _do(TokenType::Do),
-                _block(TokenType::Block),
+                block(TokenType::Block),
                 _end(TokenType::End)
-            ) => Err(Error::Unimplemented),
+            ) => {
+                let locals = compile_context.locals.len();
+
+                self.block(block, compile_context)?;
+
+                compile_context.locals.truncate(locals);
+
+                Ok(())
+            }
             make_deconstruct!(
                 _while(TokenType::While),
                 exp(TokenType::Exp),
