@@ -24,8 +24,12 @@ pub enum Error {
     // Others
     LongJump,
     BreakOutsideLoop,
+    LabelRedefinition,
     StackOverflow,
     Unimplemented,
+    UnmatchedGoto,
+    IntCoversion,
+    GotoIntoScope,
 }
 
 impl Display for Error {
@@ -84,6 +88,18 @@ impl Display for Error {
             }
             Self::BreakOutsideLoop => {
                 write!(f, "Break outside of loop.")
+            }
+            Self::LabelRedefinition => {
+                write!(f, "Label is already defined.")
+            }
+            Self::UnmatchedGoto => {
+                write!(f, "Label was not visible for goto.")
+            }
+            Self::GotoIntoScope => {
+                write!(f, "Jumping into scope of local.")
+            }
+            Self::IntCoversion => {
+                write!(f, "Failed to convert an integer.")
             }
             Self::StackOverflow => {
                 write!(f, "Tried accessing index outside stack bounds.")

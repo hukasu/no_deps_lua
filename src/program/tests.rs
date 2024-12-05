@@ -1118,3 +1118,83 @@ end
     );
     crate::Lua::execute(&program).expect("Should run");
 }
+
+#[test]
+fn chapter6_goto() {
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
+    let program = Program::parse(
+        r#"
+::label1::
+print("block: 1")
+goto label2
+::label3::
+print("block: 3")
+goto label4
+::label2::
+do
+  print("block: 2")
+  goto label3 -- goto outer block
+end
+::label4::
+print("block: 4")
+
+
+do
+  goto label
+  local a = 'local var'
+  ::label:: -- skip the local var but it's OK
+  ::another:: -- void statment
+  ;; -- void statment
+  ::another2:: -- void statment
+end
+"#,
+    )
+    .unwrap();
+    assert_eq!(
+        &program.constants,
+        &[
+            "print".into(),
+            "block: 1".into(),
+            "block: 3".into(),
+            "block: 2".into(),
+            "block: 4".into(),
+            "local var".into(),
+        ]
+    );
+    assert_eq!(
+        &program.byte_codes,
+        &[
+            // print("block: 1")
+            ByteCode::GetGlobal(0, 0),
+            ByteCode::LoadConstant(1, 1),
+            ByteCode::Call(0, 1),
+            // goto label2
+            ByteCode::Jmp(4),
+            // print("block: 3")
+            ByteCode::GetGlobal(0, 0),
+            ByteCode::LoadConstant(1, 2),
+            ByteCode::Call(0, 1),
+            // goto label4
+            ByteCode::Jmp(4),
+            // do
+            //   print("block: 2")
+            ByteCode::GetGlobal(0, 0),
+            ByteCode::LoadConstant(1, 3),
+            ByteCode::Call(0, 1),
+            //   goto label3 -- goto outer block
+            ByteCode::Jmp(-8),
+            // end
+            // print("block: 4")
+            ByteCode::GetGlobal(0, 0),
+            ByteCode::LoadConstant(1, 4),
+            ByteCode::Call(0, 1),
+            // do
+            //   goto label
+            ByteCode::Jmp(1),
+            //   local a = 'local var'
+            ByteCode::LoadConstant(0, 5),
+            // end
+        ]
+    );
+    crate::Lua::execute(&program).expect("Should run");
+}

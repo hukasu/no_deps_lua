@@ -6,6 +6,7 @@ mod exp_desc;
 mod tests;
 
 use alloc::{boxed::Box, vec::Vec};
+use compile_context::GotoLabel;
 
 use crate::{
     byte_code::ByteCode,
@@ -45,6 +46,8 @@ impl Program {
             stack_top: 0,
             locals: Vec::new(),
             breaks: None,
+            gotos: Vec::new(),
+            labels: Vec::new(),
         };
 
         program.chunk(&chunk, &mut compile_context)?;
@@ -67,13 +70,20 @@ impl Program {
     }
 
     // Non-terminals
-    fn chunk(
+    fn chunk<'a>(
         &mut self,
-        chunk: &Token<'_>,
-        compile_context: &mut CompileContext,
+        chunk: &Token<'a>,
+        compile_context: &mut CompileContext<'a>,
     ) -> Result<(), Error> {
         match chunk.tokens.as_slice() {
-            make_deconstruct!(block(TokenType::Block)) => self.block(block, compile_context),
+            make_deconstruct!(block(TokenType::Block)) => {
+                self.block(block, compile_context)?;
+                if compile_context.gotos.is_empty() {
+                    Ok(())
+                } else {
+                    Err(Error::UnmatchedGoto)
+                }
+            }
             _ => {
                 unreachable!(
                     "Chunk did not match any of the productions. Had {:#?}.",
@@ -87,18 +97,57 @@ impl Program {
         }
     }
 
-    fn block(
+    fn block<'a>(
         &mut self,
-        block: &Token<'_>,
-        compile_context: &mut CompileContext,
+        block: &Token<'a>,
+        compile_context: &mut CompileContext<'a>,
     ) -> Result<(), Error> {
         match block.tokens.as_slice() {
             make_deconstruct!(
                 block_stat(TokenType::BlockStat),
                 block_retstat(TokenType::BlockRetstat)
-            ) => self
-                .block_stat(block_stat, compile_context)
-                .and_then(|()| self.block_retstat(block_retstat, compile_context)),
+            ) => {
+                let gotos = compile_context.gotos.len();
+                let labels = compile_context.labels.len();
+
+                self.block_stat(block_stat, compile_context)?;
+                self.block_retstat(block_retstat, compile_context)?;
+
+                let unmatched = compile_context
+                    .gotos
+                    .drain(gotos..)
+                    .filter_map(|goto| {
+                        if let Some(label) = compile_context
+                            .labels
+                            .iter()
+                            .rev()
+                            .find(|label| label.name == goto.name)
+                        {
+                            if label.bytecode != self.byte_codes.len() && label.nvar > goto.nvar {
+                                return Some(Err(Error::GotoIntoScope));
+                            }
+                            let Ok(label_i) = isize::try_from(label.bytecode) else {
+                                return Some(Err(Error::IntCoversion));
+                            };
+                            let Ok(goto_i) = isize::try_from(goto.bytecode) else {
+                                return Some(Err(Error::IntCoversion));
+                            };
+                            let Ok(jump) = i16::try_from((label_i - 1) - goto_i) else {
+                                return Some(Err(Error::LongJump));
+                            };
+                            self.byte_codes[goto.bytecode] = ByteCode::Jmp(jump);
+                            None
+                        } else {
+                            Some(Ok(goto))
+                        }
+                    })
+                    .collect::<Result<Vec<_>, Error>>()?;
+                compile_context.gotos.extend(unmatched);
+
+                compile_context.labels.truncate(labels);
+
+                Ok(())
+            }
             _ => {
                 unreachable!(
                     "Block did not match any production. Had {:#?}.",
@@ -112,10 +161,10 @@ impl Program {
         }
     }
 
-    fn block_stat(
+    fn block_stat<'a>(
         &mut self,
-        block: &Token<'_>,
-        compile_context: &mut CompileContext,
+        block: &Token<'a>,
+        compile_context: &mut CompileContext<'a>,
     ) -> Result<(), Error> {
         match block.tokens.as_slice() {
             [] => Ok(()),
@@ -135,10 +184,10 @@ impl Program {
         }
     }
 
-    fn block_retstat(
+    fn block_retstat<'a>(
         &mut self,
-        block_retstat: &Token,
-        _compile_context: &CompileContext,
+        block_retstat: &Token<'a>,
+        _compile_context: &CompileContext<'a>,
     ) -> Result<(), Error> {
         match block_retstat.tokens.as_slice() {
             [] => Ok(()),
@@ -156,10 +205,10 @@ impl Program {
         }
     }
 
-    fn stat(
+    fn stat<'a>(
         &mut self,
-        stat: &Token<'_>,
-        compile_context: &mut CompileContext,
+        stat: &Token<'a>,
+        compile_context: &mut CompileContext<'a>,
     ) -> Result<(), Error> {
         match stat.tokens.as_slice() {
             make_deconstruct!(_semicolon(TokenType::SemiColon)) => Ok(()),
@@ -174,7 +223,7 @@ impl Program {
             make_deconstruct!(functioncall(TokenType::Functioncall)) => {
                 self.functioncall(functioncall, compile_context)
             }
-            make_deconstruct!(_label(TokenType::Label)) => Err(Error::Unimplemented),
+            make_deconstruct!(label(TokenType::Label)) => self.label(label, compile_context),
             make_deconstruct!(_break(TokenType::Break)) => match compile_context.breaks.as_mut() {
                 Some(breaks) => {
                     let bytecode = self.byte_codes.len();
@@ -184,8 +233,17 @@ impl Program {
                 }
                 None => Err(Error::BreakOutsideLoop),
             },
-            make_deconstruct!(_goto(TokenType::Goto), _name(TokenType::Name(_))) => {
-                Err(Error::Unimplemented)
+            make_deconstruct!(_goto(TokenType::Goto), _name(TokenType::Name(name))) => {
+                let bytecode = self.byte_codes.len();
+                self.byte_codes.push(ByteCode::Jmp(0));
+
+                compile_context.push_goto(GotoLabel {
+                    name,
+                    bytecode,
+                    nvar: compile_context.locals.len(),
+                });
+
+                Ok(())
             }
             make_deconstruct!(
                 _do(TokenType::Do),
@@ -447,10 +505,10 @@ impl Program {
         }
     }
 
-    fn stat_if(
+    fn stat_if<'a>(
         &mut self,
-        stat_if: &Token,
-        compile_context: &mut CompileContext,
+        stat_if: &Token<'a>,
+        compile_context: &mut CompileContext<'a>,
     ) -> Result<(), Error> {
         match stat_if.tokens.as_slice() {
             [] => Ok(()),
@@ -536,7 +594,7 @@ impl Program {
     fn stat_forexp<'a>(
         &mut self,
         stat_forexp: &Token<'a>,
-        compile_context: &mut CompileContext,
+        compile_context: &mut CompileContext<'a>,
     ) -> Result<ExpDesc<'a>, Error> {
         match stat_forexp.tokens.as_slice() {
             [] => Ok(ExpDesc::Integer(1)),
@@ -560,11 +618,11 @@ impl Program {
         }
     }
 
-    fn stat_attexplist(
+    fn stat_attexplist<'a>(
         &mut self,
-        stat_attexplist: &Token<'_>,
-        compile_context: &mut CompileContext,
-        exp_descs: &[ExpDesc],
+        stat_attexplist: &Token<'a>,
+        compile_context: &mut CompileContext<'a>,
+        exp_descs: &[ExpDesc<'a>],
     ) -> Result<(), Error> {
         match stat_attexplist.tokens.as_slice() {
             [] => {
@@ -592,7 +650,7 @@ impl Program {
     fn attnamelist<'a>(
         &mut self,
         attnamelist: &Token<'a>,
-        compile_context: &mut CompileContext,
+        compile_context: &mut CompileContext<'a>,
     ) -> Result<(Vec<Value>, Vec<ExpDesc<'a>>), Error> {
         match attnamelist.tokens.as_slice() {
             make_deconstruct!(
@@ -630,7 +688,7 @@ impl Program {
     fn attnamelist_cont<'a>(
         &mut self,
         attnamelist_cont: &Token<'a>,
-        compile_context: &mut CompileContext,
+        compile_context: &mut CompileContext<'a>,
         new_locals: &mut Vec<Value>,
         exp_descs: &mut Vec<ExpDesc<'a>>,
     ) -> Result<(), Error> {
@@ -745,13 +803,21 @@ impl Program {
         }
     }
 
-    fn label(&mut self, label: &Token, _compile_context: &CompileContext) -> Result<(), Error> {
+    fn label<'a>(
+        &mut self,
+        label: &Token<'a>,
+        compile_context: &mut CompileContext<'a>,
+    ) -> Result<(), Error> {
         match label.tokens.as_slice() {
             make_deconstruct!(
                 _doublecolon1(TokenType::DoubleColon),
-                _name(TokenType::Name(_)),
+                _name(TokenType::Name(name)),
                 _doublecolon2(TokenType::DoubleColon)
-            ) => Err(Error::Unimplemented),
+            ) => compile_context.push_label(GotoLabel {
+                name,
+                bytecode: self.byte_codes.len(),
+                nvar: compile_context.locals.len(),
+            }),
             _ => {
                 unreachable!(
                     "Label did not match any of the productions. Had {:#?}.",
@@ -840,7 +906,7 @@ impl Program {
     fn varlist<'a>(
         &mut self,
         varlist: &Token<'a>,
-        compile_context: &mut CompileContext,
+        compile_context: &mut CompileContext<'a>,
     ) -> Result<Vec<ExpDesc<'a>>, Error> {
         match varlist.tokens.as_slice() {
             make_deconstruct!(var(TokenType::Var), varlist_cont(TokenType::VarlistCont)) => {
@@ -869,7 +935,7 @@ impl Program {
     fn varlist_cont<'a>(
         &mut self,
         varlist_cont: &Token<'a>,
-        compile_context: &mut CompileContext,
+        compile_context: &mut CompileContext<'a>,
         exp_descs: &mut Vec<ExpDesc<'a>>,
     ) -> Result<(), Error> {
         match varlist_cont.tokens.as_slice() {
@@ -900,7 +966,7 @@ impl Program {
     fn var<'a>(
         &mut self,
         var: &Token<'a>,
-        compile_context: &mut CompileContext,
+        compile_context: &mut CompileContext<'a>,
     ) -> Result<ExpDesc<'a>, Error> {
         match var.tokens.as_slice() {
             make_deconstruct!(_name(TokenType::Name(name))) => self.name(name, compile_context),
@@ -1010,7 +1076,7 @@ impl Program {
     fn explist<'a>(
         &mut self,
         explist: &Token<'a>,
-        compile_context: &mut CompileContext,
+        compile_context: &mut CompileContext<'a>,
         maybe_exp_descs: Option<&[ExpDesc<'a>]>,
     ) -> Result<(), Error> {
         match explist.tokens.as_slice() {
@@ -1044,7 +1110,7 @@ impl Program {
     fn explist_cont<'a>(
         &mut self,
         explist_cont: &Token<'a>,
-        compile_context: &mut CompileContext,
+        compile_context: &mut CompileContext<'a>,
         maybe_exp_descs: Option<&[ExpDesc<'a>]>,
     ) -> Result<(), Error> {
         match explist_cont.tokens.as_slice() {
@@ -1091,7 +1157,7 @@ impl Program {
     fn exp<'a>(
         &mut self,
         exp: &Token<'a>,
-        compile_context: &mut CompileContext,
+        compile_context: &mut CompileContext<'a>,
         exp_desc: &ExpDesc<'a>,
     ) -> Result<ExpDesc<'a>, Error> {
         match exp.tokens.as_slice() {
@@ -1251,7 +1317,7 @@ impl Program {
     fn prefixexp<'a>(
         &mut self,
         prefixexp: &Token<'a>,
-        compile_context: &mut CompileContext,
+        compile_context: &mut CompileContext<'a>,
         exp_desc: &ExpDesc<'a>,
     ) -> Result<ExpDesc<'a>, Error> {
         match prefixexp.tokens.as_slice() {
@@ -1277,10 +1343,10 @@ impl Program {
         }
     }
 
-    fn functioncall(
+    fn functioncall<'a>(
         &mut self,
-        functioncall: &Token<'_>,
-        compile_context: &mut CompileContext,
+        functioncall: &Token<'a>,
+        compile_context: &mut CompileContext<'a>,
     ) -> Result<(), Error> {
         let func_index = compile_context.stack_top;
         match functioncall.tokens.as_slice() {
@@ -1315,10 +1381,10 @@ impl Program {
         }
     }
 
-    fn args(
+    fn args<'a>(
         &mut self,
-        args: &Token<'_>,
-        compile_context: &mut CompileContext,
+        args: &Token<'a>,
+        compile_context: &mut CompileContext<'a>,
     ) -> Result<(), Error> {
         match args.tokens.as_slice() {
             make_deconstruct!(
@@ -1349,10 +1415,10 @@ impl Program {
         }
     }
 
-    fn args_explist(
+    fn args_explist<'a>(
         &mut self,
-        args_explist: &Token<'_>,
-        compile_context: &mut CompileContext,
+        args_explist: &Token<'a>,
+        compile_context: &mut CompileContext<'a>,
     ) -> Result<(), Error> {
         match args_explist.tokens.as_slice() {
             [] => Ok(()),
@@ -1372,10 +1438,10 @@ impl Program {
         }
     }
 
-    fn functiondef(
+    fn functiondef<'a>(
         &mut self,
-        functiondef: &Token,
-        _compile_context: &CompileContext,
+        functiondef: &Token<'a>,
+        _compile_context: &CompileContext<'a>,
     ) -> Result<(), Error> {
         match functiondef.tokens.as_slice() {
             make_deconstruct!(
@@ -1395,10 +1461,10 @@ impl Program {
         }
     }
 
-    fn funcbody(
+    fn funcbody<'a>(
         &mut self,
-        funcbody: &Token,
-        _compile_context: &CompileContext,
+        funcbody: &Token<'a>,
+        _compile_context: &CompileContext<'a>,
     ) -> Result<(), Error> {
         match funcbody.tokens.as_slice() {
             [Token {
@@ -1430,10 +1496,10 @@ impl Program {
         }
     }
 
-    fn funcbody_parlist(
+    fn funcbody_parlist<'a>(
         &mut self,
-        funcbody_parlist: &Token,
-        _compile_context: &CompileContext,
+        funcbody_parlist: &Token<'a>,
+        _compile_context: &CompileContext<'a>,
     ) -> Result<(), Error> {
         match funcbody_parlist.tokens.as_slice() {
             [] => Ok(()),
@@ -1454,7 +1520,11 @@ impl Program {
         }
     }
 
-    fn parlist(&mut self, parlist: &Token, _compile_context: &CompileContext) -> Result<(), Error> {
+    fn parlist<'a>(
+        &mut self,
+        parlist: &Token<'a>,
+        _compile_context: &CompileContext<'a>,
+    ) -> Result<(), Error> {
         match parlist.tokens.as_slice() {
             make_deconstruct!(
                 _name(TokenType::Name(_)),
@@ -1474,10 +1544,10 @@ impl Program {
         }
     }
 
-    fn parlist_cont(
+    fn parlist_cont<'a>(
         &mut self,
-        parlist_cont: &Token,
-        _compile_context: &CompileContext,
+        parlist_cont: &Token<'a>,
+        _compile_context: &CompileContext<'a>,
     ) -> Result<(), Error> {
         match parlist_cont.tokens.as_slice() {
             [] => Ok(()),
@@ -1505,7 +1575,7 @@ impl Program {
     fn tableconstructor<'a>(
         &mut self,
         tableconstructor: &Token<'a>,
-        compile_context: &mut CompileContext,
+        compile_context: &mut CompileContext<'a>,
         exp_desc: &ExpDesc<'a>,
     ) -> Result<ExpDesc<'a>, Error> {
         match tableconstructor.tokens.as_slice() {
@@ -1561,10 +1631,10 @@ impl Program {
         }
     }
 
-    fn tableconstructor_fieldlist(
+    fn tableconstructor_fieldlist<'a>(
         &mut self,
-        tableconstructor_fieldlist: &Token<'_>,
-        compile_context: &mut CompileContext,
+        tableconstructor_fieldlist: &Token<'a>,
+        compile_context: &mut CompileContext<'a>,
         table: u8,
     ) -> Result<(u8, u8), Error> {
         match tableconstructor_fieldlist.tokens.as_slice() {
@@ -1585,10 +1655,10 @@ impl Program {
         }
     }
 
-    fn fieldlist(
+    fn fieldlist<'a>(
         &mut self,
-        fieldlist: &Token<'_>,
-        compile_context: &mut CompileContext,
+        fieldlist: &Token<'a>,
+        compile_context: &mut CompileContext<'a>,
         table: u8,
     ) -> Result<(u8, u8), Error> {
         match fieldlist.tokens.as_slice() {
@@ -1615,10 +1685,10 @@ impl Program {
         }
     }
 
-    fn fieldlist_cont(
+    fn fieldlist_cont<'a>(
         &mut self,
-        fieldlist_cont: &Token<'_>,
-        compile_context: &mut CompileContext,
+        fieldlist_cont: &Token<'a>,
+        compile_context: &mut CompileContext<'a>,
         table: u8,
     ) -> Result<(u8, u8), Error> {
         match fieldlist_cont.tokens.as_slice() {
@@ -1652,10 +1722,10 @@ impl Program {
         }
     }
 
-    fn field(
+    fn field<'a>(
         &mut self,
-        field: &Token<'_>,
-        compile_context: &mut CompileContext,
+        field: &Token<'a>,
+        compile_context: &mut CompileContext<'a>,
         table: u8,
     ) -> Result<(u8, u8), Error> {
         match field.tokens.as_slice() {
@@ -1732,7 +1802,7 @@ impl Program {
 
     /// Test against `Comma` and `SemiColon` to garantee
     /// integrity of AST
-    fn fieldsep(&mut self, fieldsep: &Token) -> Result<(), Error> {
+    fn fieldsep<'a>(&mut self, fieldsep: &Token<'a>) -> Result<(), Error> {
         match fieldsep.tokens.as_slice() {
             [Token {
                 tokens: _,
