@@ -10,3 +10,10 @@ log = "0.4.22"
 
 [dev-dependencies]
 simplelog = "0.12.2"
+
+[workspace.lints.clippy]
+todo = "warn"
+unimplemented = "warn"
+dbg_macro = "warn"
+unwrap_used = "warn"
+expect_used = "warn"
