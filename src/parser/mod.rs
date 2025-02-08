@@ -2683,7 +2683,7 @@ impl<'a> Parser<'a> {
             67 => make_reduction_push!(67, self, Exp, 2, Unop, Exp),
             68 => make_reduction_push!(68, self, Prefixexp, 1, Var),
             69 => make_reduction_push!(69, self, Prefixexp, 1, Functioncall),
-            70 => make_reduction_push!(70, self, Prefixexp, 1, LParen, Exp, RParen),
+            70 => make_reduction_push!(70, self, Prefixexp, 3, LParen, Exp, RParen),
             71 => make_reduction_push!(71, self, Functioncall, 2, Prefixexp, Args),
             72 => make_reduction_push!(72, self, Functioncall, 4, Prefixexp, Colon, Name, Args),
             73 => make_reduction_push!(73, self, Args, 3, LParen, ArgsExplist, RParen),
