@@ -839,7 +839,6 @@ impl ByteCode {
             (Value::String(_) | Value::ShortString(_), _) => return Err(Error::StringBitwise),
             (Value::Table(_), _) => return Err(Error::TableBitwise),
             (Value::Function(_), _) => return Err(Error::FunctionBitwise),
-            (_, Value::Float(_)) => return Err(Error::FloatBitwise),
             (_, Value::Nil) => return Err(Error::NilBitwise),
             (_, Value::Boolean(_)) => return Err(Error::BoolBitwise),
             (_, Value::String(_) | Value::ShortString(_)) => return Err(Error::StringBitwise),
