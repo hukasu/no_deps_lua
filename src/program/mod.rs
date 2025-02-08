@@ -6,6 +6,7 @@ mod exp_desc;
 mod tests;
 
 use alloc::{boxed::Box, vec::Vec};
+use binops::Binop;
 use compile_context::GotoLabel;
 
 use crate::{
@@ -1218,8 +1219,8 @@ impl Program {
                     TokenType::BitXor => binops::binop_bitxor,
                     TokenType::ShiftL => binops::binop_shiftl,
                     TokenType::ShiftR => binops::binop_shiftr,
-                    TokenType::Or => return Err(Error::Unimplemented),
-                    TokenType::And => return Err(Error::Unimplemented),
+                    TokenType::Or => unimplemented!("Make or"),
+                    TokenType::And => unimplemented!("Make and"),
                     TokenType::Less => return Err(Error::Unimplemented),
                     TokenType::Greater => return Err(Error::Unimplemented),
                     TokenType::Leq => return Err(Error::Unimplemented),
@@ -1232,12 +1233,16 @@ impl Program {
                 func(
                     self,
                     compile_context,
-                    &lhs,
-                    &rhs,
-                    &lhs_top,
-                    &rhs_top,
-                    lhs_dst,
-                    rhs_dst,
+                    Binop {
+                        expdesc: &lhs,
+                        top: &lhs_top,
+                        dst: lhs_dst,
+                    },
+                    Binop {
+                        expdesc: &rhs,
+                        top: &rhs_top,
+                        dst: rhs_dst,
+                    },
                 )
             }
             make_deconstruct!(op(TokenType::Unop), rhs(TokenType::Exp)) => {
