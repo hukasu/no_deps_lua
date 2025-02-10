@@ -18,7 +18,9 @@ pub enum ExpDesc<'a> {
     Global(usize),
     TableLocal(usize, Box<ExpDesc<'a>>),
     TableGlobal(usize, Box<ExpDesc<'a>>),
-    IfCondition(usize),
+    IfCondition(usize, bool),
+    OrCondition(Box<ExpDesc<'a>>, Box<ExpDesc<'a>>),
+    AndCondition(Box<ExpDesc<'a>>, Box<ExpDesc<'a>>),
 }
 
 impl<'a> ExpDesc<'a> {
@@ -291,9 +293,14 @@ impl<'a> ExpDesc<'a> {
                     }
                 }
             }
-            (Self::Local(src), Self::IfCondition(_)) => {
+            (Self::Local(src), Self::IfCondition(_, condition)) => {
                 let src = u8::try_from(*src)?;
-                program.byte_codes.push(ByteCode::Test(src, 0));
+                program
+                    .byte_codes
+                    .push(ByteCode::Test(src, *condition as u8));
+
+                compile_context.jumps_to_end.push(program.byte_codes.len());
+                program.byte_codes.push(ByteCode::Jmp(0));
 
                 Ok(())
             }
@@ -344,11 +351,16 @@ impl<'a> ExpDesc<'a> {
                     }
                 }
             }
-            (src @ Self::Global(_), Self::IfCondition(dst)) => {
+            (src @ Self::Global(_), Self::IfCondition(dst, condition)) => {
                 src.discharge(&ExpDesc::Local(*dst), program, compile_context)?;
 
                 let dst = u8::try_from(*dst)?;
-                program.byte_codes.push(ByteCode::Test(dst, 0));
+                program
+                    .byte_codes
+                    .push(ByteCode::Test(dst, *condition as u8));
+
+                compile_context.jumps_to_end.push(program.byte_codes.len());
+                program.byte_codes.push(ByteCode::Jmp(0));
 
                 Ok(())
             }
@@ -447,6 +459,69 @@ impl<'a> ExpDesc<'a> {
                 dst_local.discharge(dst, program, compile_context)?;
 
                 compile_context.stack_top -= 1;
+
+                Ok(())
+            }
+            (Self::OrCondition(lhs, rhs), Self::IfCondition(top_index, _)) => {
+                let mut jump_cache = core::mem::take(&mut compile_context.jumps_to_end);
+
+                lhs.discharge(
+                    &ExpDesc::IfCondition(*top_index, true),
+                    program,
+                    compile_context,
+                )?;
+                match lhs.as_ref() {
+                    ExpDesc::Local(_) | ExpDesc::Global(_) => {
+                        assert_eq!(compile_context.jumps_to_end.len(), 1, "When OrCondition's `lhs` is a Local or Global, there should be only 1 jump.");
+                        let Some(jump) = compile_context.jumps_to_end.pop() else {
+                            unreachable!("OrCondition's `lhs` will always have 1 item.");
+                        };
+                        compile_context.jumps_to_block.push(jump);
+                    }
+                    _ => (),
+                }
+
+                compile_context.last_rhs_was_or = matches!(
+                    rhs.as_ref(),
+                    ExpDesc::Local(_) | ExpDesc::Global(_) | ExpDesc::OrCondition(_, _)
+                );
+                rhs.discharge(
+                    &ExpDesc::IfCondition(*top_index, true),
+                    program,
+                    compile_context,
+                )?;
+
+                core::mem::swap(&mut compile_context.jumps_to_end, &mut jump_cache);
+                compile_context.jumps_to_end.extend(jump_cache);
+
+                Ok(())
+            }
+            (Self::AndCondition(lhs, rhs), Self::IfCondition(top_index, _)) => {
+                lhs.discharge(
+                    &ExpDesc::IfCondition(*top_index, false),
+                    program,
+                    compile_context,
+                )?;
+                if let ExpDesc::OrCondition(_, _) = lhs.as_ref() {
+                    let end_of_ors = program.byte_codes.len() - 1;
+                    for jump in compile_context.jumps_to_block.drain(..) {
+                        program.byte_codes[jump] = ByteCode::Jmp(i16::try_from(end_of_ors - jump)?);
+                    }
+                }
+                if compile_context.last_rhs_was_or {
+                    program.invert_last_test();
+                }
+
+                if let ExpDesc::OrCondition(_, _) = rhs.as_ref() {
+                    compile_context.last_rhs_was_or = true;
+                } else {
+                    compile_context.last_rhs_was_or = false;
+                }
+                rhs.discharge(
+                    &ExpDesc::IfCondition(*top_index, false),
+                    program,
+                    compile_context,
+                )?;
 
                 Ok(())
             }

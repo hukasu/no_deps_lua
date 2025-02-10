@@ -425,3 +425,26 @@ pub fn binop_concat<'a, 'b>(
         usize::from(rhs.dst),
     ))
 }
+pub fn binop_or<'a, 'b>(
+    _program: &mut Program,
+    _compile_context: &mut CompileContext,
+    lhs: Binop<'a, 'b>,
+    rhs: Binop<'a, 'b>,
+) -> Result<ExpDesc<'b>, Error> {
+    Ok(ExpDesc::OrCondition(
+        Box::new(lhs.expdesc.clone()),
+        Box::new(rhs.expdesc.clone()),
+    ))
+}
+
+pub fn binop_and<'a, 'b>(
+    _program: &mut Program,
+    _compile_context: &mut CompileContext,
+    lhs: Binop<'a, 'b>,
+    rhs: Binop<'a, 'b>,
+) -> Result<ExpDesc<'b>, Error> {
+    Ok(ExpDesc::AndCondition(
+        Box::new(lhs.expdesc.clone()),
+        Box::new(rhs.expdesc.clone()),
+    ))
+}

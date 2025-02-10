@@ -49,6 +49,9 @@ impl Program {
             breaks: None,
             gotos: Vec::new(),
             labels: Vec::new(),
+            jumps_to_block: Vec::new(),
+            jumps_to_end: Vec::new(),
+            last_rhs_was_or: false,
         };
 
         program.chunk(&chunk, &mut compile_context)?;
@@ -68,6 +71,86 @@ impl Program {
                 }),
         )
         .map_err(Error::from)
+    }
+
+    fn invert_last_test(&mut self) {
+        let start_of_block = self.byte_codes.len();
+        if let ByteCode::Test(_, test) = &mut self.byte_codes[start_of_block - 2] {
+            *test ^= 1;
+        } else {
+            unreachable!("When inverting a test, the penultimate bytecode must be a `Test`.");
+        }
+    }
+
+    fn make_if<'a>(
+        &mut self,
+        compile_context: &mut CompileContext<'a>,
+        exp: &Token<'a>,
+        block: &Token<'a>,
+        stat_if: &Token<'a>,
+    ) -> Result<(), Error> {
+        assert!(
+            compile_context.jumps_to_block.is_empty() && compile_context.jumps_to_end.is_empty(),
+            "At the start of an `if`, compile context jumps must be empty."
+        );
+
+        let (top_index, top) = compile_context.reserve_stack_top();
+        let cond = self.exp(exp, compile_context, &top)?;
+
+        cond.discharge(
+            &ExpDesc::IfCondition(usize::from(top_index), false),
+            self,
+            compile_context,
+        )?;
+
+        // Finish use of condition
+        compile_context.stack_top = top_index;
+
+        let start_of_block = self.byte_codes.len() - 1;
+        for jump in compile_context.jumps_to_block.drain(..) {
+            self.byte_codes[jump] =
+                ByteCode::Jmp(i16::try_from(start_of_block - jump).map_err(|_| Error::LongJump)?);
+        }
+
+        // If the last test of an `if` is an `or` it's test flipped
+        if compile_context.last_rhs_was_or {
+            self.invert_last_test();
+        }
+
+        let locals = compile_context.locals.len();
+        self.block(block, compile_context)?;
+        compile_context.stack_top -= u8::try_from(compile_context.locals.len() - locals)
+            .inspect_err(|_| log::error!("Failed to rewind stack top after `if`s block."))?;
+        compile_context.locals.truncate(locals);
+
+        let end_of_block = self.byte_codes.len();
+        // Update jump to have the correct number
+
+        let jump_end = self.byte_codes.len();
+        self.byte_codes.push(ByteCode::Jmp(0));
+
+        let jumps = core::mem::take(&mut compile_context.jumps_to_end);
+
+        self.stat_if(stat_if, compile_context)?;
+        let end_of_if = self.byte_codes.len();
+
+        let fix_up = if end_of_block == (end_of_if - 1) {
+            // Last else, so no need to jump
+            self.byte_codes.pop();
+            end_of_block - 1
+        } else {
+            self.byte_codes[jump_end] = ByteCode::Jmp(
+                i16::try_from(end_of_if - (jump_end + 1)).map_err(|_| Error::LongJump)?,
+            );
+            end_of_block
+        };
+
+        for jump in jumps {
+            self.byte_codes[jump] =
+                ByteCode::Jmp(i16::try_from(fix_up - jump).map_err(|_| Error::LongJump)?);
+        }
+
+        Ok(())
     }
 
     // Non-terminals
@@ -273,19 +356,18 @@ impl Program {
                 block(TokenType::Block),
                 _end(TokenType::End)
             ) => {
+                let mut jump_cache = core::mem::take(&mut compile_context.jumps_to_end);
+
                 let (top_index, top) = compile_context.reserve_stack_top();
                 let cond = self.exp(exp, compile_context, &top)?;
                 cond.discharge(
-                    &ExpDesc::IfCondition(usize::from(top_index)),
+                    &ExpDesc::IfCondition(usize::from(top_index), false),
                     self,
                     compile_context,
                 )?;
 
                 // Finish use of condition
                 compile_context.stack_top = top_index;
-
-                let jump = self.byte_codes.len();
-                self.byte_codes.push(ByteCode::Jmp(0));
 
                 let locals = compile_context.locals.len();
                 let cache_breaks = compile_context.breaks.replace(Vec::with_capacity(16));
@@ -296,13 +378,20 @@ impl Program {
                         log::error!("Failed to rewind stack top after `while`s block.")
                     })?;
 
+                core::mem::swap(&mut compile_context.jumps_to_end, &mut jump_cache);
+                assert_eq!(
+                    jump_cache.len(),
+                    1,
+                    "While loops should only have one conditional jump."
+                );
                 let jump_end = self.byte_codes.len();
 
-                self.byte_codes[jump] =
-                    ByteCode::Jmp(i16::try_from(jump_end - jump).map_err(|_| Error::LongJump)?);
+                self.byte_codes[jump_cache[0]] = ByteCode::Jmp(
+                    i16::try_from(jump_end - jump_cache[0]).map_err(|_| Error::LongJump)?,
+                );
 
                 self.byte_codes.push(ByteCode::Jmp(
-                    i16::try_from(isize::try_from(jump)? - isize::try_from(jump_end)? - 2)
+                    i16::try_from(isize::try_from(jump_cache[0])? - isize::try_from(jump_end)? - 2)
                         .map_err(|_| Error::LongJump)?,
                 ));
 
@@ -328,6 +417,8 @@ impl Program {
                 _until(TokenType::Until),
                 exp(TokenType::Exp)
             ) => {
+                let mut jump_cache = core::mem::take(&mut compile_context.jumps_to_end);
+
                 let locals = compile_context.locals.len();
                 let stack_top = compile_context.stack_top;
                 let repeat_start = self.byte_codes.len();
@@ -337,7 +428,7 @@ impl Program {
                 let (top_index, top) = compile_context.reserve_stack_top();
                 let cond = self.exp(exp, compile_context, &top)?;
                 cond.discharge(
-                    &ExpDesc::IfCondition(usize::from(top_index)),
+                    &ExpDesc::IfCondition(usize::from(top_index), false),
                     self,
                     compile_context,
                 )?;
@@ -345,11 +436,18 @@ impl Program {
                 compile_context.locals.truncate(locals);
                 compile_context.stack_top = stack_top;
 
-                let repeat_end = self.byte_codes.len() + 1;
-                self.byte_codes.push(ByteCode::Jmp(
+                core::mem::swap(&mut compile_context.jumps_to_end, &mut jump_cache);
+                assert_eq!(
+                    jump_cache.len(),
+                    1,
+                    "Repeat should only ever have 1 conditional jump."
+                );
+
+                let repeat_end = self.byte_codes.len();
+                self.byte_codes[jump_cache[0]] = ByteCode::Jmp(
                     i16::try_from(isize::try_from(repeat_start)? - isize::try_from(repeat_end)?)
                         .map_err(|_| Error::LongJump)?,
-                ));
+                );
 
                 Ok(())
             }
@@ -360,55 +458,7 @@ impl Program {
                 block(TokenType::Block),
                 stat_if(TokenType::StatIf),
                 _end(TokenType::End)
-            ) => {
-                let (top_index, top) = compile_context.reserve_stack_top();
-                let cond = self.exp(exp, compile_context, &top)?;
-                cond.discharge(
-                    &ExpDesc::IfCondition(usize::from(top_index)),
-                    self,
-                    compile_context,
-                )?;
-
-                // Finish use of condition
-                compile_context.stack_top = top_index;
-
-                let jump = self.byte_codes.len();
-                self.byte_codes.push(ByteCode::Jmp(0));
-
-                let locals = compile_context.locals.len();
-                self.block(block, compile_context)?;
-                compile_context.stack_top -= u8::try_from(compile_context.locals.len() - locals)
-                    .inspect_err(|_| {
-                        log::error!("Failed to rewind stack top after `if`s block.")
-                    })?;
-                compile_context.locals.truncate(locals);
-
-                let end_of_block = self.byte_codes.len();
-                // Update jump to have the correct number
-
-                let jump_end = self.byte_codes.len();
-                self.byte_codes.push(ByteCode::Jmp(0));
-
-                self.stat_if(stat_if, compile_context)?;
-                let end_of_if = self.byte_codes.len();
-
-                if end_of_block == (end_of_if - 1) {
-                    self.byte_codes[jump] = ByteCode::Jmp(
-                        i16::try_from(end_of_block - (jump + 1)).map_err(|_| Error::LongJump)?,
-                    );
-                    // Last else, so no need to jump
-                    self.byte_codes.pop();
-                } else {
-                    self.byte_codes[jump] = ByteCode::Jmp(
-                        i16::try_from(end_of_block - jump).map_err(|_| Error::LongJump)?,
-                    );
-                    self.byte_codes[jump_end] = ByteCode::Jmp(
-                        i16::try_from(end_of_if - (jump_end + 1)).map_err(|_| Error::LongJump)?,
-                    );
-                }
-
-                Ok(())
-            }
+            ) => self.make_if(compile_context, exp, block, stat_if),
             make_deconstruct!(
                 _for(TokenType::For),
                 _name(TokenType::Name(name)),
@@ -526,55 +576,7 @@ impl Program {
                 _then(TokenType::Then),
                 block(TokenType::Block),
                 stat_if(TokenType::StatIf)
-            ) => {
-                let (top_index, top) = compile_context.reserve_stack_top();
-                let cond = self.exp(exp, compile_context, &top)?;
-                cond.discharge(
-                    &ExpDesc::IfCondition(usize::from(top_index)),
-                    self,
-                    compile_context,
-                )?;
-
-                let jump = self.byte_codes.len();
-                self.byte_codes.push(ByteCode::Jmp(0));
-
-                // Finish use of condition
-                compile_context.stack_top = top_index;
-
-                let locals = compile_context.locals.len();
-                self.block(block, compile_context)?;
-                compile_context.stack_top -= u8::try_from(compile_context.locals.len() - locals)
-                    .inspect_err(|_| {
-                        log::error!("Failed to rewind stack top after `elseif`s block.")
-                    })?;
-                compile_context.locals.truncate(locals);
-
-                let end_of_block = self.byte_codes.len();
-
-                let jump_end = self.byte_codes.len();
-                self.byte_codes.push(ByteCode::Jmp(0));
-
-                self.stat_if(stat_if, compile_context)?;
-                let end_of_if = self.byte_codes.len();
-
-                // Update jumps to have the correct number
-                if end_of_block == (end_of_if - 1) {
-                    self.byte_codes[jump] = ByteCode::Jmp(
-                        i16::try_from(end_of_block - (jump + 1)).map_err(|_| Error::LongJump)?,
-                    );
-                    // Last else, so no need to jump
-                    self.byte_codes.pop();
-                } else {
-                    self.byte_codes[jump] = ByteCode::Jmp(
-                        i16::try_from(end_of_block - jump).map_err(|_| Error::LongJump)?,
-                    );
-                    self.byte_codes[jump_end] = ByteCode::Jmp(
-                        i16::try_from(end_of_if - (jump_end + 1)).map_err(|_| Error::LongJump)?,
-                    );
-                }
-
-                Ok(())
-            }
+            ) => self.make_if(compile_context, exp, block, stat_if),
             make_deconstruct!(_else(TokenType::Else), block(TokenType::Block)) => {
                 let locals = compile_context.locals.len();
                 self.block(block, compile_context)?;
@@ -1219,8 +1221,8 @@ impl Program {
                     TokenType::BitXor => binops::binop_bitxor,
                     TokenType::ShiftL => binops::binop_shiftl,
                     TokenType::ShiftR => binops::binop_shiftr,
-                    TokenType::Or => unimplemented!("Make or"),
-                    TokenType::And => unimplemented!("Make and"),
+                    TokenType::Or => binops::binop_or,
+                    TokenType::And => binops::binop_and,
                     TokenType::Less => return Err(Error::Unimplemented),
                     TokenType::Greater => return Err(Error::Unimplemented),
                     TokenType::Leq => return Err(Error::Unimplemented),

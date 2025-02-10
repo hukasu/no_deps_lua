@@ -6,6 +6,7 @@ pub enum Error {
     StringDecode,
     OrphanExp,
     NilTableIndex,
+    IncompatibleConditional,
     // Binary arithmetic operators
     NilArithmetic,
     BoolArithmetic,
@@ -46,6 +47,12 @@ impl Display for Error {
             }
             Self::NilTableIndex => {
                 write!(f, "Can't use Nil as index to a table.")
+            }
+            Self::IncompatibleConditional => {
+                write!(
+                    f,
+                    "A conditional was not a variable, global, constant, or logical operation."
+                )
             }
             Self::NilArithmetic => {
                 write!(f, "Can't use Nil in arithmetic operations.")

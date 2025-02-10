@@ -1198,3 +1198,123 @@ end
     );
     crate::Lua::execute(&program).expect("Should run");
 }
+
+#[test]
+fn chapter7_and_or() {
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
+    let program = Program::parse(
+        r#"
+g1 = 1
+g2 = 2
+
+if g1 or g2 and g3 then
+    print "test only once"
+end
+
+if g3 or g1 and g2 then
+    print "test 3 times"
+end
+
+if (g3 or g1) and (g2 or g4) then
+    print "test 3 times"
+end
+
+if (g3 or g1) and (g2 and g4) then
+    print "test 4 times and fail"
+end
+"#,
+    )
+    .unwrap();
+    assert_eq!(
+        &program.constants,
+        &[
+            "g1".into(),
+            "g2".into(),
+            "g3".into(),
+            "print".into(),
+            "test only once".into(),
+            "test 3 times".into(),
+            "g4".into(),
+            "test 4 times and fail".into(),
+        ]
+    );
+    assert_eq!(
+        &program.byte_codes,
+        &[
+            // g1 = 1
+            ByteCode::SetGlobalInteger(0, 1),
+            // g2 = 2
+            ByteCode::SetGlobalInteger(1, 2),
+            // if g1 or g2 and g3 then
+            ByteCode::GetGlobal(0, 0),
+            ByteCode::Test(0, 1),
+            ByteCode::Jmp(6),
+            ByteCode::GetGlobal(0, 1),
+            ByteCode::Test(0, 0),
+            ByteCode::Jmp(6),
+            ByteCode::GetGlobal(0, 2),
+            ByteCode::Test(0, 0),
+            ByteCode::Jmp(3),
+            //     print "test only once"
+            ByteCode::GetGlobal(0, 3),
+            ByteCode::LoadConstant(1, 4),
+            ByteCode::Call(0, 1),
+            // end
+
+            // if g3 or g1 and g2 then
+            ByteCode::GetGlobal(0, 2),
+            ByteCode::Test(0, 1),
+            ByteCode::Jmp(6),
+            ByteCode::GetGlobal(0, 0),
+            ByteCode::Test(0, 0),
+            ByteCode::Jmp(6),
+            ByteCode::GetGlobal(0, 1),
+            ByteCode::Test(0, 0),
+            ByteCode::Jmp(3),
+            //     print "test 3 times"
+            ByteCode::GetGlobal(0, 3),
+            ByteCode::LoadConstant(1, 5),
+            ByteCode::Call(0, 1),
+            // end
+
+            // if (g3 or g1) and (g2 or g4) then
+            ByteCode::GetGlobal(0, 2),
+            ByteCode::Test(0, 1),
+            ByteCode::Jmp(3),
+            ByteCode::GetGlobal(0, 0),
+            ByteCode::Test(0, 0),
+            ByteCode::Jmp(9),
+            ByteCode::GetGlobal(0, 1),
+            ByteCode::Test(0, 1),
+            ByteCode::Jmp(3),
+            ByteCode::GetGlobal(0, 6),
+            ByteCode::Test(0, 0),
+            ByteCode::Jmp(3),
+            //     print "test 3 times"
+            ByteCode::GetGlobal(0, 3),
+            ByteCode::LoadConstant(1, 5),
+            ByteCode::Call(0, 1),
+            // end
+
+            // if (g3 or g1) and (g2 and g4) then
+            ByteCode::GetGlobal(0, 2),
+            ByteCode::Test(0, 1),
+            ByteCode::Jmp(3),
+            ByteCode::GetGlobal(0, 0),
+            ByteCode::Test(0, 0),
+            ByteCode::Jmp(9),
+            ByteCode::GetGlobal(0, 1),
+            ByteCode::Test(0, 0),
+            ByteCode::Jmp(6),
+            ByteCode::GetGlobal(0, 6),
+            ByteCode::Test(0, 0),
+            ByteCode::Jmp(3),
+            //     print "test 4 times and fail"
+            ByteCode::GetGlobal(0, 3),
+            ByteCode::LoadConstant(1, 7),
+            ByteCode::Call(0, 1),
+            // end
+        ]
+    );
+    crate::Lua::execute(&program).expect("Should run");
+}
