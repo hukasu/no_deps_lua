@@ -107,6 +107,8 @@ impl Program {
         if compile_context.last_expdesc_was_or {
             self.invert_last_test();
         }
+        compile_context.last_expdesc_was_or = false;
+        compile_context.last_expdesc_was_relational = false;
 
         let locals = compile_context.locals.len();
         self.block(block, compile_context)?;
@@ -1080,6 +1082,7 @@ impl Program {
         compile_context: &mut CompileContext<'a>,
         maybe_exp_descs: Option<&[ExpDesc<'a>]>,
     ) -> Result<(), Error> {
+        let exp_top = compile_context.stack_top;
         match explist.tokens.as_slice() {
             make_deconstruct!(exp(TokenType::Exp), explist_cont(TokenType::ExplistCont)) => {
                 let (exp_desc, tail) = maybe_exp_descs.map_or_else(
@@ -1092,6 +1095,28 @@ impl Program {
                     self,
                     compile_context,
                 )?;
+
+                if compile_context.last_expdesc_was_relational {
+                    self.byte_codes.push(ByteCode::LoadFalseSkip(exp_top));
+
+                    let after_false_skip = self.byte_codes.len() - 2;
+                    for jump in compile_context.jump_to_false.drain(..) {
+                        self.byte_codes[jump] =
+                            ByteCode::Jmp(i16::try_from(after_false_skip - jump)?);
+                    }
+
+                    match &mut self.byte_codes[after_false_skip - 1] {
+                        ByteCode::EqualConstant(_, _, test) | ByteCode::LessThan(_, _, test) | ByteCode::LessEqual(_, _, test) | ByteCode::GreaterThanInteger(_, _, test) | ByteCode::GreaterEqualInteger(_, _, test) => {
+                            *test ^= 1
+                        }
+                        other => unreachable!(
+                            "The second to last bytecode should always be a relational comparison. Was {:?}", other
+                        ),
+                    }
+                    self.byte_codes[after_false_skip] = ByteCode::Jmp(1);
+
+                    self.byte_codes.push(ByteCode::LoadTrue(exp_top));
+                }
 
                 self.explist_cont(explist_cont, compile_context, tail)
             }
@@ -1214,14 +1239,14 @@ impl Program {
                     TokenType::ShiftR => binops::binop_shiftr,
                     TokenType::Or => binops::binop_or,
                     TokenType::And => binops::binop_and,
-                    TokenType::Less => return Err(Error::Unimplemented),
-                    TokenType::Greater => return Err(Error::Unimplemented),
-                    TokenType::Leq => return Err(Error::Unimplemented),
-                    TokenType::Geq => return Err(Error::Unimplemented),
-                    TokenType::Eq => return Err(Error::Unimplemented),
-                    TokenType::Neq => return Err(Error::Unimplemented),
+                    TokenType::Less => binops::binop_lt,
+                    TokenType::Greater => binops::binop_gt,
+                    TokenType::Leq => binops::binop_le,
+                    TokenType::Geq => binops::binop_ge,
+                    TokenType::Eq => binops::binop_eq,
+                    TokenType::Neq => binops::binop_ne,
                     TokenType::Concat => binops::binop_concat,
-                    _ => return Err(Error::Unimplemented),
+                    other => unreachable!("{:?} is not a binary operator", other),
                 };
                 func(
                     self,
@@ -1353,6 +1378,9 @@ impl Program {
         functioncall: &Token<'a>,
         compile_context: &mut CompileContext<'a>,
     ) -> Result<(), Error> {
+        assert!(!compile_context.last_expdesc_was_or);
+        assert!(!compile_context.last_expdesc_was_relational);
+
         let func_index = compile_context.stack_top;
         match functioncall.tokens.as_slice() {
             make_deconstruct!(prefixexp(TokenType::Prefixexp), args(TokenType::Args)) => {
@@ -1364,6 +1392,9 @@ impl Program {
 
                 self.byte_codes.push(ByteCode::Call(func_index, 1));
                 compile_context.stack_top = func_index;
+
+                compile_context.last_expdesc_was_or = false;
+                compile_context.last_expdesc_was_relational = false;
 
                 Ok(())
             }
@@ -1396,7 +1427,19 @@ impl Program {
                 _lparen(TokenType::LParen),
                 args_explist(TokenType::ArgsExplist),
                 _rparen(TokenType::RParen)
-            ) => self.args_explist(args_explist, compile_context),
+            ) => {
+                let count_end_jumps = compile_context.jumps_to_end.len();
+                let count_block_jumps = compile_context.jumps_to_block.len();
+                let count_false_jumps = compile_context.jump_to_false.len();
+
+                let res = self.args_explist(args_explist, compile_context);
+
+                assert_eq!(compile_context.jumps_to_end.len(), count_end_jumps);
+                assert_eq!(compile_context.jumps_to_block.len(), count_block_jumps);
+                assert_eq!(compile_context.jump_to_false.len(), count_false_jumps);
+
+                res
+            }
             make_deconstruct!(tableconstructor(TokenType::Tableconstructor)) => {
                 let (_, top) = compile_context.reserve_stack_top();
                 self.tableconstructor(tableconstructor, compile_context, &top)?;

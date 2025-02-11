@@ -425,6 +425,7 @@ pub fn binop_concat<'a, 'b>(
         usize::from(rhs.dst),
     ))
 }
+
 pub fn binop_or<'a, 'b>(
     _program: &mut Program,
     _compile_context: &mut CompileContext,
@@ -447,4 +448,166 @@ pub fn binop_and<'a, 'b>(
         Box::new(lhs.expdesc.clone()),
         Box::new(rhs.expdesc.clone()),
     ))
+}
+
+pub fn binop_lt<'a, 'b>(
+    _program: &mut Program,
+    _compile_context: &mut CompileContext,
+    lhs: Binop<'a, 'b>,
+    rhs: Binop<'a, 'b>,
+) -> Result<ExpDesc<'b>, Error> {
+    match (lhs.expdesc, rhs.expdesc) {
+        // Compile time optimizations
+        (ExpDesc::Integer(lhs), ExpDesc::Integer(rhs)) => Ok(ExpDesc::Boolean(lhs < rhs)),
+        (ExpDesc::Integer(lhs), ExpDesc::Float(rhs)) => Ok(ExpDesc::Boolean((*lhs as f64) < *rhs)),
+        (ExpDesc::Float(lhs), ExpDesc::Integer(rhs)) => Ok(ExpDesc::Boolean(*lhs < (*rhs as f64))),
+        (ExpDesc::Float(lhs), ExpDesc::Float(rhs)) => Ok(ExpDesc::Boolean(lhs < rhs)),
+
+        (ExpDesc::String(lhs), ExpDesc::String(rhs)) => Ok(ExpDesc::Boolean(lhs < rhs)),
+
+        // Runtime code
+        (lhs_expdesc, rhs_expdesc) => Ok(ExpDesc::RelationalOp(
+            ByteCode::LessThan,
+            Box::new(lhs_expdesc.clone()),
+            Box::new(rhs_expdesc.clone()),
+        )),
+    }
+}
+
+pub fn binop_gt<'a, 'b>(
+    _program: &mut Program,
+    _compile_context: &mut CompileContext,
+    lhs: Binop<'a, 'b>,
+    rhs: Binop<'a, 'b>,
+) -> Result<ExpDesc<'b>, Error> {
+    match (lhs.expdesc, rhs.expdesc) {
+        // Compile time optimizations
+        (ExpDesc::Integer(lhs), ExpDesc::Integer(rhs)) => Ok(ExpDesc::Boolean(lhs > rhs)),
+        (ExpDesc::Integer(lhs), ExpDesc::Float(rhs)) => Ok(ExpDesc::Boolean((*lhs as f64) > *rhs)),
+        (ExpDesc::Float(lhs), ExpDesc::Integer(rhs)) => Ok(ExpDesc::Boolean(*lhs > (*rhs as f64))),
+        (ExpDesc::Float(lhs), ExpDesc::Float(rhs)) => Ok(ExpDesc::Boolean(lhs > rhs)),
+
+        (ExpDesc::String(lhs), ExpDesc::String(rhs)) => Ok(ExpDesc::Boolean(lhs > rhs)),
+
+        // Runtime code
+        (lhs_expdesc, rhs_expdesc @ ExpDesc::Integer(_)) => Ok(ExpDesc::RelationalOpInteger(
+            ByteCode::GreaterThanInteger,
+            Box::new(lhs_expdesc.clone()),
+            Box::new(rhs_expdesc.clone()),
+        )),
+        (lhs_expdesc, rhs_expdesc) => Ok(ExpDesc::RelationalOp(
+            ByteCode::LessThan,
+            Box::new(rhs_expdesc.clone()),
+            Box::new(lhs_expdesc.clone()),
+        )),
+    }
+}
+
+pub fn binop_le<'a, 'b>(
+    _program: &mut Program,
+    _compile_context: &mut CompileContext,
+    lhs: Binop<'a, 'b>,
+    rhs: Binop<'a, 'b>,
+) -> Result<ExpDesc<'b>, Error> {
+    match (lhs.expdesc, rhs.expdesc) {
+        // Compile time optimizations
+        (ExpDesc::Integer(lhs), ExpDesc::Integer(rhs)) => Ok(ExpDesc::Boolean(lhs <= rhs)),
+        (ExpDesc::Integer(lhs), ExpDesc::Float(rhs)) => Ok(ExpDesc::Boolean((*lhs as f64) <= *rhs)),
+        (ExpDesc::Float(lhs), ExpDesc::Integer(rhs)) => Ok(ExpDesc::Boolean(*lhs <= (*rhs as f64))),
+        (ExpDesc::Float(lhs), ExpDesc::Float(rhs)) => Ok(ExpDesc::Boolean(lhs <= rhs)),
+
+        (ExpDesc::String(lhs), ExpDesc::String(rhs)) => Ok(ExpDesc::Boolean(lhs <= rhs)),
+
+        // Runtime code
+        (lhs_expdesc, rhs_expdesc) => Ok(ExpDesc::RelationalOp(
+            ByteCode::LessEqual,
+            Box::new(lhs_expdesc.clone()),
+            Box::new(rhs_expdesc.clone()),
+        )),
+    }
+}
+
+pub fn binop_ge<'a, 'b>(
+    _program: &mut Program,
+    _compile_context: &mut CompileContext,
+    lhs: Binop<'a, 'b>,
+    rhs: Binop<'a, 'b>,
+) -> Result<ExpDesc<'b>, Error> {
+    match (lhs.expdesc, rhs.expdesc) {
+        // Compile time optimizations
+        (ExpDesc::Integer(lhs), ExpDesc::Integer(rhs)) => Ok(ExpDesc::Boolean(lhs <= rhs)),
+        (ExpDesc::Integer(lhs), ExpDesc::Float(rhs)) => Ok(ExpDesc::Boolean((*lhs as f64) <= *rhs)),
+        (ExpDesc::Float(lhs), ExpDesc::Integer(rhs)) => Ok(ExpDesc::Boolean(*lhs <= (*rhs as f64))),
+        (ExpDesc::Float(lhs), ExpDesc::Float(rhs)) => Ok(ExpDesc::Boolean(lhs <= rhs)),
+
+        (ExpDesc::String(lhs), ExpDesc::String(rhs)) => Ok(ExpDesc::Boolean(lhs <= rhs)),
+
+        // Runtime code
+        (lhs_expdesc, rhs_expdesc @ ExpDesc::Integer(_)) => Ok(ExpDesc::RelationalOpInteger(
+            ByteCode::GreaterEqualInteger,
+            Box::new(lhs_expdesc.clone()),
+            Box::new(rhs_expdesc.clone()),
+        )),
+        (lhs_expdesc, rhs_expdesc) => Ok(ExpDesc::RelationalOp(
+            ByteCode::LessEqual,
+            Box::new(rhs_expdesc.clone()),
+            Box::new(lhs_expdesc.clone()),
+        )),
+    }
+}
+
+pub fn binop_eq<'a, 'b>(
+    _program: &mut Program,
+    _compile_context: &mut CompileContext,
+    lhs: Binop<'a, 'b>,
+    rhs: Binop<'a, 'b>,
+) -> Result<ExpDesc<'b>, Error> {
+    match (lhs.expdesc, rhs.expdesc) {
+        // Compile time optimizations
+        (ExpDesc::Integer(lhs), ExpDesc::Integer(rhs)) => Ok(ExpDesc::Boolean(lhs <= rhs)),
+        (ExpDesc::Integer(lhs), ExpDesc::Float(rhs)) => Ok(ExpDesc::Boolean((*lhs as f64) <= *rhs)),
+        (ExpDesc::Float(lhs), ExpDesc::Integer(rhs)) => Ok(ExpDesc::Boolean(*lhs <= (*rhs as f64))),
+        (ExpDesc::Float(lhs), ExpDesc::Float(rhs)) => Ok(ExpDesc::Boolean(lhs <= rhs)),
+
+        (ExpDesc::String(lhs), ExpDesc::String(rhs)) => Ok(ExpDesc::Boolean(lhs <= rhs)),
+
+        // Runtime code
+        (
+            lhs_expdesc,
+            rhs_expdesc @ (ExpDesc::Integer(_) | ExpDesc::Float(_) | ExpDesc::String(_)),
+        ) => Ok(ExpDesc::RelationalOpConstant(
+            ByteCode::EqualConstant,
+            Box::new(lhs_expdesc.clone()),
+            Box::new(rhs_expdesc.clone()),
+        )),
+        (lhs_expdesc, rhs_expdesc) => Ok(ExpDesc::RelationalOp(
+            ByteCode::EqualConstant,
+            Box::new(lhs_expdesc.clone()),
+            Box::new(rhs_expdesc.clone()),
+        )),
+    }
+}
+
+pub fn binop_ne<'a, 'b>(
+    _program: &mut Program,
+    _compile_context: &mut CompileContext,
+    lhs: Binop<'a, 'b>,
+    rhs: Binop<'a, 'b>,
+) -> Result<ExpDesc<'b>, Error> {
+    match (lhs.expdesc, rhs.expdesc) {
+        // Compile time optimizations
+        (ExpDesc::Integer(lhs), ExpDesc::Integer(rhs)) => Ok(ExpDesc::Boolean(lhs <= rhs)),
+        (ExpDesc::Integer(lhs), ExpDesc::Float(rhs)) => Ok(ExpDesc::Boolean((*lhs as f64) <= *rhs)),
+        (ExpDesc::Float(lhs), ExpDesc::Integer(rhs)) => Ok(ExpDesc::Boolean(*lhs <= (*rhs as f64))),
+        (ExpDesc::Float(lhs), ExpDesc::Float(rhs)) => Ok(ExpDesc::Boolean(lhs <= rhs)),
+
+        (ExpDesc::String(lhs), ExpDesc::String(rhs)) => Ok(ExpDesc::Boolean(lhs <= rhs)),
+
+        // Runtime code
+        (lhs_expdesc, rhs_expdesc) => Ok(ExpDesc::RelationalOp(
+            ByteCode::EqualConstant,
+            Box::new(lhs_expdesc.clone()),
+            Box::new(rhs_expdesc.clone()),
+        )),
+    }
 }

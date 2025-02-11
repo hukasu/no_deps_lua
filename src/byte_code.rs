@@ -1,8 +1,13 @@
-use core::cell::RefCell;
+use core::{cell::RefCell, cmp::Ordering};
 
 use alloc::{format, rc::Rc};
 
-use crate::{ext::FloatExt, table::Table, value::Value, Lua, Program};
+use crate::{
+    ext::FloatExt,
+    table::Table,
+    value::{Value, ValueKey},
+    Lua, Program,
+};
 
 use super::Error;
 
@@ -39,6 +44,11 @@ pub enum ByteCode {
     ///
     /// `dst`: Location on the stack to place boolean  
     LoadFalse(u8),
+    /// `LFALSESKIP`  
+    /// Loads a `false` value into the stack and skips next instruction
+    ///
+    /// `dst`: Location on the stack to place boolean  
+    LoadFalseSkip(u8),
     /// `LOADTRUE`  
     /// Loads a `false` value into the stack
     ///
@@ -247,6 +257,41 @@ pub enum ByteCode {
     ///
     /// `jump`: Number of intructions to jump
     Jmp(i16),
+    /// `LT`  
+    /// Performs less than (<) comparison between 2 registers.
+    ///
+    /// `lhs`: Location on stack of left operand  
+    /// `rhs`: Location on stack of light operand  
+    /// `test`: If it should test for `true` or `false`
+    LessThan(u8, u8, u8),
+    /// `LE`  
+    /// Performs less than or equal (<=) comparison between 2 registers.
+    ///
+    /// `lhs`: Location on stack of left operand  
+    /// `rhs`: Location on stack of light operand  
+    /// `test`: If it should test for `true` or `false`
+    LessEqual(u8, u8, u8),
+    /// `EQK`
+    /// Peforms equal comparison (==) between the register and constant.
+    ///
+    /// `register`: Location on stack of left operand  
+    /// `constant`: Id of constant  
+    /// `test`: If it should test for `true` or `false`
+    EqualConstant(u8, u8, u8),
+    /// `GTI`
+    /// Peforms a greater than (>) comparison between the register and integer constant.
+    ///
+    /// `register`: Location on stack of left operand  
+    /// `integer`: Integer constant of right operand  
+    /// `test`: If it should test for `true` or `false`
+    GreaterThanInteger(u8, i8, u8),
+    /// `GEI`
+    /// Peforms a greater or equal (>=) comparison between the register and integer constant.
+    ///
+    /// `register`: Location on stack of left operand  
+    /// `integer`: Integer constant of right operand  
+    /// `test`: If it should test for `true` or `false`
+    GreaterEqualInteger(u8, i8, u8),
     /// `TEST`  
     /// Performs test.
     ///
@@ -338,6 +383,13 @@ impl ByteCode {
     pub fn load_false(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::LoadFalse(dst));
 
+        vm.set_stack(*dst, Value::Boolean(false))
+    }
+
+    pub fn load_false_skip(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+        validate_bytecode!(self, ByteCode::LoadFalseSkip(dst));
+
+        vm.program_counter += 1;
         vm.set_stack(*dst, Value::Boolean(false))
     }
 
@@ -928,6 +980,81 @@ impl ByteCode {
         Ok(())
     }
 
+    pub fn less_than(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+        validate_bytecode!(self, ByteCode::LessThan(lhs, rhs, test));
+
+        let lhs = &vm.stack[*lhs as usize];
+        let rhs = &vm.stack[*rhs as usize];
+
+        Self::relational_comparison(
+            lhs,
+            rhs,
+            &mut vm.program_counter,
+            |ordering| ordering == Ordering::Less,
+            *test == 1,
+        )
+    }
+
+    pub fn less_equal(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+        validate_bytecode!(self, ByteCode::LessEqual(lhs, rhs, test));
+
+        let lhs = &vm.stack[*lhs as usize];
+        let rhs = &vm.stack[*rhs as usize];
+
+        Self::relational_comparison(
+            lhs,
+            rhs,
+            &mut vm.program_counter,
+            |ordering| ordering != Ordering::Greater,
+            *test == 1,
+        )
+    }
+
+    pub fn equal_constant(&self, vm: &mut Lua, program: &Program) -> Result<(), Error> {
+        validate_bytecode!(self, ByteCode::EqualConstant(register, constant, test));
+
+        let lhs = &vm.stack[*register as usize];
+        let rhs = &program.constants[*constant as usize];
+
+        Self::relational_comparison(
+            lhs,
+            rhs,
+            &mut vm.program_counter,
+            |ordering| ordering == Ordering::Equal,
+            *test == 1,
+        )
+    }
+
+    pub fn greater_than_integer(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+        validate_bytecode!(self, ByteCode::GreaterThanInteger(register, integer, test));
+
+        let lhs = &vm.stack[*register as usize];
+        let rhs = Value::Integer(i64::from(*integer));
+
+        Self::relational_comparison(
+            lhs,
+            &rhs,
+            &mut vm.program_counter,
+            |ordering| ordering == Ordering::Greater,
+            *test == 1,
+        )
+    }
+
+    pub fn greater_equal_integer(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+        validate_bytecode!(self, ByteCode::GreaterEqualInteger(register, integer, test));
+
+        let lhs = &vm.stack[*register as usize];
+        let rhs = Value::Integer(i64::from(*integer));
+
+        Self::relational_comparison(
+            lhs,
+            &rhs,
+            &mut vm.program_counter,
+            |ordering| ordering != Ordering::Less,
+            *test == 1,
+        )
+    }
+
     pub fn test(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::Test(src, test));
 
@@ -1090,6 +1217,27 @@ impl ByteCode {
             Ok(())
         } else {
             Err(Error::ExpectedName)
+        }
+    }
+
+    fn relational_comparison(
+        lhs: &Value,
+        rhs: &Value,
+        program_counter: &mut usize,
+        ordering_test: fn(Ordering) -> bool,
+        test: bool,
+    ) -> Result<(), Error> {
+        if let Some(ordering) = lhs.partial_cmp(rhs) {
+            if ordering_test(ordering) != test {
+                *program_counter += 1;
+            }
+
+            Ok(())
+        } else {
+            Err(Error::RelationalOperandError(
+                lhs.static_type_name(),
+                rhs.static_type_name(),
+            ))
         }
     }
 }

@@ -25,6 +25,8 @@ pub enum Error {
     StringBitwise,
     TableBitwise,
     FunctionBitwise,
+    // Binary relational operators
+    RelationalOperandError(&'static str, &'static str),
     // Concat
     NilConcat,
     BoolConcat,
@@ -58,6 +60,9 @@ impl Display for Error {
             Self::StringBitwise => write!(f, "{}", crate::program::Error::StringBitwise),
             Self::TableBitwise => write!(f, "{}", crate::program::Error::TableBitwise),
             Self::FunctionBitwise => write!(f, "Can't use Function in bitwise operations."),
+            Self::RelationalOperandError(lhs, rhs) => {
+                write!(f, "Can't compare {} with {}", lhs, rhs)
+            }
             Self::NilConcat => write!(f, "{}", crate::program::Error::NilConcat),
             Self::BoolConcat => write!(f, "{}", crate::program::Error::BoolConcat),
             Self::TableConcat => write!(f, "{}", crate::program::Error::TableConcat),

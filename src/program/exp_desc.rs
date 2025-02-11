@@ -21,6 +21,21 @@ pub enum ExpDesc<'a> {
     IfCondition(usize, bool),
     OrCondition(Box<ExpDesc<'a>>, Box<ExpDesc<'a>>),
     AndCondition(Box<ExpDesc<'a>>, Box<ExpDesc<'a>>),
+    RelationalOp(
+        fn(u8, u8, u8) -> ByteCode,
+        Box<ExpDesc<'a>>,
+        Box<ExpDesc<'a>>,
+    ),
+    RelationalOpInteger(
+        fn(u8, i8, u8) -> ByteCode,
+        Box<ExpDesc<'a>>,
+        Box<ExpDesc<'a>>,
+    ),
+    RelationalOpConstant(
+        fn(u8, u8, u8) -> ByteCode,
+        Box<ExpDesc<'a>>,
+        Box<ExpDesc<'a>>,
+    ),
 }
 
 impl<'a> ExpDesc<'a> {
@@ -470,12 +485,11 @@ impl<'a> ExpDesc<'a> {
                 let lhs_jump = program.byte_codes.len();
                 program.byte_codes.push(ByteCode::Jmp(0));
 
+                compile_context.last_expdesc_was_or = true;
                 rhs.discharge(&ExpDesc::Local(*top_index), program, compile_context)?;
                 let after_rhs = program.byte_codes.len() - 1;
 
                 program.byte_codes[lhs_jump] = ByteCode::Jmp(i16::try_from(after_rhs - lhs_jump)?);
-
-                compile_context.last_expdesc_was_or = true;
 
                 Ok(())
             }
@@ -514,26 +528,35 @@ impl<'a> ExpDesc<'a> {
                 Ok(())
             }
             (Self::AndCondition(lhs, rhs), Self::Local(top_index)) => {
+                let top_index_u8 = u8::try_from(*top_index)?;
+
                 lhs.discharge(&ExpDesc::Local(*top_index), program, compile_context)?;
                 let after_lhs = program.byte_codes.len() - 2;
 
-                program
-                    .byte_codes
-                    .push(ByteCode::Test(u8::try_from(*top_index)?, 0));
-                let lhs_jump = program.byte_codes.len();
-                program.byte_codes.push(ByteCode::Jmp(0));
+                let maybe_jump = if !compile_context.last_expdesc_was_relational {
+                    program.byte_codes.push(ByteCode::Test(top_index_u8, 0));
+                    let lhs_jump = program.byte_codes.len();
+                    program.byte_codes.push(ByteCode::Jmp(0));
 
-                if compile_context.last_expdesc_was_or {
-                    program.byte_codes[after_lhs] =
-                        ByteCode::Jmp(i16::try_from(lhs_jump - after_lhs)?);
-                }
+                    if compile_context.last_expdesc_was_or {
+                        program.byte_codes[after_lhs] =
+                            ByteCode::Jmp(i16::try_from(lhs_jump - after_lhs)?);
+                    }
 
+                    Some(lhs_jump)
+                } else {
+                    None
+                };
+
+                compile_context.last_expdesc_was_or = false;
+                compile_context.last_expdesc_was_relational = false;
                 rhs.discharge(&ExpDesc::Local(*top_index), program, compile_context)?;
                 let after_rhs = program.byte_codes.len() - 1;
 
-                program.byte_codes[lhs_jump] = ByteCode::Jmp(i16::try_from(after_rhs - lhs_jump)?);
-
-                compile_context.last_expdesc_was_or = false;
+                if let Some(lhs_jump) = maybe_jump {
+                    program.byte_codes[lhs_jump] =
+                        ByteCode::Jmp(i16::try_from(after_rhs - lhs_jump)?);
+                }
 
                 Ok(())
             }
@@ -543,26 +566,282 @@ impl<'a> ExpDesc<'a> {
                     program,
                     compile_context,
                 )?;
-                if let ExpDesc::OrCondition(_, _) = lhs.as_ref() {
+                if compile_context.last_expdesc_was_or {
                     let end_of_ors = program.byte_codes.len() - 1;
                     for jump in compile_context.jumps_to_block.drain(..) {
                         program.byte_codes[jump] = ByteCode::Jmp(i16::try_from(end_of_ors - jump)?);
                     }
-                }
-                if compile_context.last_expdesc_was_or {
                     program.invert_last_test();
                 }
 
-                if let ExpDesc::OrCondition(_, _) = rhs.as_ref() {
-                    compile_context.last_expdesc_was_or = true;
-                } else {
-                    compile_context.last_expdesc_was_or = false;
-                }
+                compile_context.last_expdesc_was_or = false;
+                compile_context.last_expdesc_was_relational = false;
                 rhs.discharge(
                     &ExpDesc::IfCondition(*top_index, false),
                     program,
                     compile_context,
                 )?;
+
+                Ok(())
+            }
+            (ExpDesc::RelationalOp(bytecode, lhs, rhs), ExpDesc::Local(top_index)) => {
+                let top_index_u8 = u8::try_from(*top_index)?;
+                let (lhs, lhs_used_top_index) = match lhs.as_ref() {
+                    ExpDesc::Local(lhs) => (*lhs, 0),
+                    other => {
+                        other.discharge(&ExpDesc::Local(*top_index), program, compile_context)?;
+                        (*top_index, 1)
+                    }
+                };
+                let rhs = match rhs.as_ref() {
+                    ExpDesc::Local(rhs) => *rhs,
+                    ExpDesc::Integer(integer) => {
+                        if let Ok(integer) = i16::try_from(*integer) {
+                            program.byte_codes.push(ByteCode::LoadInt(
+                                top_index_u8 + lhs_used_top_index,
+                                integer,
+                            ));
+                            top_index + usize::from(lhs_used_top_index)
+                        } else {
+                            let constant = program.push_constant(*integer)?;
+                            program.byte_codes.push(ByteCode::LoadConstant(
+                                top_index_u8 + lhs_used_top_index,
+                                constant,
+                            ));
+                            top_index + usize::from(lhs_used_top_index)
+                        }
+                    }
+                    ExpDesc::String(string) => {
+                        let string = string.unescape()?;
+                        let constant = program.push_constant(string.as_str())?;
+                        program.byte_codes.push(ByteCode::LoadConstant(
+                            top_index_u8 + lhs_used_top_index,
+                            constant,
+                        ));
+                        top_index + usize::from(lhs_used_top_index)
+                    }
+                    other => {
+                        other.discharge(
+                            &ExpDesc::Local(top_index + usize::from(lhs_used_top_index)),
+                            program,
+                            compile_context,
+                        )?;
+                        top_index + usize::from(lhs_used_top_index)
+                    }
+                };
+
+                program
+                    .byte_codes
+                    .push(bytecode(u8::try_from(lhs)?, u8::try_from(rhs)?, 0));
+                let jump = program.byte_codes.len();
+                program.byte_codes.push(ByteCode::Jmp(0));
+                compile_context.jump_to_false.push(jump);
+
+                compile_context.last_expdesc_was_relational = true;
+
+                Ok(())
+            }
+            (
+                ExpDesc::RelationalOp(bytecode, lhs, rhs),
+                ExpDesc::IfCondition(top_index, test_cond),
+            ) => {
+                let top_index_u8 = u8::try_from(*top_index)?;
+                let (lhs, lhs_used_top_index) = match lhs.as_ref() {
+                    ExpDesc::Local(lhs) => (*lhs, 0),
+                    other => {
+                        other.discharge(
+                            &ExpDesc::IfCondition(*top_index, *test_cond),
+                            program,
+                            compile_context,
+                        )?;
+                        (*top_index, 1)
+                    }
+                };
+                let rhs = match rhs.as_ref() {
+                    ExpDesc::Local(rhs) => *rhs,
+                    ExpDesc::Integer(integer) => {
+                        if let Ok(integer) = i16::try_from(*integer) {
+                            program.byte_codes.push(ByteCode::LoadInt(
+                                top_index_u8 + lhs_used_top_index,
+                                integer,
+                            ));
+                            top_index + usize::from(lhs_used_top_index)
+                        } else {
+                            let constant = program.push_constant(*integer)?;
+                            program.byte_codes.push(ByteCode::LoadConstant(
+                                top_index_u8 + lhs_used_top_index,
+                                constant,
+                            ));
+                            top_index + usize::from(lhs_used_top_index)
+                        }
+                    }
+                    ExpDesc::String(string) => {
+                        let string = string.unescape()?;
+                        let constant = program.push_constant(string.as_str())?;
+                        program.byte_codes.push(ByteCode::LoadConstant(
+                            top_index_u8 + lhs_used_top_index,
+                            constant,
+                        ));
+                        top_index + usize::from(lhs_used_top_index)
+                    }
+                    other => {
+                        other.discharge(
+                            &ExpDesc::Local(top_index + usize::from(lhs_used_top_index)),
+                            program,
+                            compile_context,
+                        )?;
+                        top_index + usize::from(lhs_used_top_index)
+                    }
+                };
+
+                program.byte_codes.push(bytecode(
+                    u8::try_from(lhs)?,
+                    u8::try_from(rhs)?,
+                    *test_cond as u8,
+                ));
+                let jump = program.byte_codes.len();
+                program.byte_codes.push(ByteCode::Jmp(0));
+                compile_context.jumps_to_end.push(jump);
+
+                compile_context.last_expdesc_was_relational = true;
+
+                Ok(())
+            }
+            (ExpDesc::RelationalOpInteger(bytecode, lhs, rhs), ExpDesc::Local(top_index)) => {
+                let lhs = match lhs.as_ref() {
+                    ExpDesc::Local(lhs) => *lhs,
+                    other => {
+                        other.discharge(&ExpDesc::Local(*top_index), program, compile_context)?;
+                        *top_index
+                    }
+                };
+
+                if let ExpDesc::Integer(integer) = rhs.as_ref() {
+                    if let Ok(integer) = i8::try_from(*integer) {
+                        program
+                            .byte_codes
+                            .push(bytecode(u8::try_from(lhs)?, integer, 0));
+                    } else {
+                        let integer_const = program.push_constant(*integer)?;
+                        let rhs = u8::try_from(top_index + 1)?;
+                        program
+                            .byte_codes
+                            .push(ByteCode::LoadConstant(rhs, integer_const));
+                        program
+                            .byte_codes
+                            .push(ByteCode::LessThan(u8::try_from(lhs)?, rhs, 0));
+                    }
+                    let jump = program.byte_codes.len();
+                    program.byte_codes.push(ByteCode::Jmp(0));
+                    compile_context.jump_to_false.push(jump);
+
+                    compile_context.last_expdesc_was_relational = true;
+
+                    Ok(())
+                } else {
+                    panic!(
+                        "Rhs must be integer on RelationalOpInteger, but was {:?}",
+                        rhs
+                    );
+                }
+            }
+            (
+                ExpDesc::RelationalOpInteger(bytecode, lhs, rhs),
+                ExpDesc::IfCondition(top_index, test),
+            ) => {
+                let lhs = match lhs.as_ref() {
+                    ExpDesc::Local(lhs) => *lhs,
+                    other => {
+                        other.discharge(&ExpDesc::Local(*top_index), program, compile_context)?;
+                        *top_index
+                    }
+                };
+
+                if let ExpDesc::Integer(integer) = rhs.as_ref() {
+                    if let Ok(integer) = i8::try_from(*integer) {
+                        program
+                            .byte_codes
+                            .push(bytecode(u8::try_from(lhs)?, integer, *test as u8));
+                    } else {
+                        let integer_const = program.push_constant(*integer)?;
+                        let rhs = u8::try_from(top_index + 1)?;
+                        program
+                            .byte_codes
+                            .push(ByteCode::LoadConstant(rhs, integer_const));
+                        program
+                            .byte_codes
+                            .push(ByteCode::LessThan(u8::try_from(lhs)?, rhs, 0));
+                    }
+                    let jump = program.byte_codes.len();
+                    program.byte_codes.push(ByteCode::Jmp(0));
+                    compile_context.jumps_to_end.push(jump);
+
+                    compile_context.last_expdesc_was_relational = true;
+
+                    Ok(())
+                } else {
+                    panic!(
+                        "Rhs must be integer on RelationalOpInteger, but was {:?}",
+                        rhs
+                    );
+                }
+            }
+            (ExpDesc::RelationalOpConstant(bytecode, lhs, rhs), ExpDesc::Local(top_index)) => {
+                let lhs = match lhs.as_ref() {
+                    ExpDesc::Local(lhs) => *lhs,
+                    other => {
+                        other.discharge(&ExpDesc::Local(*top_index), program, compile_context)?;
+                        *top_index
+                    }
+                };
+
+                let constant = match rhs.as_ref() {
+                    ExpDesc::Integer(integer) => program.push_constant(*integer)?,
+                    ExpDesc::Float(float) => program.push_constant(*float)?,
+                    ExpDesc::String(string) => {
+                        program.push_constant(string.unescape()?.as_str())?
+                    }
+                    _ => panic!("{:?} can't be used on RelationalOpConstant.", rhs),
+                };
+                program
+                    .byte_codes
+                    .push(bytecode(u8::try_from(lhs)?, constant, 0));
+                let jump = program.byte_codes.len();
+                program.byte_codes.push(ByteCode::Jmp(0));
+                compile_context.jump_to_false.push(jump);
+
+                compile_context.last_expdesc_was_relational = true;
+
+                Ok(())
+            }
+            (
+                ExpDesc::RelationalOpConstant(bytecode, lhs, rhs),
+                ExpDesc::IfCondition(top_index, test),
+            ) => {
+                let lhs = match lhs.as_ref() {
+                    ExpDesc::Local(lhs) => *lhs,
+                    other => {
+                        other.discharge(&ExpDesc::Local(*top_index), program, compile_context)?;
+                        *top_index
+                    }
+                };
+
+                let constant = match rhs.as_ref() {
+                    ExpDesc::Integer(integer) => program.push_constant(*integer)?,
+                    ExpDesc::Float(float) => program.push_constant(*float)?,
+                    ExpDesc::String(string) => {
+                        program.push_constant(string.unescape()?.as_str())?
+                    }
+                    _ => panic!("{:?} can't be used on RelationalOpConstant.", rhs),
+                };
+                program
+                    .byte_codes
+                    .push(bytecode(u8::try_from(lhs)?, constant, *test as u8));
+                let jump = program.byte_codes.len();
+                program.byte_codes.push(ByteCode::Jmp(0));
+                compile_context.jumps_to_end.push(jump);
+
+                compile_context.last_expdesc_was_relational = true;
 
                 Ok(())
             }

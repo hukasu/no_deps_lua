@@ -30,6 +30,18 @@ impl Value {
             _ => None,
         }
     }
+
+    pub fn static_type_name(&self) -> &'static str {
+        match self {
+            Self::Nil => "nil",
+            Self::Boolean(_) => "boolean",
+            Self::Integer(_) => "integer",
+            Self::Float(_) => "float",
+            Self::ShortString(_) | Self::String(_) => "string",
+            Self::Table(_) => "table",
+            Self::Function(_) => "function",
+        }
+    }
 }
 
 impl PartialOrd for Value {

@@ -86,6 +86,9 @@ impl Lua {
                     load_constant.load_constant(&mut vm, program)?
                 }
                 load_false @ ByteCode::LoadFalse(_) => load_false.load_false(&mut vm, program)?,
+                load_false_skip @ ByteCode::LoadFalseSkip(_) => {
+                    load_false_skip.load_false_skip(&mut vm, program)?
+                }
                 load_true @ ByteCode::LoadTrue(_) => load_true.load_true(&mut vm, program)?,
                 load_nil @ ByteCode::LoadNil(_) => load_nil.load_nil(&mut vm, program)?,
                 get_global @ ByteCode::GetGlobal(_, _) => {
@@ -129,6 +132,15 @@ impl Lua {
                 len @ ByteCode::Len(_, _) => len.len(&mut vm, program)?,
                 concat @ ByteCode::Concat(_, _, _) => concat.concat(&mut vm, program)?,
                 jmp @ ByteCode::Jmp(_) => jmp.jmp(&mut vm, program)?,
+                lt @ ByteCode::LessThan(_, _, _) => lt.less_than(&mut vm, program)?,
+                le @ ByteCode::LessEqual(_, _, _) => le.less_equal(&mut vm, program)?,
+                eqk @ ByteCode::EqualConstant(_, _, _) => eqk.equal_constant(&mut vm, program)?,
+                gti @ ByteCode::GreaterThanInteger(_, _, _) => {
+                    gti.greater_than_integer(&mut vm, program)?
+                }
+                gei @ ByteCode::GreaterEqualInteger(_, _, _) => {
+                    gei.greater_equal_integer(&mut vm, program)?
+                }
                 test @ ByteCode::Test(_, _) => test.test(&mut vm, program)?,
                 call @ ByteCode::Call(_, _) => call.call(&mut vm, program)?,
                 forloop @ ByteCode::ForLoop(_, _) => forloop.for_loop(&mut vm, program)?,
