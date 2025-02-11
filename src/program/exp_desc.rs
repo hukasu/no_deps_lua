@@ -462,6 +462,25 @@ impl<'a> ExpDesc<'a> {
 
                 Ok(())
             }
+            (Self::OrCondition(lhs, rhs), Self::Local(top_index)) => {
+                compile_context.last_rhs_was_or = false;
+
+                lhs.discharge(&ExpDesc::Local(*top_index), program, compile_context)?;
+                program
+                    .byte_codes
+                    .push(ByteCode::Test(u8::try_from(*top_index)?, 1));
+                let lhs_jump = program.byte_codes.len();
+                program.byte_codes.push(ByteCode::Jmp(0));
+
+                rhs.discharge(&ExpDesc::Local(*top_index), program, compile_context)?;
+                let after_rhs = program.byte_codes.len() - 1;
+
+                program.byte_codes[lhs_jump] = ByteCode::Jmp(i16::try_from(after_rhs - lhs_jump)?);
+
+                compile_context.last_rhs_was_or = true;
+
+                Ok(())
+            }
             (Self::OrCondition(lhs, rhs), Self::IfCondition(top_index, _)) => {
                 let mut jump_cache = core::mem::take(&mut compile_context.jumps_to_end);
 
@@ -493,6 +512,30 @@ impl<'a> ExpDesc<'a> {
 
                 core::mem::swap(&mut compile_context.jumps_to_end, &mut jump_cache);
                 compile_context.jumps_to_end.extend(jump_cache);
+
+                Ok(())
+            }
+            (Self::AndCondition(lhs, rhs), Self::Local(top_index)) => {
+                compile_context.last_rhs_was_or = false;
+
+                lhs.discharge(&ExpDesc::Local(*top_index), program, compile_context)?;
+                let after_lhs = program.byte_codes.len() - 2;
+
+                program
+                    .byte_codes
+                    .push(ByteCode::Test(u8::try_from(*top_index)?, 0));
+                let lhs_jump = program.byte_codes.len();
+                program.byte_codes.push(ByteCode::Jmp(0));
+
+                if compile_context.last_rhs_was_or {
+                    program.byte_codes[after_lhs] =
+                        ByteCode::Jmp(i16::try_from(lhs_jump - after_lhs)?);
+                }
+
+                rhs.discharge(&ExpDesc::Local(*top_index), program, compile_context)?;
+                let after_rhs = program.byte_codes.len() - 1;
+
+                program.byte_codes[lhs_jump] = ByteCode::Jmp(i16::try_from(after_rhs - lhs_jump)?);
 
                 Ok(())
             }

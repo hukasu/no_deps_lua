@@ -1318,3 +1318,86 @@ end
     );
     crate::Lua::execute(&program).expect("Should run");
 }
+
+#[test]
+fn chapter7_test_set() {
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
+    let program = Program::parse(
+        r#"
+g1 = 1
+g2 = 2
+
+print( g1 or g2 and g3)
+print( g3 or g1 and g2)
+print( (g3 or g1) and (g2 or g4))
+print( (g3 or g1) and (g2 and g4))
+"#,
+    )
+    .unwrap();
+    assert_eq!(
+        &program.constants,
+        &[
+            "g1".into(),
+            "g2".into(),
+            "print".into(),
+            "g3".into(),
+            "g4".into(),
+        ]
+    );
+    assert_eq!(
+        &program.byte_codes,
+        &[
+            // g1 = 1
+            ByteCode::SetGlobalInteger(0, 1),
+            // g2 = 2
+            ByteCode::SetGlobalInteger(1, 2),
+            // print( g1 or g2 and g3)
+            ByteCode::GetGlobal(0, 2),
+            ByteCode::GetGlobal(1, 0),
+            ByteCode::Test(1, 1),
+            ByteCode::Jmp(4),
+            ByteCode::GetGlobal(1, 1),
+            ByteCode::Test(1, 0),
+            ByteCode::Jmp(1),
+            ByteCode::GetGlobal(1, 3),
+            ByteCode::Call(0, 1),
+            // print( g3 or g1 and g2)
+            ByteCode::GetGlobal(0, 2),
+            ByteCode::GetGlobal(1, 3),
+            ByteCode::Test(1, 1),
+            ByteCode::Jmp(4),
+            ByteCode::GetGlobal(1, 0),
+            ByteCode::Test(1, 0),
+            ByteCode::Jmp(1),
+            ByteCode::GetGlobal(1, 1),
+            ByteCode::Call(0, 1),
+            // print( (g3 or g1) and (g2 or g4))
+            ByteCode::GetGlobal(0, 2),
+            ByteCode::GetGlobal(1, 3),
+            ByteCode::Test(1, 1),
+            ByteCode::Jmp(3),
+            ByteCode::GetGlobal(1, 0),
+            ByteCode::Test(1, 0),
+            ByteCode::Jmp(4),
+            ByteCode::GetGlobal(1, 1),
+            ByteCode::Test(1, 1),
+            ByteCode::Jmp(1),
+            ByteCode::GetGlobal(1, 4),
+            ByteCode::Call(0, 1),
+            // print( (g3 or g1) and (g2 and g4))
+            ByteCode::GetGlobal(0, 2),
+            ByteCode::GetGlobal(1, 3),
+            ByteCode::Test(1, 1),
+            ByteCode::Jmp(3),
+            ByteCode::GetGlobal(1, 0),
+            ByteCode::Test(1, 0),
+            ByteCode::Jmp(4),
+            ByteCode::GetGlobal(1, 1),
+            ByteCode::Test(1, 0),
+            ByteCode::Jmp(1),
+            ByteCode::GetGlobal(1, 4),
+            ByteCode::Call(0, 1),
+        ]
+    );
+    crate::Lua::execute(&program).expect("Should run");
+}
