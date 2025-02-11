@@ -168,21 +168,21 @@ impl Ord for ValueKey {
             (Value::Nil, Value::Nil) => Ordering::Equal,
             (Value::Nil, _) => Ordering::Less,
             (Value::Boolean(_), Value::Nil) => Ordering::Greater,
-            (Value::Boolean(lhs), Value::Boolean(rhs)) => lhs.cmp(&rhs),
+            (Value::Boolean(lhs), Value::Boolean(rhs)) => lhs.cmp(rhs),
             (Value::Boolean(_), _) => Ordering::Less,
             (Value::Integer(_), Value::Nil | Value::Boolean(_)) => Ordering::Greater,
-            (Value::Integer(lhs), Value::Integer(rhs)) => lhs.cmp(&rhs),
+            (Value::Integer(lhs), Value::Integer(rhs)) => lhs.cmp(rhs),
             (Value::Integer(_), _) => Ordering::Less,
             (Value::Float(_), Value::Nil | Value::Boolean(_) | Value::Integer(_)) => {
                 Ordering::Greater
             }
-            (Value::Float(lhs), Value::Float(rhs)) => lhs.total_cmp(&rhs),
+            (Value::Float(lhs), Value::Float(rhs)) => lhs.total_cmp(rhs),
             (Value::Float(_), _) => Ordering::Less,
             (
                 Value::ShortString(_),
                 Value::Nil | Value::Boolean(_) | Value::Integer(_) | Value::Float(_),
             ) => Ordering::Greater,
-            (Value::ShortString(lhs), Value::ShortString(rhs)) => lhs.cmp(&rhs),
+            (Value::ShortString(lhs), Value::ShortString(rhs)) => lhs.cmp(rhs),
             (Value::ShortString(_), _) => Ordering::Less,
             (
                 Value::String(_),
@@ -192,7 +192,7 @@ impl Ord for ValueKey {
                 | Value::Float(_)
                 | Value::ShortString(_),
             ) => Ordering::Greater,
-            (Value::String(lhs), Value::String(rhs)) => lhs.cmp(&rhs),
+            (Value::String(lhs), Value::String(rhs)) => lhs.cmp(rhs),
             (Value::String(_), _) => Ordering::Less,
             (
                 Value::Table(_),
@@ -205,7 +205,7 @@ impl Ord for ValueKey {
             ) => Ordering::Greater,
             (Value::Table(lhs), Value::Table(rhs)) => lhs.as_ptr().cmp(&rhs.as_ptr()),
             (Value::Table(_), _) => Ordering::Less,
-            (Value::Function(lhs), Value::Function(rhs)) => lhs.cmp(&rhs),
+            (Value::Function(lhs), Value::Function(rhs)) => lhs.cmp(rhs),
             (Value::Function(_), _) => Ordering::Greater,
         }
     }
