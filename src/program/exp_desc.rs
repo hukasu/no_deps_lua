@@ -463,8 +463,6 @@ impl<'a> ExpDesc<'a> {
                 Ok(())
             }
             (Self::OrCondition(lhs, rhs), Self::Local(top_index)) => {
-                compile_context.last_rhs_was_or = false;
-
                 lhs.discharge(&ExpDesc::Local(*top_index), program, compile_context)?;
                 program
                     .byte_codes
@@ -516,8 +514,6 @@ impl<'a> ExpDesc<'a> {
                 Ok(())
             }
             (Self::AndCondition(lhs, rhs), Self::Local(top_index)) => {
-                compile_context.last_rhs_was_or = false;
-
                 lhs.discharge(&ExpDesc::Local(*top_index), program, compile_context)?;
                 let after_lhs = program.byte_codes.len() - 2;
 
@@ -536,6 +532,8 @@ impl<'a> ExpDesc<'a> {
                 let after_rhs = program.byte_codes.len() - 1;
 
                 program.byte_codes[lhs_jump] = ByteCode::Jmp(i16::try_from(after_rhs - lhs_jump)?);
+
+                compile_context.last_rhs_was_or = false;
 
                 Ok(())
             }
