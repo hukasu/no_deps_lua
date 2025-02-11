@@ -9,7 +9,7 @@ pub struct StackStr<const N: usize> {
 
 impl<const N: usize> StackStr<N> {
     pub fn new(string: impl Deref<Target = str>) -> Result<Self, Error> {
-        if string.as_bytes().len() <= N {
+        if string.len() <= N {
             let mut iter = string.as_bytes().iter();
             let this = Self {
                 buffer: core::array::from_fn(|_| iter.next().copied().unwrap_or(b'\0')),
@@ -39,6 +39,14 @@ impl<const N: usize> StackStr<N> {
 impl<const N: usize> Display for StackStr<N> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}", String::from_utf8_lossy(&self.buffer))
+    }
+}
+
+impl<const N: usize> Deref for StackStr<N> {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        &self.buffer
     }
 }
 
