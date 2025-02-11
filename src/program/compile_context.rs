@@ -13,7 +13,7 @@ pub struct CompileContext<'a> {
     pub labels: Vec<GotoLabel<'a>>,
     pub jumps_to_block: Vec<usize>,
     pub jumps_to_end: Vec<usize>,
-    pub last_rhs_was_or: bool,
+    pub last_expdesc_was_or: bool,
 }
 
 impl<'a> CompileContext<'a> {

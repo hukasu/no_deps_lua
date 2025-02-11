@@ -475,7 +475,7 @@ impl<'a> ExpDesc<'a> {
 
                 program.byte_codes[lhs_jump] = ByteCode::Jmp(i16::try_from(after_rhs - lhs_jump)?);
 
-                compile_context.last_rhs_was_or = true;
+                compile_context.last_expdesc_was_or = true;
 
                 Ok(())
             }
@@ -498,7 +498,7 @@ impl<'a> ExpDesc<'a> {
                     _ => (),
                 }
 
-                compile_context.last_rhs_was_or = matches!(
+                compile_context.last_expdesc_was_or = matches!(
                     rhs.as_ref(),
                     ExpDesc::Local(_) | ExpDesc::Global(_) | ExpDesc::OrCondition(_, _)
                 );
@@ -523,7 +523,7 @@ impl<'a> ExpDesc<'a> {
                 let lhs_jump = program.byte_codes.len();
                 program.byte_codes.push(ByteCode::Jmp(0));
 
-                if compile_context.last_rhs_was_or {
+                if compile_context.last_expdesc_was_or {
                     program.byte_codes[after_lhs] =
                         ByteCode::Jmp(i16::try_from(lhs_jump - after_lhs)?);
                 }
@@ -533,7 +533,7 @@ impl<'a> ExpDesc<'a> {
 
                 program.byte_codes[lhs_jump] = ByteCode::Jmp(i16::try_from(after_rhs - lhs_jump)?);
 
-                compile_context.last_rhs_was_or = false;
+                compile_context.last_expdesc_was_or = false;
 
                 Ok(())
             }
@@ -549,14 +549,14 @@ impl<'a> ExpDesc<'a> {
                         program.byte_codes[jump] = ByteCode::Jmp(i16::try_from(end_of_ors - jump)?);
                     }
                 }
-                if compile_context.last_rhs_was_or {
+                if compile_context.last_expdesc_was_or {
                     program.invert_last_test();
                 }
 
                 if let ExpDesc::OrCondition(_, _) = rhs.as_ref() {
-                    compile_context.last_rhs_was_or = true;
+                    compile_context.last_expdesc_was_or = true;
                 } else {
-                    compile_context.last_rhs_was_or = false;
+                    compile_context.last_expdesc_was_or = false;
                 }
                 rhs.discharge(
                     &ExpDesc::IfCondition(*top_index, false),

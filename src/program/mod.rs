@@ -51,7 +51,7 @@ impl Program {
             labels: Vec::new(),
             jumps_to_block: Vec::new(),
             jumps_to_end: Vec::new(),
-            last_rhs_was_or: false,
+            last_expdesc_was_or: false,
         };
 
         program.chunk(&chunk, &mut compile_context)?;
@@ -113,7 +113,7 @@ impl Program {
         }
 
         // If the last test of an `if` is an `or` it's test flipped
-        if compile_context.last_rhs_was_or {
+        if compile_context.last_expdesc_was_or {
             self.invert_last_test();
         }
 
