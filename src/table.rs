@@ -1,11 +1,11 @@
 use alloc::vec::Vec;
 
-use crate::value::Value;
+use crate::value::{Value, ValueKey};
 
 #[derive(Debug, PartialEq)]
 pub struct Table {
     pub array: Vec<Value>,
-    pub table: Vec<(Value, Value)>,
+    pub table: Vec<(ValueKey, Value)>,
 }
 
 impl Table {

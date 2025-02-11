@@ -34,53 +34,18 @@ impl Value {
 
 impl PartialOrd for Value {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for Value {
-    fn cmp(&self, other: &Self) -> Ordering {
         match (self, other) {
-            (Self::Nil, Self::Nil) => Ordering::Equal,
-            (Self::Nil, _) => Ordering::Less,
-            (Self::Boolean(_), Self::Nil) => Ordering::Greater,
-            (Self::Boolean(lhs), Self::Boolean(rhs)) => lhs.cmp(rhs),
-            (Self::Boolean(_), _) => Ordering::Less,
-            (Self::Integer(_), Self::Nil | Self::Boolean(_)) => Ordering::Greater,
-            (Self::Integer(lhs), Self::Integer(rhs)) => lhs.cmp(rhs),
-            (Self::Integer(_), _) => Ordering::Less,
-            (Self::Float(_), Self::Nil | Self::Boolean(_) | Self::Integer(_)) => Ordering::Greater,
-            (Self::Float(lhs), Self::Float(rhs)) => lhs.total_cmp(rhs),
-            (Self::Float(_), _) => Ordering::Less,
-            (
-                Self::ShortString(_),
-                Self::Nil | Self::Boolean(_) | Self::Integer(_) | Self::Float(_),
-            ) => Ordering::Greater,
-            (Self::ShortString(lhs), Self::ShortString(rhs)) => lhs.cmp(rhs),
-            (Self::ShortString(_), _) => Ordering::Less,
-            (
-                Self::String(_),
-                Self::Nil
-                | Self::Boolean(_)
-                | Self::Integer(_)
-                | Self::Float(_)
-                | Self::ShortString(_),
-            ) => Ordering::Greater,
-            (Self::String(lhs), Self::String(rhs)) => lhs.cmp(rhs),
-            (Self::String(_), _) => Ordering::Less,
-            (
-                Self::Table(_),
-                Self::Nil
-                | Self::Boolean(_)
-                | Self::Integer(_)
-                | Self::Float(_)
-                | Self::ShortString(_)
-                | Self::String(_),
-            ) => Ordering::Greater,
-            (Self::Table(lhs), Self::Table(rhs)) => lhs.as_ptr().cmp(&rhs.as_ptr()),
-            (Self::Table(_), _) => Ordering::Less,
-            (Self::Function(lhs), Self::Function(rhs)) => lhs.cmp(rhs),
-            (Self::Function(_), _) => Ordering::Greater,
+            (Value::Integer(l), Value::Integer(r)) => Some(l.cmp(r)),
+            (Value::Integer(l), Value::Float(r)) => (*l as f64).partial_cmp(r),
+            (Value::Float(l), Value::Integer(r)) => l.partial_cmp(&(*r as f64)),
+            (Value::Float(l), Value::Float(r)) => l.partial_cmp(r),
+
+            (Value::ShortString(l), Value::ShortString(r)) => Some(l.cmp(r)),
+            (Value::ShortString(l), Value::String(r)) => Some(l.as_ref().cmp(r.as_bytes())),
+            (Value::String(l), Value::ShortString(r)) => Some(l.as_bytes().cmp(r.as_ref())),
+            (Value::String(l), Value::String(r)) => Some(l.cmp(r)),
+
+            _ => None,
         }
     }
 }
@@ -183,5 +148,71 @@ mod tests {
     #[test]
     fn value_short_string_static_assert() {
         assert_eq!(size_of::<Value>(), 24);
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+/// A wrapper around value so that it can be ordered on a [`Vec`] and
+/// be searched using `binary_search`
+pub struct ValueKey(Value);
+
+impl PartialOrd for ValueKey {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for ValueKey {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match (&self.0, &other.0) {
+            (Value::Nil, Value::Nil) => Ordering::Equal,
+            (Value::Nil, _) => Ordering::Less,
+            (Value::Boolean(_), Value::Nil) => Ordering::Greater,
+            (Value::Boolean(lhs), Value::Boolean(rhs)) => lhs.cmp(&rhs),
+            (Value::Boolean(_), _) => Ordering::Less,
+            (Value::Integer(_), Value::Nil | Value::Boolean(_)) => Ordering::Greater,
+            (Value::Integer(lhs), Value::Integer(rhs)) => lhs.cmp(&rhs),
+            (Value::Integer(_), _) => Ordering::Less,
+            (Value::Float(_), Value::Nil | Value::Boolean(_) | Value::Integer(_)) => {
+                Ordering::Greater
+            }
+            (Value::Float(lhs), Value::Float(rhs)) => lhs.total_cmp(&rhs),
+            (Value::Float(_), _) => Ordering::Less,
+            (
+                Value::ShortString(_),
+                Value::Nil | Value::Boolean(_) | Value::Integer(_) | Value::Float(_),
+            ) => Ordering::Greater,
+            (Value::ShortString(lhs), Value::ShortString(rhs)) => lhs.cmp(&rhs),
+            (Value::ShortString(_), _) => Ordering::Less,
+            (
+                Value::String(_),
+                Value::Nil
+                | Value::Boolean(_)
+                | Value::Integer(_)
+                | Value::Float(_)
+                | Value::ShortString(_),
+            ) => Ordering::Greater,
+            (Value::String(lhs), Value::String(rhs)) => lhs.cmp(&rhs),
+            (Value::String(_), _) => Ordering::Less,
+            (
+                Value::Table(_),
+                Value::Nil
+                | Value::Boolean(_)
+                | Value::Integer(_)
+                | Value::Float(_)
+                | Value::ShortString(_)
+                | Value::String(_),
+            ) => Ordering::Greater,
+            (Value::Table(lhs), Value::Table(rhs)) => lhs.as_ptr().cmp(&rhs.as_ptr()),
+            (Value::Table(_), _) => Ordering::Less,
+            (Value::Function(lhs), Value::Function(rhs)) => lhs.cmp(&rhs),
+            (Value::Function(_), _) => Ordering::Greater,
+        }
+    }
+}
+
+impl From<Value> for ValueKey {
+    fn from(value: Value) -> Self {
+        Self(value)
     }
 }

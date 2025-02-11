@@ -384,8 +384,11 @@ impl ByteCode {
         validate_bytecode!(self, ByteCode::GetTable(dst, table, src));
 
         if let Value::Table(table) = vm.stack[usize::from(*table)].clone() {
-            let key = &vm.stack[usize::from(*src)];
-            let bin_search = (*table).borrow().table.binary_search_by_key(&key, |a| &a.0);
+            let key = ValueKey::from(vm.stack[usize::from(*src)].clone());
+            let bin_search = (*table)
+                .borrow()
+                .table
+                .binary_search_by_key(&&key, |a| &a.0);
 
             let value = match bin_search {
                 Ok(i) => (*table).borrow().table[i].1.clone(),
@@ -405,7 +408,7 @@ impl ByteCode {
                 let bin_search = (*table)
                     .borrow()
                     .table
-                    .binary_search_by_key(&&Value::Integer(0), |a| &a.0);
+                    .binary_search_by_key(&&ValueKey::from(Value::Integer(0)), |a| &a.0);
                 match bin_search {
                     Ok(i) => (*table).borrow().table[i].1.clone(),
                     Err(_) => Value::Nil,
@@ -423,8 +426,11 @@ impl ByteCode {
         validate_bytecode!(self, ByteCode::GetField(dst, table, key));
 
         if let Value::Table(table) = vm.stack[usize::from(*table)].clone() {
-            let key = &program.constants[usize::from(*key)];
-            let bin_search = (*table).borrow().table.binary_search_by_key(&key, |a| &a.0);
+            let key = ValueKey::from(program.constants[usize::from(*key)].clone());
+            let bin_search = (*table)
+                .borrow()
+                .table
+                .binary_search_by_key(&&key, |a| &a.0);
 
             let value = match bin_search {
                 Ok(i) => (*table).borrow().table[i].1.clone(),
@@ -440,7 +446,7 @@ impl ByteCode {
         validate_bytecode!(self, ByteCode::SetTable(table, key, value));
 
         if let Value::Table(table) = vm.stack[usize::from(*table)].clone() {
-            let key = vm.stack[usize::from(*key)].clone();
+            let key = ValueKey::from(vm.stack[usize::from(*key)].clone());
             let value = vm.stack[usize::from(*value)].clone();
 
             let binary_search = (*table)
@@ -467,7 +473,7 @@ impl ByteCode {
         validate_bytecode!(self, ByteCode::SetField(table, key, value));
 
         if let Value::Table(table) = vm.stack[usize::from(*table)].clone() {
-            let key = program.constants[usize::from(*key)].clone();
+            let key = ValueKey::from(program.constants[usize::from(*key)].clone());
             let value = vm.stack[usize::from(*value)].clone();
 
             let binary_search = (*table)
