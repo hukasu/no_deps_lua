@@ -4,7 +4,7 @@ use crate::value::Value;
 
 use super::{exp_desc::ExpDesc, Error};
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct CompileContext<'a> {
     pub stack_top: u8,
     pub locals: Vec<Value>,

@@ -43,16 +43,7 @@ impl Program {
             constants: Vec::new(),
             byte_codes: Vec::new(),
         };
-        let mut compile_context = CompileContext {
-            stack_top: 0,
-            locals: Vec::new(),
-            breaks: None,
-            gotos: Vec::new(),
-            labels: Vec::new(),
-            jumps_to_block: Vec::new(),
-            jumps_to_end: Vec::new(),
-            last_expdesc_was_or: false,
-        };
+        let mut compile_context = CompileContext::default();
 
         program.chunk(&chunk, &mut compile_context)?;
 
