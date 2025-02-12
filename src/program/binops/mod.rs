@@ -57,14 +57,20 @@ pub fn binop_add<'a, 'b>(
             Ok(ExpDesc::Float(lhs_f + *rhs_i as f64))
         }
         (lhs_expdesc, rhs_expdesc) => {
-            lhs_expdesc.discharge(lhs.top, program, compile_context)?;
-            rhs_expdesc.discharge(rhs.top, program, compile_context)?;
+            let lhs = if let ExpDesc::Local(lhs) = lhs_expdesc {
+                *lhs
+            } else {
+                lhs_expdesc.discharge(lhs.top, program, compile_context)?;
+                usize::from(lhs.dst)
+            };
+            let rhs = if let ExpDesc::Local(rhs) = rhs_expdesc {
+                *rhs
+            } else {
+                rhs_expdesc.discharge(rhs.top, program, compile_context)?;
+                usize::from(rhs.dst)
+            };
 
-            Ok(ExpDesc::Binop(
-                ByteCode::Add,
-                usize::from(lhs.dst),
-                usize::from(rhs.dst),
-            ))
+            Ok(ExpDesc::Binop(ByteCode::Add, lhs, rhs))
         }
     }
 }
