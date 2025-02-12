@@ -102,6 +102,12 @@ impl From<&str> for Value {
     }
 }
 
+impl From<Rc<Program>> for Value {
+    fn from(closure: Rc<Program>) -> Self {
+        Self::Closure(closure)
+    }
+}
+
 impl Debug for Value {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {

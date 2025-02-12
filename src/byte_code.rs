@@ -303,6 +303,15 @@ pub enum ByteCode {
     /// `func`: Location on the stack where the function was loaded  
     /// `args`: Count of arguments
     Call(u8, u8),
+    /// `RETURN0`  
+    /// Returns from function
+    Return,
+    /// `RETURN0`  
+    /// Returns from function with 0 out values
+    ZeroReturn,
+    /// `RETURN1`  
+    /// Returns from function with 1 out values
+    OneReturn,
     /// `FORLOOP`  
     /// Increment counter and jumps back to start of loop
     ///
@@ -340,6 +349,12 @@ pub enum ByteCode {
     /// `src_name`: Location on `constants` where the name of the
     /// source global resides
     SetGlobalGlobal(u8, u8),
+    /// `CLOSURE`
+    /// Puts reference to a local function into the stack
+    ///
+    /// `dst`: Stack location to store function reference  
+    /// `func_id`: Id of function
+    Closure(u8, u8),
 }
 
 macro_rules! validate_bytecode {
@@ -1026,6 +1041,12 @@ impl ByteCode {
         }
     }
 
+    pub fn zero_return(&self, _vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+        validate_bytecode!(self, ByteCode::ZeroReturn);
+
+        Ok(())
+    }
+
     pub fn for_loop(&self, vm: &mut Lua, program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::ForLoop(for_stack, jmp));
 
@@ -1162,6 +1183,13 @@ impl ByteCode {
         } else {
             Err(Error::ExpectedName)
         }
+    }
+
+    pub fn closure(&self, vm: &mut Lua, program: &Program) -> Result<(), Error> {
+        validate_bytecode!(self, ByteCode::Closure(dst, func_id));
+
+        let func = program.functions[usize::from(*func_id)].clone();
+        vm.set_stack(*dst, func)
     }
 
     fn relational_comparison(

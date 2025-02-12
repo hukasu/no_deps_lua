@@ -79,94 +79,95 @@ impl Lua {
     }
 
     pub fn execute(program: &Program) -> Result<(), Error> {
-        let mut vm = Self::new();
+        Self::new().run_program(program)
+    }
 
+    pub fn run_program(&mut self, program: &Program) -> Result<(), Error> {
+        log::trace!("Running program");
         loop {
-            let Some(code) = vm.read_bytecode(program) else {
+            let Some(code) = self.read_bytecode(program) else {
                 break;
             };
 
             match code {
                 move_bytecode @ ByteCode::Move(_, _) => {
-                    move_bytecode.move_bytecode(&mut vm, program)?
+                    move_bytecode.move_bytecode(self, program)?
                 }
-                load_int @ ByteCode::LoadInt(_, _) => load_int.load_int(&mut vm, program)?,
-                load_float @ ByteCode::LoadFloat(_, _) => {
-                    load_float.load_float(&mut vm, program)?
-                }
+                load_int @ ByteCode::LoadInt(_, _) => load_int.load_int(self, program)?,
+                load_float @ ByteCode::LoadFloat(_, _) => load_float.load_float(self, program)?,
                 load_constant @ ByteCode::LoadConstant(_, _) => {
-                    load_constant.load_constant(&mut vm, program)?
+                    load_constant.load_constant(self, program)?
                 }
-                load_false @ ByteCode::LoadFalse(_) => load_false.load_false(&mut vm, program)?,
+                load_false @ ByteCode::LoadFalse(_) => load_false.load_false(self, program)?,
                 load_false_skip @ ByteCode::LoadFalseSkip(_) => {
-                    load_false_skip.load_false_skip(&mut vm, program)?
+                    load_false_skip.load_false_skip(self, program)?
                 }
-                load_true @ ByteCode::LoadTrue(_) => load_true.load_true(&mut vm, program)?,
-                load_nil @ ByteCode::LoadNil(_) => load_nil.load_nil(&mut vm, program)?,
-                get_global @ ByteCode::GetGlobal(_, _) => {
-                    get_global.get_global(&mut vm, program)?
-                }
-                set_global @ ByteCode::SetGlobal(_, _) => {
-                    set_global.set_global(&mut vm, program)?
-                }
-                get_table @ ByteCode::GetTable(_, _, _) => get_table.get_table(&mut vm, program)?,
-                get_int @ ByteCode::GetInt(_, _, _) => get_int.get_int(&mut vm, program)?,
-                get_field @ ByteCode::GetField(_, _, _) => get_field.get_field(&mut vm, program)?,
-                set_table @ ByteCode::SetTable(_, _, _) => set_table.set_table(&mut vm, program)?,
-                set_field @ ByteCode::SetField(_, _, _) => set_field.set_field(&mut vm, program)?,
-                new_table @ ByteCode::NewTable(_, _, _) => new_table.new_table(&mut vm, program)?,
+                load_true @ ByteCode::LoadTrue(_) => load_true.load_true(self, program)?,
+                load_nil @ ByteCode::LoadNil(_) => load_nil.load_nil(self, program)?,
+                get_global @ ByteCode::GetGlobal(_, _) => get_global.get_global(self, program)?,
+                set_global @ ByteCode::SetGlobal(_, _) => set_global.set_global(self, program)?,
+                get_table @ ByteCode::GetTable(_, _, _) => get_table.get_table(self, program)?,
+                get_int @ ByteCode::GetInt(_, _, _) => get_int.get_int(self, program)?,
+                get_field @ ByteCode::GetField(_, _, _) => get_field.get_field(self, program)?,
+                set_table @ ByteCode::SetTable(_, _, _) => set_table.set_table(self, program)?,
+                set_field @ ByteCode::SetField(_, _, _) => set_field.set_field(self, program)?,
+                new_table @ ByteCode::NewTable(_, _, _) => new_table.new_table(self, program)?,
                 add_integer @ ByteCode::AddInteger(_, _, _) => {
-                    add_integer.add_integer(&mut vm, program)?
+                    add_integer.add_integer(self, program)?
                 }
                 add_constant @ ByteCode::AddConstant(_, _, _) => {
-                    add_constant.add_constant(&mut vm, program)?
+                    add_constant.add_constant(self, program)?
                 }
                 mul_constant @ ByteCode::MulConstant(_, _, _) => {
-                    mul_constant.mul_constant(&mut vm, program)?
+                    mul_constant.mul_constant(self, program)?
                 }
-                add @ ByteCode::Add(_, _, _) => add.add(&mut vm, program)?,
-                sub @ ByteCode::Sub(_, _, _) => sub.sub(&mut vm, program)?,
-                mul @ ByteCode::Mul(_, _, _) => mul.mul(&mut vm, program)?,
+                add @ ByteCode::Add(_, _, _) => add.add(self, program)?,
+                sub @ ByteCode::Sub(_, _, _) => sub.sub(self, program)?,
+                mul @ ByteCode::Mul(_, _, _) => mul.mul(self, program)?,
                 mod_bytecode @ ByteCode::Mod(_, _, _) => {
-                    mod_bytecode.mod_bytecode(&mut vm, program)?
+                    mod_bytecode.mod_bytecode(self, program)?
                 }
-                pow @ ByteCode::Pow(_, _, _) => pow.pow(&mut vm, program)?,
-                div @ ByteCode::Div(_, _, _) => div.div(&mut vm, program)?,
-                idiv @ ByteCode::Idiv(_, _, _) => idiv.idiv(&mut vm, program)?,
-                bit_and @ ByteCode::BitAnd(_, _, _) => bit_and.bit_and(&mut vm, program)?,
-                bit_or @ ByteCode::BitOr(_, _, _) => bit_or.bit_or(&mut vm, program)?,
-                bit_xor @ ByteCode::BitXor(_, _, _) => bit_xor.bit_xor(&mut vm, program)?,
-                shiftl @ ByteCode::ShiftL(_, _, _) => shiftl.shiftl(&mut vm, program)?,
-                shiftr @ ByteCode::ShiftR(_, _, _) => shiftr.shiftr(&mut vm, program)?,
-                neg @ ByteCode::Neg(_, _) => neg.neg(&mut vm, program)?,
-                bit_not @ ByteCode::BitNot(_, _) => bit_not.bit_not(&mut vm, program)?,
-                not @ ByteCode::Not(_, _) => not.not(&mut vm, program)?,
-                len @ ByteCode::Len(_, _) => len.len(&mut vm, program)?,
-                concat @ ByteCode::Concat(_, _, _) => concat.concat(&mut vm, program)?,
-                jmp @ ByteCode::Jmp(_) => jmp.jmp(&mut vm, program)?,
-                lt @ ByteCode::LessThan(_, _, _) => lt.less_than(&mut vm, program)?,
-                le @ ByteCode::LessEqual(_, _, _) => le.less_equal(&mut vm, program)?,
-                eqk @ ByteCode::EqualConstant(_, _, _) => eqk.equal_constant(&mut vm, program)?,
+                pow @ ByteCode::Pow(_, _, _) => pow.pow(self, program)?,
+                div @ ByteCode::Div(_, _, _) => div.div(self, program)?,
+                idiv @ ByteCode::Idiv(_, _, _) => idiv.idiv(self, program)?,
+                bit_and @ ByteCode::BitAnd(_, _, _) => bit_and.bit_and(self, program)?,
+                bit_or @ ByteCode::BitOr(_, _, _) => bit_or.bit_or(self, program)?,
+                bit_xor @ ByteCode::BitXor(_, _, _) => bit_xor.bit_xor(self, program)?,
+                shiftl @ ByteCode::ShiftL(_, _, _) => shiftl.shiftl(self, program)?,
+                shiftr @ ByteCode::ShiftR(_, _, _) => shiftr.shiftr(self, program)?,
+                neg @ ByteCode::Neg(_, _) => neg.neg(self, program)?,
+                bit_not @ ByteCode::BitNot(_, _) => bit_not.bit_not(self, program)?,
+                not @ ByteCode::Not(_, _) => not.not(self, program)?,
+                len @ ByteCode::Len(_, _) => len.len(self, program)?,
+                concat @ ByteCode::Concat(_, _, _) => concat.concat(self, program)?,
+                jmp @ ByteCode::Jmp(_) => jmp.jmp(self, program)?,
+                lt @ ByteCode::LessThan(_, _, _) => lt.less_than(self, program)?,
+                le @ ByteCode::LessEqual(_, _, _) => le.less_equal(self, program)?,
+                eqk @ ByteCode::EqualConstant(_, _, _) => eqk.equal_constant(self, program)?,
                 gti @ ByteCode::GreaterThanInteger(_, _, _) => {
-                    gti.greater_than_integer(&mut vm, program)?
+                    gti.greater_than_integer(self, program)?
                 }
                 gei @ ByteCode::GreaterEqualInteger(_, _, _) => {
-                    gei.greater_equal_integer(&mut vm, program)?
+                    gei.greater_equal_integer(self, program)?
                 }
-                test @ ByteCode::Test(_, _) => test.test(&mut vm, program)?,
-                call @ ByteCode::Call(_, _) => call.call(&mut vm, program)?,
-                forloop @ ByteCode::ForLoop(_, _) => forloop.for_loop(&mut vm, program)?,
-                forprep @ ByteCode::ForPrepare(_, _) => forprep.for_prepare(&mut vm, program)?,
-                set_list @ ByteCode::SetList(_, _) => set_list.set_list(&mut vm, program)?,
+                test @ ByteCode::Test(_, _) => test.test(self, program)?,
+                call @ ByteCode::Call(_, _) => call.call(self, program)?,
+                ByteCode::Return => unimplemented!("return bytecode"),
+                zero_return @ ByteCode::ZeroReturn => zero_return.zero_return(self, program)?,
+                ByteCode::OneReturn => unimplemented!("one_return bytecode"),
+                forloop @ ByteCode::ForLoop(_, _) => forloop.for_loop(self, program)?,
+                forprep @ ByteCode::ForPrepare(_, _) => forprep.for_prepare(self, program)?,
+                set_list @ ByteCode::SetList(_, _) => set_list.set_list(self, program)?,
                 set_global_constant @ ByteCode::SetGlobalConstant(_, _) => {
-                    set_global_constant.set_global_constant(&mut vm, program)?
+                    set_global_constant.set_global_constant(self, program)?
                 }
                 set_global_integer @ ByteCode::SetGlobalInteger(_, _) => {
-                    set_global_integer.set_global_integer(&mut vm, program)?
+                    set_global_integer.set_global_integer(self, program)?
                 }
                 set_global_global @ ByteCode::SetGlobalGlobal(_, _) => {
-                    set_global_global.set_global_global(&mut vm, program)?
+                    set_global_global.set_global_global(self, program)?
                 }
+                closure @ ByteCode::Closure(_, _) => closure.closure(self, program)?,
             }
         }
 

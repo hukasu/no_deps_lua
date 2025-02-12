@@ -5,7 +5,7 @@ mod exp_desc;
 #[cfg(test)]
 mod tests;
 
-use alloc::{boxed::Box, vec::Vec};
+use alloc::{boxed::Box, rc::Rc, vec::Vec};
 use binops::Binop;
 use compile_context::GotoLabel;
 
@@ -29,20 +29,18 @@ macro_rules! make_deconstruct {
     };
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Program {
     pub(super) constants: Vec<Value>,
     pub(super) byte_codes: Vec<ByteCode>,
+    pub(super) functions: Vec<Value>,
 }
 
 impl Program {
     pub fn parse(program: &str) -> Result<Self, Error> {
         let chunk = Parser::parse(program)?;
 
-        let mut program = Program {
-            constants: Vec::new(),
-            byte_codes: Vec::new(),
-        };
+        let mut program = Program::default();
         let mut compile_context = CompileContext::default();
 
         program.chunk(&chunk, &mut compile_context)?;
@@ -62,6 +60,17 @@ impl Program {
                 }),
         )
         .map_err(Error::from)
+    }
+
+    fn push_function(&mut self, value: impl Into<Value>) -> Result<u8, Error> {
+        let value @ Value::Closure(_) = value.into() else {
+            unreachable!("Should never be called with anything other than a closure.");
+        };
+
+        let new_position = self.functions.len();
+        self.functions.push(value);
+
+        u8::try_from(new_position).map_err(Error::from)
     }
 
     fn invert_last_test(&mut self) {
@@ -530,9 +539,12 @@ impl Program {
             make_deconstruct!(
                 _local(TokenType::Local),
                 _function(TokenType::Function),
-                _name(TokenType::Name(_)),
-                _funcbody(TokenType::Funcbody)
-            ) => unimplemented!("stat production"),
+                _name(TokenType::Name(name)),
+                funcbody(TokenType::Funcbody)
+            ) => {
+                compile_context.locals.push((*name).into());
+                self.funcbody(funcbody, compile_context)
+            }
             make_deconstruct!(
                 _local(TokenType::Local),
                 attnamelist(TokenType::Attnamelist),
@@ -1515,25 +1527,40 @@ impl Program {
     fn funcbody<'a>(
         &mut self,
         funcbody: &Token<'a>,
-        _compile_context: &CompileContext<'a>,
+        compile_context: &mut CompileContext<'a>,
     ) -> Result<(), Error> {
         match funcbody.tokens.as_slice() {
-            [Token {
-                tokens: _,
-                token_type: TokenType::LParen,
-            }, Token {
-                tokens: _,
-                token_type: TokenType::FuncbodyParlist,
-            }, Token {
-                tokens: _,
-                token_type: TokenType::RParen,
-            }, Token {
-                tokens: _,
-                token_type: TokenType::Block,
-            }, Token {
-                tokens: _,
-                token_type: TokenType::End,
-            }] => unimplemented!("funcbody production"),
+            make_deconstruct!(
+                _lparen(TokenType::LParen),
+                funcbody_parlist(TokenType::FuncbodyParlist),
+                _rparen(TokenType::RParen),
+                block(TokenType::Block),
+                _end(TokenType::End),
+            ) => {
+                self.funcbody_parlist(funcbody_parlist, compile_context)?;
+
+                let (top_index, _) = compile_context.reserve_stack_top();
+
+                let mut func_program = Program::default();
+                let mut func_compile_context = CompileContext::default();
+                func_program.block(block, &mut func_compile_context)?;
+                if func_program
+                    .byte_codes
+                    .last()
+                    .filter(|last_byte_code| {
+                        matches!(last_byte_code, ByteCode::Return | ByteCode::OneReturn)
+                    })
+                    .is_none()
+                {
+                    func_program.byte_codes.push(ByteCode::ZeroReturn);
+                }
+
+                let closure_position = self.push_function(Rc::new(func_program))?;
+                self.byte_codes
+                    .push(ByteCode::Closure(top_index, closure_position));
+
+                Ok(())
+            }
             _ => {
                 unreachable!(
                     "Funcbody did not match any of the productions. Had {:#?}.",
@@ -1852,7 +1879,7 @@ impl Program {
 
     /// Test against `Comma` and `SemiColon` to garantee
     /// integrity of AST
-    fn fieldsep<'a>(&mut self, fieldsep: &Token<'a>) -> Result<(), Error> {
+    fn fieldsep(&mut self, fieldsep: &Token<'_>) -> Result<(), Error> {
         match fieldsep.tokens.as_slice() {
             [Token {
                 tokens: _,
