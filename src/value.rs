@@ -165,7 +165,7 @@ mod tests {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd)]
+#[derive(Debug, PartialEq, Eq)]
 /// A wrapper around value so that it can be ordered on a [`Vec`] and
 /// be searched using `binary_search`
 pub struct ValueKey(Value);
@@ -183,6 +183,12 @@ impl ValueKey {
             Value::Function(_) => 7,
             Value::Closure(_) => 8,
         }
+    }
+}
+
+impl PartialOrd for ValueKey {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
 
