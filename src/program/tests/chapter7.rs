@@ -300,5 +300,7 @@ print (a>=b)
     let program = Program::parse(code).unwrap();
     assert_eq!(&program.constants, expected_constants);
     assert_eq!(&program.byte_codes, expected_bytecodes);
-    crate::Lua::execute(&program).expect_err("Comparison between string and integer should fail");
+    crate::Lua::execute(&program)
+        .inspect_err(|err| log::error!("{err}"))
+        .expect_err("Comparison between string and integer should fail");
 }

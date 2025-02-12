@@ -117,5 +117,7 @@ f(1)
     assert_eq!(func.program().byte_codes, expected_bytecodes);
     assert!(func.program().functions.is_empty());
 
-    crate::Lua::execute(&program).expect_err("Last call should fail due to adding 1 to `nil`");
+    crate::Lua::execute(&program)
+        .inspect_err(|err| log::error!("{err}"))
+        .expect_err("Last call should fail due to adding 1 to `nil`");
 }
