@@ -18,18 +18,9 @@ type LexemeResToTokenRes =
     &'static dyn Fn(Result<Lexeme, crate::lex::Error>) -> Result<Token, crate::lex::Error>;
 
 macro_rules! make_state {
-    (0, $lookahead:ident) => {
-        (
-            Some(0),
-            Some(Ok(Token {
-                tokens: _,
-                token_type: $lookahead,
-            })),
-        )
-    };
     (0, $lookahead:pat) => {
         (
-            Some(0),
+            0,
             Some(Ok(Token {
                 tokens: _,
                 token_type: $lookahead,
@@ -38,7 +29,7 @@ macro_rules! make_state {
     };
     ($cur_state:expr, $lookahead:ident) => {
         (
-            Some($cur_state),
+            $cur_state,
             Some(Ok(Token {
                 tokens: _,
                 token_type: $lookahead,
@@ -132,7 +123,11 @@ impl<'a> Parser<'a> {
         };
 
         loop {
-            let last_state = parser.states.last().copied();
+            let Some(last_state) = parser.states.last().copied() else {
+                unreachable!(
+                    "Parser should never reach a state where there is no state on the stack."
+                );
+            };
             let token_peek = parser
                 .reduction
                 .as_ref()
@@ -2561,7 +2556,10 @@ impl<'a> Parser<'a> {
                     State::<1471>::process_state(&mut parser, lookahead)
                 }
                 // Errors
-                _ => Err(Error::Unimplemented),
+                (last_state, lookahead) => unreachable!(
+                    "Parse does not recognize state {} with lookahead {:?}",
+                    last_state, lookahead
+                ),
             }?;
         }
 

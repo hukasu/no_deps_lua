@@ -5,7 +5,6 @@ pub enum Error {
     Accept,
     Reduction,
     Lex,
-    Unimplemented,
 }
 
 impl Display for Error {
@@ -19,9 +18,6 @@ impl Display for Error {
             }
             Self::Lex => {
                 write!(f, "Could not parse program due to lexical error.")
-            }
-            Self::Unimplemented => {
-                write!(f, "Feature is not implemented.")
             }
         }
     }

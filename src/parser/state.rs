@@ -17,8 +17,7 @@ impl<const N: usize> State<N> {
     }
 
     fn unimplemented_lookahead() -> Result<(), Error> {
-        log::error!("State {N} has unimplemented lookahead.");
-        Err(Error::Unimplemented)
+        unimplemented!("State {N} has unimplemented lookahead.");
     }
 }
 pub trait StateProcessor {

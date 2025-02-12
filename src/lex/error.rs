@@ -13,7 +13,6 @@ pub enum ErrorKind {
     ParseInt,
     ParseFloat,
     ProhibtedControlCharacterOnString,
-    Uninmplemented,
     OctalNotSupported,
     LeadingZero,
     MalformedFloat,
@@ -42,9 +41,6 @@ impl Display for Error {
             }
             ErrorKind::ProhibtedControlCharacterOnString => {
                 write!(f, "A control character was found in a comment.",)
-            }
-            ErrorKind::Uninmplemented => {
-                write!(f, "Unimplemented")
             }
         }
     }

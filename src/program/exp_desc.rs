@@ -154,8 +154,7 @@ impl<'a> ExpDesc<'a> {
                         }
                     }
                     _ => {
-                        log::error!("Global table assign.");
-                        Err(Error::Unimplemented)
+                        unimplemented!("Global table assign.");
                     }
                 }
             }
@@ -277,8 +276,7 @@ impl<'a> ExpDesc<'a> {
                         Ok(())
                     }
                     _ => {
-                        log::error!("Local({:?}) TableGlobal({:?}).", src, (table, exp));
-                        Err(Error::Unimplemented)
+                        unimplemented!("Local({:?}) TableGlobal({:?}).", src, (table, exp));
                     }
                 }
             }
@@ -303,8 +301,7 @@ impl<'a> ExpDesc<'a> {
                         Ok(())
                     }
                     _ => {
-                        log::error!("Local({:?}) TableGlobal({:?}).", src, (table, exp));
-                        Err(Error::Unimplemented)
+                        unimplemented!("Local({:?}) TableGlobal({:?}).", src, (table, exp));
                     }
                 }
             }
@@ -361,8 +358,7 @@ impl<'a> ExpDesc<'a> {
                         Ok(())
                     }
                     _ => {
-                        log::error!("Global({:?}) TableGlobal({:?}).", key, (table, exp));
-                        Err(Error::Unimplemented)
+                        unimplemented!("Global({:?}) TableGlobal({:?}).", key, (table, exp));
                     }
                 }
             }
@@ -416,8 +412,7 @@ impl<'a> ExpDesc<'a> {
                         Ok(())
                     }
                     _ => {
-                        log::error!("TableLocal({:?}) Local({:?})", (table, exp), dst);
-                        Err(Error::Unimplemented)
+                        unimplemented!("TableLocal({:?}) Local({:?})", (table, exp), dst);
                     }
                 }
             }
@@ -462,8 +457,7 @@ impl<'a> ExpDesc<'a> {
                         Ok(())
                     }
                     _ => {
-                        log::error!("TableGlobal({:?}) Local({:?})", (table, exp), dst);
-                        Err(Error::Unimplemented)
+                        unimplemented!("TableGlobal({:?}) Local({:?})", (table, exp), dst);
                     }
                 }
             }
@@ -846,12 +840,11 @@ impl<'a> ExpDesc<'a> {
                 Ok(())
             }
             _ => {
-                log::error!(
+                unimplemented!(
                     "Unimplemented discharge between Src({:?}) and Dst({:?})",
                     self,
                     dst
                 );
-                Err(Error::Unimplemented)?
             }
         }
     }

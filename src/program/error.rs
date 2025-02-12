@@ -27,7 +27,6 @@ pub enum Error {
     BreakOutsideLoop,
     LabelRedefinition,
     StackOverflow,
-    Unimplemented,
     UnmatchedGoto,
     IntCoversion,
     GotoIntoScope,
@@ -110,9 +109,6 @@ impl Display for Error {
             }
             Self::StackOverflow => {
                 write!(f, "Tried accessing index outside stack bounds.")
-            }
-            Self::Unimplemented => {
-                write!(f, "Feature is not implemented.")
             }
         }
     }

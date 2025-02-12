@@ -275,7 +275,9 @@ impl Program {
     ) -> Result<(), Error> {
         match block_retstat.tokens.as_slice() {
             [] => Ok(()),
-            make_deconstruct!(_retstat(TokenType::Retstat)) => Err(Error::Unimplemented),
+            make_deconstruct!(_retstat(TokenType::Retstat)) => {
+                unimplemented!("block_retstat production")
+            }
             _ => {
                 unreachable!(
                     "BlockRetstat did not match any production. Had {:#?}.",
@@ -519,18 +521,18 @@ impl Program {
                 _do(TokenType::Do),
                 _block(TokenType::Block),
                 _end(TokenType::End)
-            ) => Err(Error::Unimplemented),
+            ) => unimplemented!("stat production"),
             make_deconstruct!(
                 _function(TokenType::Function),
                 _funcname(TokenType::Funcname),
                 _funcbody(TokenType::Funcbody)
-            ) => Err(Error::Unimplemented),
+            ) => unimplemented!("stat production"),
             make_deconstruct!(
                 _local(TokenType::Local),
                 _function(TokenType::Function),
                 _name(TokenType::Name(_)),
                 _funcbody(TokenType::Funcbody)
-            ) => Err(Error::Unimplemented),
+            ) => unimplemented!("stat production"),
             make_deconstruct!(
                 _local(TokenType::Local),
                 attnamelist(TokenType::Attnamelist),
@@ -730,7 +732,7 @@ impl Program {
                 _less(TokenType::Less),
                 _name(TokenType::Name(_)),
                 _greater(TokenType::Greater)
-            ) => Err(Error::Unimplemented),
+            ) => unimplemented!("attrib production"),
             _ => {
                 unreachable!(
                     "Attrib did not match any of the productions. Had {:#?}.",
@@ -750,7 +752,7 @@ impl Program {
                 _return(TokenType::Return),
                 _retstat_explist(TokenType::RetstatExplist),
                 _retstat_end(TokenType::RetstatEnd)
-            ) => Err(Error::Unimplemented),
+            ) => unimplemented!("retstat production"),
             _ => {
                 unreachable!(
                     "Retstat did not match any of the productions. Had {:#?}.",
@@ -771,7 +773,9 @@ impl Program {
     ) -> Result<(), Error> {
         match retstat_explist.tokens.as_slice() {
             [] => Ok(()),
-            make_deconstruct!(_explist(TokenType::Explist)) => Err(Error::Unimplemented),
+            make_deconstruct!(_explist(TokenType::Explist)) => {
+                unimplemented!("retstat_explist production")
+            }
             _ => {
                 unreachable!(
                     "RetstatExplist did not match any of the productions. Had {:#?}.",
@@ -844,7 +848,7 @@ impl Program {
                 _name(TokenType::Name(_)),
                 _funcname_cont(TokenType::FuncnameCont),
                 _funcname_end(TokenType::FuncnameEnd)
-            ) => Err(Error::Unimplemented),
+            ) => unimplemented!("funcname production"),
             _ => {
                 unreachable!(
                     "Funcname did not match any of the productions. Had {:#?}.",
@@ -869,7 +873,7 @@ impl Program {
                 _dot(TokenType::Dot),
                 _name(TokenType::Name(_)),
                 _funcname_cont(TokenType::FuncnameCont)
-            ) => Err(Error::Unimplemented),
+            ) => unimplemented!("funcname_cont production"),
             _ => {
                 unreachable!(
                     "FuncnameCont did not match any of the productions. Had {:#?}.",
@@ -891,7 +895,7 @@ impl Program {
         match funcname_end.tokens.as_slice() {
             [] => Ok(()),
             make_deconstruct!(_colon(TokenType::Colon), _name(TokenType::Name(_))) => {
-                Err(Error::Unimplemented)
+                unimplemented!("funcname_end production")
             }
             _ => {
                 unreachable!(
@@ -990,8 +994,7 @@ impl Program {
                         Ok(ExpDesc::TableGlobal(table, Box::new(exp_exp_desc)))
                     }
                     _ => {
-                        log::error!("Only local table access is available.");
-                        Err(Error::Unimplemented)
+                        unimplemented!("Only local table access is available.");
                     }
                 }
             }
@@ -1013,8 +1016,7 @@ impl Program {
                         Ok(ExpDesc::TableGlobal(table, Box::new(name_exp_desc)))
                     }
                     _ => {
-                        log::error!("Only local table access is available.");
-                        Err(Error::Unimplemented)
+                        unimplemented!("Only local table access is available.");
                     }
                 }
             }
@@ -1193,8 +1195,10 @@ impl Program {
             make_deconstruct!(_string(TokenType::String(string))) => Ok(self.string(string)),
             make_deconstruct!(_integer(TokenType::Integer(integer))) => Ok(self.integer(*integer)),
             make_deconstruct!(_float(TokenType::Float(float))) => Ok(self.float(*float)),
-            make_deconstruct!(_float(TokenType::Dots)) => Err(Error::Unimplemented),
-            make_deconstruct!(_functiondef(TokenType::Functiondef)) => Err(Error::Unimplemented),
+            make_deconstruct!(_dots(TokenType::Dots)) => unimplemented!("exp production"),
+            make_deconstruct!(_functiondef(TokenType::Functiondef)) => {
+                unimplemented!("exp production")
+            }
             make_deconstruct!(prefixexp(TokenType::Prefixexp)) => {
                 self.prefixexp(prefixexp, compile_context, exp_desc)
             }
@@ -1330,8 +1334,7 @@ impl Program {
                         Ok(top)
                     }
                     _ => {
-                        log::error!("Could't process Unop.");
-                        Err(Error::Unimplemented)
+                        unimplemented!("Could't process Unop.");
                     }
                 }
             }
@@ -1403,7 +1406,7 @@ impl Program {
                 _colon(TokenType::Colon),
                 _name(TokenType::Name(_)),
                 _args(TokenType::Args)
-            ) => Err(Error::Unimplemented),
+            ) => unimplemented!("functioncall production"),
             _ => {
                 unreachable!(
                     "Functioncall did not match any of the productions. Had {:#?}.",
@@ -1495,7 +1498,7 @@ impl Program {
             make_deconstruct!(
                 _function(TokenType::Function),
                 _funcbody(TokenType::Funcbody)
-            ) => Err(Error::Unimplemented),
+            ) => unimplemented!("functiondef production"),
             _ => {
                 unreachable!(
                     "Functiondef did not match any of the productions. Had {:#?}.",
@@ -1530,7 +1533,7 @@ impl Program {
             }, Token {
                 tokens: _,
                 token_type: TokenType::End,
-            }] => Err(Error::Unimplemented),
+            }] => unimplemented!("funcbody production"),
             _ => {
                 unreachable!(
                     "Funcbody did not match any of the productions. Had {:#?}.",
@@ -1554,7 +1557,7 @@ impl Program {
             [Token {
                 tokens: _,
                 token_type: TokenType::Parlist,
-            }] => Err(Error::Unimplemented),
+            }] => unimplemented!("funcbody_parlist production"),
             _ => {
                 unreachable!(
                     "FuncbodyParlist did not match any of the productions. Had {:#?}.",
@@ -1577,8 +1580,8 @@ impl Program {
             make_deconstruct!(
                 _name(TokenType::Name(_)),
                 _parlist_cont(TokenType::ParlistCont)
-            ) => Err(Error::Unimplemented),
-            make_deconstruct!(_dots(TokenType::Dots)) => Err(Error::Unimplemented),
+            ) => unimplemented!("parlist production"),
+            make_deconstruct!(_dots(TokenType::Dots)) => unimplemented!("parlist production"),
             _ => {
                 unreachable!(
                     "Parlist did not match any of the productions. Had {:#?}.",
@@ -1603,9 +1606,9 @@ impl Program {
                 _comma(TokenType::Comma),
                 _name(TokenType::Name(_)),
                 _parlist_cont(TokenType::ParlistCont)
-            ) => Err(Error::Unimplemented),
+            ) => unimplemented!("parlist_cont production"),
             make_deconstruct!(_comma(TokenType::Comma), _dots(TokenType::Dots)) => {
-                Err(Error::Unimplemented)
+                unimplemented!("parlist_cont production")
             }
             _ => {
                 unreachable!(
@@ -1640,8 +1643,7 @@ impl Program {
                         dst
                     }
                     _ => {
-                        log::error!("Only table creation on stack is supported.");
-                        return Err(Error::Unimplemented);
+                        unimplemented!("Only table creation on stack is supported.");
                     }
                 };
 
@@ -1809,7 +1811,7 @@ impl Program {
 
                         Ok((0, 1))
                     }
-                    _ => Err(Error::Unimplemented),
+                    _ => unimplemented!("field production"),
                 }
             }
             make_deconstruct!(

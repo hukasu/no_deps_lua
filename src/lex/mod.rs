@@ -659,11 +659,7 @@ impl<'a> Iterator for Lex<'a> {
                 }
                 '0' => match self.chars.peek() {
                     Some('x' | 'X') => {
-                        break Some(Err(Error {
-                            kind: ErrorKind::Uninmplemented,
-                            line: self.line,
-                            column: self.column,
-                        }));
+                        unimplemented!("Lexer reached an unimplemented token");
                     }
                     Some('0'..='7') => {
                         break Some(Err(Error {
@@ -721,11 +717,7 @@ impl<'a> Iterator for Lex<'a> {
                                 }
                             }
                             'e' | 'E' => {
-                                break 'lexer Some(Err(Error {
-                                    kind: ErrorKind::Uninmplemented,
-                                    line: self.line,
-                                    column: self.column,
-                                }));
+                                unimplemented!("Lexer reached an unimplemented token");
                             }
                             _ => {
                                 if is_float {
@@ -771,11 +763,7 @@ impl<'a> Iterator for Lex<'a> {
                     self.column = 0;
                 }
                 _ => {
-                    break Some(Err(Error {
-                        kind: ErrorKind::Uninmplemented,
-                        line: self.line,
-                        column: self.column,
-                    }));
+                    unimplemented!("Lexer reached an unimplemented token");
                 }
             }
         }
