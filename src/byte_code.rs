@@ -3,7 +3,6 @@ use core::{cell::RefCell, cmp::Ordering};
 use alloc::{format, rc::Rc};
 
 use crate::{
-    ext::FloatExt,
     table::Table,
     value::{Value, ValueKey},
     Lua, Program,
@@ -569,11 +568,13 @@ impl ByteCode {
         let res = match &vm.stack[*lhs as usize] {
             Value::Integer(l) => Value::Integer(l + i64::from(*int)),
             Value::Float(l) => Value::Float(l + *int as f64),
-            Value::Nil => return Err(Error::NilArithmetic),
-            Value::Boolean(_) => return Err(Error::BoolArithmetic),
-            Value::String(_) | Value::ShortString(_) => return Err(Error::StringArithmetic),
-            Value::Table(_) => return Err(Error::TableArithmetic),
-            Value::Function(_) => return Err(Error::FunctionArithmetic),
+            lhs => {
+                return Err(Error::ArithmeticOperand(
+                    "add",
+                    lhs.static_type_name(),
+                    "integer",
+                ))
+            }
         };
         vm.set_stack(*dst, res)
     }
@@ -589,16 +590,13 @@ impl ByteCode {
             (Value::Integer(l), Value::Float(r)) => Value::Float(*l as f64 + r),
             (Value::Float(l), Value::Integer(r)) => Value::Float(l + *r as f64),
             (Value::Float(l), Value::Float(r)) => Value::Float(l + r),
-            (Value::Nil, _) => return Err(Error::NilArithmetic),
-            (Value::Boolean(_), _) => return Err(Error::BoolArithmetic),
-            (Value::String(_) | Value::ShortString(_), _) => return Err(Error::StringArithmetic),
-            (Value::Table(_), _) => return Err(Error::TableArithmetic),
-            (Value::Function(_), _) => return Err(Error::FunctionArithmetic),
-            (_, Value::Nil) => return Err(Error::NilArithmetic),
-            (_, Value::Boolean(_)) => return Err(Error::BoolArithmetic),
-            (_, Value::String(_) | Value::ShortString(_)) => return Err(Error::StringArithmetic),
-            (_, Value::Table(_)) => return Err(Error::TableArithmetic),
-            (_, Value::Function(_)) => return Err(Error::FunctionArithmetic),
+            (lhs, rhs) => {
+                return Err(Error::ArithmeticOperand(
+                    "add",
+                    lhs.static_type_name(),
+                    rhs.static_type_name(),
+                ))
+            }
         };
         vm.set_stack(*dst, res)
     }
@@ -614,16 +612,13 @@ impl ByteCode {
             (Value::Integer(l), Value::Float(r)) => Value::Float(*l as f64 * r),
             (Value::Float(l), Value::Integer(r)) => Value::Float(l * *r as f64),
             (Value::Float(l), Value::Float(r)) => Value::Float(l * r),
-            (Value::Nil, _) => return Err(Error::NilArithmetic),
-            (Value::Boolean(_), _) => return Err(Error::BoolArithmetic),
-            (Value::String(_) | Value::ShortString(_), _) => return Err(Error::StringArithmetic),
-            (Value::Table(_), _) => return Err(Error::TableArithmetic),
-            (Value::Function(_), _) => return Err(Error::FunctionArithmetic),
-            (_, Value::Nil) => return Err(Error::NilArithmetic),
-            (_, Value::Boolean(_)) => return Err(Error::BoolArithmetic),
-            (_, Value::String(_) | Value::ShortString(_)) => return Err(Error::StringArithmetic),
-            (_, Value::Table(_)) => return Err(Error::TableArithmetic),
-            (_, Value::Function(_)) => return Err(Error::FunctionArithmetic),
+            (lhs, rhs) => {
+                return Err(Error::ArithmeticOperand(
+                    "mul",
+                    lhs.static_type_name(),
+                    rhs.static_type_name(),
+                ))
+            }
         };
         vm.set_stack(*dst, res)
     }
@@ -636,16 +631,13 @@ impl ByteCode {
             (Value::Float(l), Value::Float(r)) => Value::Float(l + r),
             (Value::Integer(l), Value::Float(r)) => Value::Float(*l as f64 + r),
             (Value::Float(l), Value::Integer(r)) => Value::Float(l + *r as f64),
-            (Value::Nil, _) => return Err(Error::NilArithmetic),
-            (Value::Boolean(_), _) => return Err(Error::BoolArithmetic),
-            (Value::String(_) | Value::ShortString(_), _) => return Err(Error::StringArithmetic),
-            (Value::Table(_), _) => return Err(Error::TableArithmetic),
-            (Value::Function(_), _) => return Err(Error::FunctionArithmetic),
-            (_, Value::Nil) => return Err(Error::NilArithmetic),
-            (_, Value::Boolean(_)) => return Err(Error::BoolArithmetic),
-            (_, Value::String(_) | Value::ShortString(_)) => return Err(Error::StringArithmetic),
-            (_, Value::Table(_)) => return Err(Error::TableArithmetic),
-            (_, Value::Function(_)) => return Err(Error::FunctionArithmetic),
+            (lhs, rhs) => {
+                return Err(Error::ArithmeticOperand(
+                    "add",
+                    lhs.static_type_name(),
+                    rhs.static_type_name(),
+                ))
+            }
         };
         vm.set_stack(*dst, res)
     }
@@ -658,16 +650,13 @@ impl ByteCode {
             (Value::Float(l), Value::Float(r)) => Value::Float(l - r),
             (Value::Integer(l), Value::Float(r)) => Value::Float(*l as f64 - r),
             (Value::Float(l), Value::Integer(r)) => Value::Float(l - *r as f64),
-            (Value::Nil, _) => return Err(Error::NilArithmetic),
-            (Value::Boolean(_), _) => return Err(Error::BoolArithmetic),
-            (Value::String(_) | Value::ShortString(_), _) => return Err(Error::StringArithmetic),
-            (Value::Table(_), _) => return Err(Error::TableArithmetic),
-            (Value::Function(_), _) => return Err(Error::FunctionArithmetic),
-            (_, Value::Nil) => return Err(Error::NilArithmetic),
-            (_, Value::Boolean(_)) => return Err(Error::BoolArithmetic),
-            (_, Value::String(_) | Value::ShortString(_)) => return Err(Error::StringArithmetic),
-            (_, Value::Table(_)) => return Err(Error::TableArithmetic),
-            (_, Value::Function(_)) => return Err(Error::FunctionArithmetic),
+            (lhs, rhs) => {
+                return Err(Error::ArithmeticOperand(
+                    "sub",
+                    lhs.static_type_name(),
+                    rhs.static_type_name(),
+                ))
+            }
         };
         vm.set_stack(*dst, res)
     }
@@ -680,16 +669,13 @@ impl ByteCode {
             (Value::Float(l), Value::Float(r)) => Value::Float(l * r),
             (Value::Integer(l), Value::Float(r)) => Value::Float(*l as f64 * r),
             (Value::Float(l), Value::Integer(r)) => Value::Float(l * *r as f64),
-            (Value::Nil, _) => return Err(Error::NilArithmetic),
-            (Value::Boolean(_), _) => return Err(Error::BoolArithmetic),
-            (Value::String(_) | Value::ShortString(_), _) => return Err(Error::StringArithmetic),
-            (Value::Table(_), _) => return Err(Error::TableArithmetic),
-            (Value::Function(_), _) => return Err(Error::FunctionArithmetic),
-            (_, Value::Nil) => return Err(Error::NilArithmetic),
-            (_, Value::Boolean(_)) => return Err(Error::BoolArithmetic),
-            (_, Value::String(_) | Value::ShortString(_)) => return Err(Error::StringArithmetic),
-            (_, Value::Table(_)) => return Err(Error::TableArithmetic),
-            (_, Value::Function(_)) => return Err(Error::FunctionArithmetic),
+            (lhs, rhs) => {
+                return Err(Error::ArithmeticOperand(
+                    "mul",
+                    lhs.static_type_name(),
+                    rhs.static_type_name(),
+                ))
+            }
         };
         vm.set_stack(*dst, res)
     }
@@ -702,16 +688,13 @@ impl ByteCode {
             (Value::Float(l), Value::Float(r)) => Value::Float(l % r),
             (Value::Integer(l), Value::Float(r)) => Value::Float(*l as f64 % r),
             (Value::Float(l), Value::Integer(r)) => Value::Float(l % *r as f64),
-            (Value::Nil, _) => return Err(Error::NilArithmetic),
-            (Value::Boolean(_), _) => return Err(Error::BoolArithmetic),
-            (Value::String(_) | Value::ShortString(_), _) => return Err(Error::StringArithmetic),
-            (Value::Table(_), _) => return Err(Error::TableArithmetic),
-            (Value::Function(_), _) => return Err(Error::FunctionArithmetic),
-            (_, Value::Nil) => return Err(Error::NilArithmetic),
-            (_, Value::Boolean(_)) => return Err(Error::BoolArithmetic),
-            (_, Value::String(_) | Value::ShortString(_)) => return Err(Error::StringArithmetic),
-            (_, Value::Table(_)) => return Err(Error::TableArithmetic),
-            (_, Value::Function(_)) => return Err(Error::FunctionArithmetic),
+            (lhs, rhs) => {
+                return Err(Error::ArithmeticOperand(
+                    "mod",
+                    lhs.static_type_name(),
+                    rhs.static_type_name(),
+                ))
+            }
         };
         vm.set_stack(*dst, res)
     }
@@ -724,16 +707,13 @@ impl ByteCode {
             (Value::Float(l), Value::Float(r)) => Value::Float(l.powf(*r)),
             (Value::Integer(l), Value::Float(r)) => Value::Float((*l as f64).powf(*r)),
             (Value::Float(l), Value::Integer(r)) => Value::Float(l.powf(*r as f64)),
-            (Value::Nil, _) => return Err(Error::NilArithmetic),
-            (Value::Boolean(_), _) => return Err(Error::BoolArithmetic),
-            (Value::String(_) | Value::ShortString(_), _) => return Err(Error::StringArithmetic),
-            (Value::Table(_), _) => return Err(Error::TableArithmetic),
-            (Value::Function(_), _) => return Err(Error::FunctionArithmetic),
-            (_, Value::Nil) => return Err(Error::NilArithmetic),
-            (_, Value::Boolean(_)) => return Err(Error::BoolArithmetic),
-            (_, Value::String(_) | Value::ShortString(_)) => return Err(Error::StringArithmetic),
-            (_, Value::Table(_)) => return Err(Error::TableArithmetic),
-            (_, Value::Function(_)) => return Err(Error::FunctionArithmetic),
+            (lhs, rhs) => {
+                return Err(Error::ArithmeticOperand(
+                    "pow",
+                    lhs.static_type_name(),
+                    rhs.static_type_name(),
+                ))
+            }
         };
         vm.set_stack(*dst, res)
     }
@@ -746,16 +726,13 @@ impl ByteCode {
             (Value::Float(l), Value::Float(r)) => Value::Float(l / r),
             (Value::Integer(l), Value::Float(r)) => Value::Float(*l as f64 / r),
             (Value::Float(l), Value::Integer(r)) => Value::Float(l / *r as f64),
-            (Value::Nil, _) => return Err(Error::NilArithmetic),
-            (Value::Boolean(_), _) => return Err(Error::BoolArithmetic),
-            (Value::String(_) | Value::ShortString(_), _) => return Err(Error::StringArithmetic),
-            (Value::Table(_), _) => return Err(Error::TableArithmetic),
-            (Value::Function(_), _) => return Err(Error::FunctionArithmetic),
-            (_, Value::Nil) => return Err(Error::NilArithmetic),
-            (_, Value::Boolean(_)) => return Err(Error::BoolArithmetic),
-            (_, Value::String(_) | Value::ShortString(_)) => return Err(Error::StringArithmetic),
-            (_, Value::Table(_)) => return Err(Error::TableArithmetic),
-            (_, Value::Function(_)) => return Err(Error::FunctionArithmetic),
+            (lhs, rhs) => {
+                return Err(Error::ArithmeticOperand(
+                    "div",
+                    lhs.static_type_name(),
+                    rhs.static_type_name(),
+                ))
+            }
         };
         vm.set_stack(*dst, res)
     }
@@ -768,16 +745,13 @@ impl ByteCode {
             (Value::Float(l), Value::Float(r)) => Value::Float((l / r).trunc()),
             (Value::Integer(l), Value::Float(r)) => Value::Float((*l as f64 / r).trunc()),
             (Value::Float(l), Value::Integer(r)) => Value::Float((l / *r as f64).trunc()),
-            (Value::Nil, _) => return Err(Error::NilArithmetic),
-            (Value::Boolean(_), _) => return Err(Error::BoolArithmetic),
-            (Value::String(_) | Value::ShortString(_), _) => return Err(Error::StringArithmetic),
-            (Value::Table(_), _) => return Err(Error::TableArithmetic),
-            (Value::Function(_), _) => return Err(Error::FunctionArithmetic),
-            (_, Value::Nil) => return Err(Error::NilArithmetic),
-            (_, Value::Boolean(_)) => return Err(Error::BoolArithmetic),
-            (_, Value::String(_) | Value::ShortString(_)) => return Err(Error::StringArithmetic),
-            (_, Value::Table(_)) => return Err(Error::TableArithmetic),
-            (_, Value::Function(_)) => return Err(Error::FunctionArithmetic),
+            (lhs, rhs) => {
+                return Err(Error::ArithmeticOperand(
+                    "idiv",
+                    lhs.static_type_name(),
+                    rhs.static_type_name(),
+                ))
+            }
         };
         vm.set_stack(*dst, res)
     }
@@ -787,18 +761,13 @@ impl ByteCode {
 
         let res = match (&vm.stack[usize::from(*lhs)], &vm.stack[usize::from(*rhs)]) {
             (Value::Integer(l), Value::Integer(r)) => Value::Integer(l & r),
-            (Value::Float(_), _) => return Err(Error::FloatBitwise),
-            (Value::Nil, _) => return Err(Error::NilBitwise),
-            (Value::Boolean(_), _) => return Err(Error::BoolBitwise),
-            (Value::String(_) | Value::ShortString(_), _) => return Err(Error::StringBitwise),
-            (Value::Table(_), _) => return Err(Error::TableBitwise),
-            (Value::Function(_), _) => return Err(Error::FunctionBitwise),
-            (_, Value::Float(_)) => return Err(Error::FloatBitwise),
-            (_, Value::Nil) => return Err(Error::NilBitwise),
-            (_, Value::Boolean(_)) => return Err(Error::BoolBitwise),
-            (_, Value::String(_) | Value::ShortString(_)) => return Err(Error::StringBitwise),
-            (_, Value::Table(_)) => return Err(Error::TableBitwise),
-            (_, Value::Function(_)) => return Err(Error::FunctionBitwise),
+            (lhs, rhs) => {
+                return Err(Error::BitwiseOperand(
+                    "and",
+                    lhs.static_type_name(),
+                    rhs.static_type_name(),
+                ))
+            }
         };
         vm.set_stack(*dst, res)
     }
@@ -808,18 +777,13 @@ impl ByteCode {
 
         let res = match (&vm.stack[usize::from(*lhs)], &vm.stack[usize::from(*rhs)]) {
             (Value::Integer(l), Value::Integer(r)) => Value::Integer(l | r),
-            (Value::Float(_), _) => return Err(Error::FloatBitwise),
-            (Value::Nil, _) => return Err(Error::NilBitwise),
-            (Value::Boolean(_), _) => return Err(Error::BoolBitwise),
-            (Value::String(_) | Value::ShortString(_), _) => return Err(Error::StringBitwise),
-            (Value::Table(_), _) => return Err(Error::TableBitwise),
-            (Value::Function(_), _) => return Err(Error::FunctionBitwise),
-            (_, Value::Float(_)) => return Err(Error::FloatBitwise),
-            (_, Value::Nil) => return Err(Error::NilBitwise),
-            (_, Value::Boolean(_)) => return Err(Error::BoolBitwise),
-            (_, Value::String(_) | Value::ShortString(_)) => return Err(Error::StringBitwise),
-            (_, Value::Table(_)) => return Err(Error::TableBitwise),
-            (_, Value::Function(_)) => return Err(Error::FunctionBitwise),
+            (lhs, rhs) => {
+                return Err(Error::BitwiseOperand(
+                    "or",
+                    lhs.static_type_name(),
+                    rhs.static_type_name(),
+                ))
+            }
         };
         vm.set_stack(*dst, res)
     }
@@ -829,18 +793,13 @@ impl ByteCode {
 
         let res = match (&vm.stack[usize::from(*lhs)], &vm.stack[usize::from(*rhs)]) {
             (Value::Integer(l), Value::Integer(r)) => Value::Integer(l ^ r),
-            (Value::Float(_), _) => return Err(Error::FloatBitwise),
-            (Value::Nil, _) => return Err(Error::NilBitwise),
-            (Value::Boolean(_), _) => return Err(Error::BoolBitwise),
-            (Value::String(_) | Value::ShortString(_), _) => return Err(Error::StringBitwise),
-            (Value::Table(_), _) => return Err(Error::TableBitwise),
-            (Value::Function(_), _) => return Err(Error::FunctionBitwise),
-            (_, Value::Float(_)) => return Err(Error::FloatBitwise),
-            (_, Value::Nil) => return Err(Error::NilBitwise),
-            (_, Value::Boolean(_)) => return Err(Error::BoolBitwise),
-            (_, Value::String(_) | Value::ShortString(_)) => return Err(Error::StringBitwise),
-            (_, Value::Table(_)) => return Err(Error::TableBitwise),
-            (_, Value::Function(_)) => return Err(Error::FunctionBitwise),
+            (lhs, rhs) => {
+                return Err(Error::BitwiseOperand(
+                    "xor",
+                    lhs.static_type_name(),
+                    rhs.static_type_name(),
+                ))
+            }
         };
         vm.set_stack(*dst, res)
     }
@@ -850,18 +809,13 @@ impl ByteCode {
 
         let res = match (&vm.stack[usize::from(*lhs)], &vm.stack[usize::from(*rhs)]) {
             (Value::Integer(l), Value::Integer(r)) => Value::Integer(l << r),
-            (Value::Float(_), _) => return Err(Error::FloatBitwise),
-            (Value::Nil, _) => return Err(Error::NilBitwise),
-            (Value::Boolean(_), _) => return Err(Error::BoolBitwise),
-            (Value::String(_) | Value::ShortString(_), _) => return Err(Error::StringBitwise),
-            (Value::Table(_), _) => return Err(Error::TableBitwise),
-            (Value::Function(_), _) => return Err(Error::FunctionBitwise),
-            (_, Value::Float(_)) => return Err(Error::FloatBitwise),
-            (_, Value::Nil) => return Err(Error::NilBitwise),
-            (_, Value::Boolean(_)) => return Err(Error::BoolBitwise),
-            (_, Value::String(_) | Value::ShortString(_)) => return Err(Error::StringBitwise),
-            (_, Value::Table(_)) => return Err(Error::TableBitwise),
-            (_, Value::Function(_)) => return Err(Error::FunctionBitwise),
+            (lhs, rhs) => {
+                return Err(Error::BitwiseOperand(
+                    "shift left",
+                    lhs.static_type_name(),
+                    rhs.static_type_name(),
+                ))
+            }
         };
         vm.set_stack(*dst, res)
     }
@@ -871,37 +825,13 @@ impl ByteCode {
 
         let res = match (&vm.stack[usize::from(*lhs)], &vm.stack[usize::from(*rhs)]) {
             (Value::Integer(l), Value::Integer(r)) => Value::Integer(l >> r),
-            (Value::Float(l), Value::Float(r)) => {
-                if l.zero_frac() && r.zero_frac() {
-                    Value::Integer((*l as i64) >> (*r as i64))
-                } else {
-                    return Err(Error::FloatBitwise);
-                }
+            (lhs, rhs) => {
+                return Err(Error::BitwiseOperand(
+                    "shift right",
+                    lhs.static_type_name(),
+                    rhs.static_type_name(),
+                ))
             }
-            (Value::Float(l), Value::Integer(r)) => {
-                if l.zero_frac() {
-                    Value::Integer((*l as i64) >> r)
-                } else {
-                    return Err(Error::FloatBitwise);
-                }
-            }
-            (Value::Integer(l), Value::Float(r)) => {
-                if r.zero_frac() {
-                    Value::Integer(l >> (*r as i64))
-                } else {
-                    return Err(Error::FloatBitwise);
-                }
-            }
-            (Value::Nil, _) => return Err(Error::NilBitwise),
-            (Value::Boolean(_), _) => return Err(Error::BoolBitwise),
-            (Value::String(_) | Value::ShortString(_), _) => return Err(Error::StringBitwise),
-            (Value::Table(_), _) => return Err(Error::TableBitwise),
-            (Value::Function(_), _) => return Err(Error::FunctionBitwise),
-            (_, Value::Nil) => return Err(Error::NilBitwise),
-            (_, Value::Boolean(_)) => return Err(Error::BoolBitwise),
-            (_, Value::String(_) | Value::ShortString(_)) => return Err(Error::StringBitwise),
-            (_, Value::Table(_)) => return Err(Error::TableBitwise),
-            (_, Value::Function(_)) => return Err(Error::FunctionBitwise),
         };
         vm.set_stack(*dst, res)
     }
@@ -1234,7 +1164,7 @@ impl ByteCode {
 
             Ok(())
         } else {
-            Err(Error::RelationalOperandError(
+            Err(Error::RelationalOperand(
                 lhs.static_type_name(),
                 rhs.static_type_name(),
             ))

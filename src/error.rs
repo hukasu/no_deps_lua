@@ -13,20 +13,11 @@ pub enum Error {
     InvalidNegOperand,
     InvalidBitNotOperand,
     // Binary arithmetic operators
-    NilArithmetic,
-    BoolArithmetic,
-    StringArithmetic,
-    TableArithmetic,
-    FunctionArithmetic,
+    ArithmeticOperand(&'static str, &'static str, &'static str),
     // Binary bitwise operators
-    FloatBitwise,
-    NilBitwise,
-    BoolBitwise,
-    StringBitwise,
-    TableBitwise,
-    FunctionBitwise,
+    BitwiseOperand(&'static str, &'static str, &'static str),
     // Binary relational operators
-    RelationalOperandError(&'static str, &'static str),
+    RelationalOperand(&'static str, &'static str),
     // Concat
     NilConcat,
     BoolConcat,
@@ -49,18 +40,13 @@ impl Display for Error {
             Self::InvalidLenOperand => write!(f, "Len can only operate over String."),
             Self::InvalidNegOperand => write!(f, "Neg can only operate over Integers and Floats."),
             Self::InvalidBitNotOperand => write!(f, "BitNot can only operate over Integers."),
-            Self::NilArithmetic => write!(f, "{}", crate::program::Error::NilArithmetic),
-            Self::BoolArithmetic => write!(f, "{}", crate::program::Error::BoolArithmetic),
-            Self::StringArithmetic => write!(f, "{}", crate::program::Error::StringArithmetic),
-            Self::TableArithmetic => write!(f, "{}", crate::program::Error::TableArithmetic),
-            Self::FunctionArithmetic => write!(f, "Can't use Function in arithmetic operations."),
-            Self::FloatBitwise => write!(f, "{}", crate::program::Error::FloatBitwise),
-            Self::NilBitwise => write!(f, "{}", crate::program::Error::NilBitwise),
-            Self::BoolBitwise => write!(f, "{}", crate::program::Error::BoolBitwise),
-            Self::StringBitwise => write!(f, "{}", crate::program::Error::StringBitwise),
-            Self::TableBitwise => write!(f, "{}", crate::program::Error::TableBitwise),
-            Self::FunctionBitwise => write!(f, "Can't use Function in bitwise operations."),
-            Self::RelationalOperandError(lhs, rhs) => {
+            Self::ArithmeticOperand(op, lhs, rhs) => {
+                write!(f, "Can't '{}' '{}' with '{}'.", op, lhs, rhs)
+            }
+            Self::BitwiseOperand(op, lhs, rhs) => {
+                write!(f, "Can't '{}' '{}' with '{}'.", op, lhs, rhs)
+            }
+            Self::RelationalOperand(lhs, rhs) => {
                 write!(f, "Can't compare {} with {}", lhs, rhs)
             }
             Self::NilConcat => write!(f, "{}", crate::program::Error::NilConcat),
