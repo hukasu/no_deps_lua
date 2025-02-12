@@ -1,7 +1,7 @@
 use crate::{byte_code::ByteCode, Program};
 
 #[test]
-fn chapter4_table() {
+fn table() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
     let program = Program::parse(
         r#"
@@ -74,7 +74,7 @@ print(t)
 }
 
 #[test]
-fn chapter4_prefixexp() {
+fn prefixexp() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
     let program = Program::parse(
         r#"

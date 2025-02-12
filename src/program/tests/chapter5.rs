@@ -1,7 +1,7 @@
 use crate::{byte_code::ByteCode, Program};
 
 #[test]
-fn chapter5_unops() {
+fn unops() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
     let program = Program::parse(
         r#"
@@ -90,7 +90,7 @@ print(not print)
 }
 
 #[test]
-fn chapter5_binops() {
+fn binops() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
     let program = Program::parse(
         r#"

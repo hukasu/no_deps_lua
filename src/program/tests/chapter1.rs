@@ -1,7 +1,7 @@
 use crate::byte_code::ByteCode;
 
 #[test]
-fn chapter1() {
+fn hello_world() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
     let program = crate::Program::parse(
         r#"

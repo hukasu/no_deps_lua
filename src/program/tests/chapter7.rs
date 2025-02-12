@@ -1,7 +1,7 @@
 use crate::{byte_code::ByteCode, value::Value, Program};
 
 #[test]
-fn chapter7_and_or() {
+fn and_or() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
     let program = Program::parse(
         r#"
@@ -121,7 +121,7 @@ end
 }
 
 #[test]
-fn chapter7_test_set() {
+fn test_set() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
     let program = Program::parse(
         r#"
@@ -204,7 +204,7 @@ print( (g3 or g1) and (g2 and g4))
 }
 
 #[test]
-fn chapter7_compare() {
+fn compare() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
 
     let code = r#"

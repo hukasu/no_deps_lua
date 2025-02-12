@@ -1,7 +1,7 @@
 use crate::{byte_code::ByteCode, Program};
 
 #[test]
-fn chapter6_if() {
+fn if_statement() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
     let program = Program::parse(
         r#"
@@ -59,7 +59,7 @@ print (a) -- should be nil
 }
 
 #[test]
-fn chapter6_if_else() {
+fn if_else() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
     let program = Program::parse(
         r#"
@@ -160,7 +160,7 @@ end
 }
 
 #[test]
-fn chapter6_while() {
+fn while_statement() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
     let program = Program::parse(
         r#"
@@ -195,7 +195,7 @@ end
 }
 
 #[test]
-fn chapter6_break() {
+fn break_statement() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
     let program = Program::parse(
         r#"
@@ -265,7 +265,7 @@ end
 }
 
 #[test]
-fn chapter6_repeat() {
+fn repeat() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
     let program = Program::parse(
         r#"
@@ -299,7 +299,7 @@ until a
 }
 
 #[test]
-fn chapter6_for() {
+fn for_statement() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
     let program = Program::parse(
         r#"
@@ -406,7 +406,7 @@ end
 }
 
 #[test]
-fn chapter6_goto() {
+fn goto() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
     let program = Program::parse(
         r#"

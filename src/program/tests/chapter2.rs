@@ -1,7 +1,7 @@
 use crate::{byte_code::ByteCode, Program};
 
 #[test]
-fn chapter2_types() {
+fn types() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
     let program = Program::parse(
         r#"
@@ -46,7 +46,7 @@ print(123456.0)
 }
 
 #[test]
-fn chapter2_local2() {
+fn local() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
     let program = Program::parse(
         r#"
@@ -94,7 +94,7 @@ print "I'm local-print!" -- call local function
 }
 
 #[test]
-fn chapter2_assign() {
+fn assign() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
     let program = Program::parse(
         r#"

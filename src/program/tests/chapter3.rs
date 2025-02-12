@@ -3,7 +3,7 @@ use alloc::string::String;
 use crate::{byte_code::ByteCode, ext::Unescape, Program};
 
 #[test]
-fn chapter3_escape() {
+fn escape() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
     let program = Program::parse(
         r#"
@@ -65,7 +65,7 @@ print "null: \0." -- '\0'
 }
 
 #[test]
-fn chapter3_strings() {
+fn strings() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
     let program = Program::parse(
         r#"
