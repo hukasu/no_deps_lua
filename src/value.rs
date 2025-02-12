@@ -6,7 +6,7 @@ use core::{
 
 use alloc::rc::Rc;
 
-use crate::{stack_str::StackStr, table::Table, Lua};
+use crate::{stack_str::StackStr, table::Table, Lua, Program};
 
 const SHORT_STRING_LEN: usize = 23;
 
@@ -20,6 +20,7 @@ pub enum Value {
     String(Rc<str>),
     Table(Rc<RefCell<Table>>),
     Function(fn(&mut Lua) -> i32),
+    Closure(Rc<Program>),
 }
 
 impl Value {
@@ -39,7 +40,7 @@ impl Value {
             Self::Float(_) => "float",
             Self::ShortString(_) | Self::String(_) => "string",
             Self::Table(_) => "table",
-            Self::Function(_) => "function",
+            Self::Function(_) | Self::Closure(_) => "function",
         }
     }
 }
@@ -115,6 +116,7 @@ impl Debug for Value {
                 write!(f, "Table({}:{})", t.array.len(), t.table.len())
             }
             Self::Function(func) => write!(f, "Function({:?})", func),
+            Self::Closure(func) => write!(f, "Closure({:?})", func),
         }
     }
 }
@@ -129,7 +131,7 @@ impl Display for Value {
             Self::ShortString(s) => write!(f, "{s}"),
             Self::String(s) => write!(f, "{s}"),
             Self::Table(table) => write!(f, "table:{:?}", table.as_ptr()),
-            Self::Function(_) => write!(f, "function"),
+            Self::Function(_) | Self::Closure(_) => write!(f, "function"),
         }
     }
 }
@@ -163,62 +165,43 @@ mod tests {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, PartialOrd)]
 /// A wrapper around value so that it can be ordered on a [`Vec`] and
 /// be searched using `binary_search`
 pub struct ValueKey(Value);
 
-impl PartialOrd for ValueKey {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
+impl ValueKey {
+    fn ord_priority(&self) -> usize {
+        match self.0 {
+            Value::Nil => 0,
+            Value::Boolean(_) => 1,
+            Value::Integer(_) => 2,
+            Value::Float(_) => 3,
+            Value::ShortString(_) => 4,
+            Value::String(_) => 5,
+            Value::Table(_) => 6,
+            Value::Function(_) => 7,
+            Value::Closure(_) => 8,
+        }
     }
 }
 
 impl Ord for ValueKey {
     fn cmp(&self, other: &Self) -> Ordering {
-        match (&self.0, &other.0) {
-            (Value::Nil, Value::Nil) => Ordering::Equal,
-            (Value::Nil, _) => Ordering::Less,
-            (Value::Boolean(_), Value::Nil) => Ordering::Greater,
-            (Value::Boolean(lhs), Value::Boolean(rhs)) => lhs.cmp(rhs),
-            (Value::Boolean(_), _) => Ordering::Less,
-            (Value::Integer(_), Value::Nil | Value::Boolean(_)) => Ordering::Greater,
-            (Value::Integer(lhs), Value::Integer(rhs)) => lhs.cmp(rhs),
-            (Value::Integer(_), _) => Ordering::Less,
-            (Value::Float(_), Value::Nil | Value::Boolean(_) | Value::Integer(_)) => {
-                Ordering::Greater
-            }
-            (Value::Float(lhs), Value::Float(rhs)) => lhs.total_cmp(rhs),
-            (Value::Float(_), _) => Ordering::Less,
-            (
-                Value::ShortString(_),
-                Value::Nil | Value::Boolean(_) | Value::Integer(_) | Value::Float(_),
-            ) => Ordering::Greater,
-            (Value::ShortString(lhs), Value::ShortString(rhs)) => lhs.cmp(rhs),
-            (Value::ShortString(_), _) => Ordering::Less,
-            (
-                Value::String(_),
-                Value::Nil
-                | Value::Boolean(_)
-                | Value::Integer(_)
-                | Value::Float(_)
-                | Value::ShortString(_),
-            ) => Ordering::Greater,
-            (Value::String(lhs), Value::String(rhs)) => lhs.cmp(rhs),
-            (Value::String(_), _) => Ordering::Less,
-            (
-                Value::Table(_),
-                Value::Nil
-                | Value::Boolean(_)
-                | Value::Integer(_)
-                | Value::Float(_)
-                | Value::ShortString(_)
-                | Value::String(_),
-            ) => Ordering::Greater,
-            (Value::Table(lhs), Value::Table(rhs)) => lhs.as_ptr().cmp(&rhs.as_ptr()),
-            (Value::Table(_), _) => Ordering::Less,
-            (Value::Function(lhs), Value::Function(rhs)) => lhs.cmp(rhs),
-            (Value::Function(_), _) => Ordering::Greater,
+        match self.ord_priority().cmp(&other.ord_priority()) {
+            Ordering::Equal => match (&self.0, &other.0) {
+                (Value::Nil, Value::Nil) => Ordering::Equal,
+                (Value::Boolean(lhs), Value::Boolean(rhs)) => lhs.cmp(rhs),
+                (Value::Integer(lhs), Value::Integer(rhs)) => lhs.cmp(rhs),
+                (Value::Float(lhs), Value::Float(rhs)) => lhs.total_cmp(rhs),
+                (Value::ShortString(lhs), Value::ShortString(rhs)) => lhs.cmp(rhs),
+                (Value::String(lhs), Value::String(rhs)) => lhs.cmp(rhs),
+                (Value::Table(lhs), Value::Table(rhs)) => Rc::as_ptr(lhs).cmp(&Rc::as_ptr(rhs)),
+                (Value::Function(lhs), Value::Function(rhs)) => lhs.cmp(rhs),
+                (Value::Closure(lhs), Value::Closure(rhs)) => Rc::as_ptr(lhs).cmp(&Rc::as_ptr(rhs)),
+                _ => unreachable!("Equal `ord_priority` means equal types"),
+            },
+            other => other,
         }
     }
 }
