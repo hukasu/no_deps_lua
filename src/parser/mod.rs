@@ -2705,7 +2705,7 @@ impl<'a> Parser<'a> {
             }
             80 => make_reduction_push!(80, self, FuncbodyParlist),
             81 => make_reduction_push!(81, self, FuncbodyParlist, 1, Parlist),
-            82 => make_reduction_push!(82, self, Parlist, 2, Namelist, ParlistCont),
+            82 => make_reduction_push!(82, self, Parlist, 2, Name, ParlistCont),
             83 => make_reduction_push!(83, self, ParlistCont),
             84 => make_reduction_push!(84, self, ParlistCont, 3, Comma, Name, ParlistCont),
             85 => make_reduction_push!(85, self, ParlistCont, 2, Comma, Dots),
