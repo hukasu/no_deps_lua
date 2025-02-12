@@ -1,6 +1,7 @@
 #![no_std]
 
 mod byte_code;
+mod closure;
 mod error;
 mod ext;
 mod lex;
@@ -19,7 +20,7 @@ use alloc::vec::Vec;
 
 use self::{byte_code::ByteCode, value::Value};
 
-pub use {error::Error, program::Program};
+pub use {closure::Closure, error::Error, program::Program};
 
 #[derive(Debug, Default)]
 pub struct Lua {
@@ -53,7 +54,11 @@ impl Lua {
                 Ok(())
             }
             Ordering::Less => {
-                log::error!("Trying to set a value out of the bounds of the stack.");
+                log::error!(
+                    "Trying to set a value out of the bounds of the stack. {} {}",
+                    dst,
+                    self.stack.len()
+                );
                 Err(Error::StackOverflow)
             }
         }

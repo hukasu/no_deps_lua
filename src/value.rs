@@ -6,7 +6,7 @@ use core::{
 
 use alloc::rc::Rc;
 
-use crate::{stack_str::StackStr, table::Table, Lua, Program};
+use crate::{stack_str::StackStr, table::Table, Closure, Lua};
 
 const SHORT_STRING_LEN: usize = 23;
 
@@ -20,7 +20,7 @@ pub enum Value {
     String(Rc<str>),
     Table(Rc<RefCell<Table>>),
     Function(fn(&mut Lua) -> i32),
-    Closure(Rc<Program>),
+    Closure(Rc<Closure>),
 }
 
 impl Value {
@@ -102,8 +102,8 @@ impl From<&str> for Value {
     }
 }
 
-impl From<Rc<Program>> for Value {
-    fn from(closure: Rc<Program>) -> Self {
+impl From<Rc<Closure>> for Value {
+    fn from(closure: Rc<Closure>) -> Self {
         Self::Closure(closure)
     }
 }

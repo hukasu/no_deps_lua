@@ -1015,24 +1015,29 @@ impl ByteCode {
     }
 
     pub fn call(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
-        validate_bytecode!(self, ByteCode::Call(func, _args));
+        validate_bytecode!(self, ByteCode::Call(func_index, _args));
 
-        vm.func_index = *func as usize;
-        let func = vm.get_stack(*func)?;
-        if let Value::Function(f) = func {
+        vm.func_index = *func_index as usize;
+        let func = vm.get_stack(*func_index)?;
+        if let Value::Function(func) = func {
             log::trace!("Calling native function");
-            f(vm);
+            func(vm);
             Ok(())
-        } else if let Value::Closure(f) = func {
+        } else if let Value::Closure(func) = func {
             log::trace!("Calling closure");
-            let f = f.clone();
+            let f = func.clone();
 
             let cache_program_counter = core::mem::take(&mut vm.program_counter);
-            vm.return_stack.push(vm.stack.len());
+            let stack_size = vm.stack.len();
+            let return_stack = usize::from(*func_index) + f.arg_count();
 
-            vm.run_program(f.as_ref())?;
+            vm.stack.resize(return_stack + 1, Value::Nil);
+            vm.return_stack.push(return_stack - 1);
+
+            vm.run_program(f.program())?;
 
             vm.return_stack.pop();
+            vm.stack.truncate(stack_size - f.arg_count());
             vm.program_counter = cache_program_counter;
 
             Ok(())

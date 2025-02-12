@@ -2,17 +2,20 @@ mod binops;
 mod compile_context;
 mod error;
 mod exp_desc;
+mod parlist;
 #[cfg(test)]
 mod tests;
 
 use alloc::{boxed::Box, rc::Rc, vec::Vec};
 use binops::Binop;
 use compile_context::GotoLabel;
+use parlist::Parlist;
 
 use crate::{
     byte_code::ByteCode,
     ext::Unescape,
     parser::{Parser, Token, TokenType},
+    Closure,
 };
 
 use super::value::Value;
@@ -1399,13 +1402,16 @@ impl Program {
         let func_index = compile_context.stack_top;
         match functioncall.tokens.as_slice() {
             make_deconstruct!(prefixexp(TokenType::Prefixexp), args(TokenType::Args)) => {
-                let (_, prefixexp_top) = compile_context.reserve_stack_top();
+                let (top_index, prefixexp_top) = compile_context.reserve_stack_top();
                 let top = self.prefixexp(prefixexp, compile_context, &prefixexp_top)?;
                 top.discharge(&prefixexp_top, self, compile_context)?;
 
                 self.args(args, compile_context)?;
 
-                self.byte_codes.push(ByteCode::Call(func_index, 1));
+                self.byte_codes.push(ByteCode::Call(
+                    func_index,
+                    (compile_context.stack_top - 1) - top_index,
+                ));
                 compile_context.stack_top = func_index;
 
                 compile_context.last_expdesc_was_or = false;
@@ -1537,12 +1543,17 @@ impl Program {
                 block(TokenType::Block),
                 _end(TokenType::End),
             ) => {
-                self.funcbody_parlist(funcbody_parlist, compile_context)?;
+                let parlist = self.funcbody_parlist(funcbody_parlist)?;
+                let parlist_name_count = parlist.names.len();
 
                 let (top_index, _) = compile_context.reserve_stack_top();
 
                 let mut func_program = Program::default();
                 let mut func_compile_context = CompileContext::default();
+
+                func_compile_context.locals.extend(parlist.names);
+                func_compile_context.stack_top = u8::try_from(parlist_name_count)?;
+
                 func_program.block(block, &mut func_compile_context)?;
                 if func_program
                     .byte_codes
@@ -1555,7 +1566,11 @@ impl Program {
                     func_program.byte_codes.push(ByteCode::ZeroReturn);
                 }
 
-                let closure_position = self.push_function(Rc::new(func_program))?;
+                let closure_position = self.push_function(Rc::new(Closure::new(
+                    func_program,
+                    parlist_name_count,
+                    parlist.variadic_args,
+                )))?;
                 self.byte_codes
                     .push(ByteCode::Closure(top_index, closure_position));
 
@@ -1574,17 +1589,14 @@ impl Program {
         }
     }
 
-    fn funcbody_parlist<'a>(
-        &mut self,
-        funcbody_parlist: &Token<'a>,
-        _compile_context: &CompileContext<'a>,
-    ) -> Result<(), Error> {
+    fn funcbody_parlist(&mut self, funcbody_parlist: &Token<'_>) -> Result<Parlist, Error> {
         match funcbody_parlist.tokens.as_slice() {
-            [] => Ok(()),
-            [Token {
-                tokens: _,
-                token_type: TokenType::Parlist,
-            }] => unimplemented!("funcbody_parlist production"),
+            [] => Ok(Parlist::default()),
+            make_deconstruct!(parlist(TokenType::Parlist)) => {
+                let mut func_parlist = Parlist::default();
+                self.parlist(parlist, &mut func_parlist)?;
+                Ok(func_parlist)
+            }
             _ => {
                 unreachable!(
                     "FuncbodyParlist did not match any of the productions. Had {:#?}.",
@@ -1598,17 +1610,19 @@ impl Program {
         }
     }
 
-    fn parlist<'a>(
-        &mut self,
-        parlist: &Token<'a>,
-        _compile_context: &CompileContext<'a>,
-    ) -> Result<(), Error> {
+    fn parlist(&mut self, parlist: &Token<'_>, func_parlist: &mut Parlist) -> Result<(), Error> {
         match parlist.tokens.as_slice() {
             make_deconstruct!(
-                _name(TokenType::Name(_)),
-                _parlist_cont(TokenType::ParlistCont)
-            ) => unimplemented!("parlist production"),
-            make_deconstruct!(_dots(TokenType::Dots)) => unimplemented!("parlist production"),
+                _name(TokenType::Name(name)),
+                parlist_cont(TokenType::ParlistCont)
+            ) => {
+                func_parlist.names.push((*name).into());
+                self.parlist_cont(parlist_cont, func_parlist)
+            }
+            make_deconstruct!(_dots(TokenType::Dots)) => {
+                func_parlist.variadic_args = true;
+                Ok(())
+            }
             _ => {
                 unreachable!(
                     "Parlist did not match any of the productions. Had {:#?}.",
@@ -1622,20 +1636,24 @@ impl Program {
         }
     }
 
-    fn parlist_cont<'a>(
+    fn parlist_cont(
         &mut self,
-        parlist_cont: &Token<'a>,
-        _compile_context: &CompileContext<'a>,
+        parlist_cont: &Token<'_>,
+        func_parlist: &mut Parlist,
     ) -> Result<(), Error> {
         match parlist_cont.tokens.as_slice() {
             [] => Ok(()),
             make_deconstruct!(
                 _comma(TokenType::Comma),
-                _name(TokenType::Name(_)),
-                _parlist_cont(TokenType::ParlistCont)
-            ) => unimplemented!("parlist_cont production"),
+                _name(TokenType::Name(name)),
+                parlist_cont(TokenType::ParlistCont)
+            ) => {
+                func_parlist.names.push((*name).into());
+                self.parlist_cont(parlist_cont, func_parlist)
+            }
             make_deconstruct!(_comma(TokenType::Comma), _dots(TokenType::Dots)) => {
-                unimplemented!("parlist_cont production")
+                func_parlist.variadic_args = true;
+                Ok(())
             }
             _ => {
                 unreachable!(
