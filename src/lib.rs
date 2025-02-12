@@ -21,12 +21,13 @@ use self::{byte_code::ByteCode, value::Value};
 
 pub use {error::Error, program::Program};
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Lua {
     func_index: usize,
     program_counter: usize,
     globals: Vec<(Value, Value)>,
     stack: Vec<Value>,
+    return_stack: Vec<usize>,
 }
 
 impl Lua {
@@ -34,15 +35,14 @@ impl Lua {
         let globals = Vec::from([("print".into(), Value::Function(std::lib_print))]);
 
         Self {
-            func_index: 0,
-            program_counter: 0,
             globals,
-            stack: Vec::new(),
+            ..Default::default()
         }
     }
 
     fn set_stack(&mut self, dst: u8, value: Value) -> Result<(), Error> {
-        let dst = usize::from(dst);
+        let offset = self.return_stack.last().copied().unwrap_or(0);
+        let dst = offset + usize::from(dst);
         match self.stack.len().cmp(&dst) {
             Ordering::Greater => {
                 self.stack[dst] = value;
@@ -57,6 +57,18 @@ impl Lua {
                 Err(Error::StackOverflow)
             }
         }
+    }
+
+    fn get_stack(&self, src: u8) -> Result<&Value, Error> {
+        let offset = self.return_stack.last().copied().unwrap_or(0);
+        let src = offset + usize::from(src);
+        Ok(&self.stack[src])
+    }
+
+    fn get_stack_mut(&mut self, src: u8) -> Result<&mut Value, Error> {
+        let offset = self.return_stack.last().copied().unwrap_or(0);
+        let src = offset + usize::from(src);
+        Ok(&mut self.stack[src])
     }
 
     fn read_bytecode<'a>(&mut self, program: &'a Program) -> Option<&'a ByteCode> {

@@ -358,7 +358,8 @@ impl ByteCode {
     pub fn move_bytecode(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::Move(dst, src));
 
-        vm.set_stack(*dst, vm.stack[*src as usize].clone())
+        let value = vm.get_stack(*src)?.clone();
+        vm.set_stack(*dst, value)
     }
 
     pub fn load_int(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
@@ -419,7 +420,7 @@ impl ByteCode {
         validate_bytecode!(self, ByteCode::SetGlobal(name, src));
 
         let key = &program.constants[*name as usize];
-        let value = vm.stack[*src as usize].clone();
+        let value = vm.get_stack(*src)?.clone();
         if let Some(global) = vm.globals.iter_mut().find(|global| global.0.eq(key)) {
             global.1 = value;
             Ok(())
@@ -434,8 +435,8 @@ impl ByteCode {
     pub fn get_table(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::GetTable(dst, table, src));
 
-        if let Value::Table(table) = vm.stack[usize::from(*table)].clone() {
-            let key = ValueKey::from(vm.stack[usize::from(*src)].clone());
+        if let Value::Table(table) = vm.get_stack(*table)?.clone() {
+            let key = ValueKey::from(vm.get_stack(*src)?.clone());
             let bin_search = (*table)
                 .borrow()
                 .table
@@ -454,7 +455,7 @@ impl ByteCode {
     pub fn get_int(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::GetInt(dst, table, index));
 
-        if let Value::Table(table) = vm.stack[usize::from(*table)].clone() {
+        if let Value::Table(table) = vm.get_stack(*table)?.clone() {
             let value = if index == &0 {
                 let bin_search = (*table)
                     .borrow()
@@ -476,7 +477,7 @@ impl ByteCode {
     pub fn get_field(&self, vm: &mut Lua, program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::GetField(dst, table, key));
 
-        if let Value::Table(table) = vm.stack[usize::from(*table)].clone() {
+        if let Value::Table(table) = vm.get_stack(*table)?.clone() {
             let key = ValueKey::from(program.constants[usize::from(*key)].clone());
             let bin_search = (*table)
                 .borrow()
@@ -496,9 +497,9 @@ impl ByteCode {
     pub fn set_table(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::SetTable(table, key, value));
 
-        if let Value::Table(table) = vm.stack[usize::from(*table)].clone() {
-            let key = ValueKey::from(vm.stack[usize::from(*key)].clone());
-            let value = vm.stack[usize::from(*value)].clone();
+        if let Value::Table(table) = vm.get_stack(*table)?.clone() {
+            let key = ValueKey::from(vm.get_stack(*key)?.clone());
+            let value = vm.get_stack(*value)?.clone();
 
             let binary_search = (*table)
                 .borrow()
@@ -523,9 +524,9 @@ impl ByteCode {
     pub fn set_field(&self, vm: &mut Lua, program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::SetField(table, key, value));
 
-        if let Value::Table(table) = vm.stack[usize::from(*table)].clone() {
+        if let Value::Table(table) = vm.get_stack(*table)?.clone() {
             let key = ValueKey::from(program.constants[usize::from(*key)].clone());
-            let value = vm.stack[usize::from(*value)].clone();
+            let value = vm.get_stack(*value)?.clone();
 
             let binary_search = (*table)
                 .borrow()
@@ -565,7 +566,7 @@ impl ByteCode {
     pub fn add_integer(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::AddInteger(dst, lhs, int));
 
-        let res = match &vm.stack[*lhs as usize] {
+        let res = match &vm.get_stack(*lhs)? {
             Value::Integer(l) => Value::Integer(l + i64::from(*int)),
             Value::Float(l) => Value::Float(l + *int as f64),
             lhs => {
@@ -582,10 +583,7 @@ impl ByteCode {
     pub fn add_constant(&self, vm: &mut Lua, program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::AddConstant(dst, lhs, constant));
 
-        let res = match (
-            &vm.stack[*lhs as usize],
-            &program.constants[*constant as usize],
-        ) {
+        let res = match (&vm.get_stack(*lhs)?, &program.constants[*constant as usize]) {
             (Value::Integer(l), Value::Integer(r)) => Value::Integer(l + r),
             (Value::Integer(l), Value::Float(r)) => Value::Float(*l as f64 + r),
             (Value::Float(l), Value::Integer(r)) => Value::Float(l + *r as f64),
@@ -604,10 +602,7 @@ impl ByteCode {
     pub fn mul_constant(&self, vm: &mut Lua, program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::MulConstant(dst, lhs, constant));
 
-        let res = match (
-            &vm.stack[*lhs as usize],
-            &program.constants[*constant as usize],
-        ) {
+        let res = match (&vm.get_stack(*lhs)?, &program.constants[*constant as usize]) {
             (Value::Integer(l), Value::Integer(r)) => Value::Integer(l * r),
             (Value::Integer(l), Value::Float(r)) => Value::Float(*l as f64 * r),
             (Value::Float(l), Value::Integer(r)) => Value::Float(l * *r as f64),
@@ -626,7 +621,7 @@ impl ByteCode {
     pub fn add(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::Add(dst, lhs, rhs));
 
-        let res = match (&vm.stack[usize::from(*lhs)], &vm.stack[usize::from(*rhs)]) {
+        let res = match (&vm.get_stack(*lhs)?, &vm.get_stack(*rhs)?) {
             (Value::Integer(l), Value::Integer(r)) => Value::Integer(l + r),
             (Value::Float(l), Value::Float(r)) => Value::Float(l + r),
             (Value::Integer(l), Value::Float(r)) => Value::Float(*l as f64 + r),
@@ -645,7 +640,7 @@ impl ByteCode {
     pub fn sub(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::Sub(dst, lhs, rhs));
 
-        let res = match (&vm.stack[usize::from(*lhs)], &vm.stack[usize::from(*rhs)]) {
+        let res = match (&vm.get_stack(*lhs)?, &vm.get_stack(*rhs)?) {
             (Value::Integer(l), Value::Integer(r)) => Value::Integer(l - r),
             (Value::Float(l), Value::Float(r)) => Value::Float(l - r),
             (Value::Integer(l), Value::Float(r)) => Value::Float(*l as f64 - r),
@@ -664,7 +659,7 @@ impl ByteCode {
     pub fn mul(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::Mul(dst, lhs, rhs));
 
-        let res = match (&vm.stack[usize::from(*lhs)], &vm.stack[usize::from(*rhs)]) {
+        let res = match (&vm.get_stack(*lhs)?, &vm.get_stack(*rhs)?) {
             (Value::Integer(l), Value::Integer(r)) => Value::Integer(l * r),
             (Value::Float(l), Value::Float(r)) => Value::Float(l * r),
             (Value::Integer(l), Value::Float(r)) => Value::Float(*l as f64 * r),
@@ -683,7 +678,7 @@ impl ByteCode {
     pub fn mod_bytecode(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::Mod(dst, lhs, rhs));
 
-        let res = match (&vm.stack[usize::from(*lhs)], &vm.stack[usize::from(*rhs)]) {
+        let res = match (&vm.get_stack(*lhs)?, &vm.get_stack(*rhs)?) {
             (Value::Integer(l), Value::Integer(r)) => Value::Integer(l % r),
             (Value::Float(l), Value::Float(r)) => Value::Float(l % r),
             (Value::Integer(l), Value::Float(r)) => Value::Float(*l as f64 % r),
@@ -702,7 +697,7 @@ impl ByteCode {
     pub fn pow(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::Pow(dst, lhs, rhs));
 
-        let res = match (&vm.stack[usize::from(*lhs)], &vm.stack[usize::from(*rhs)]) {
+        let res = match (&vm.get_stack(*lhs)?, &vm.get_stack(*rhs)?) {
             (Value::Integer(l), Value::Integer(r)) => Value::Float((*l as f64).powf(*r as f64)),
             (Value::Float(l), Value::Float(r)) => Value::Float(l.powf(*r)),
             (Value::Integer(l), Value::Float(r)) => Value::Float((*l as f64).powf(*r)),
@@ -721,7 +716,7 @@ impl ByteCode {
     pub fn div(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::Div(dst, lhs, rhs));
 
-        let res = match (&vm.stack[usize::from(*lhs)], &vm.stack[usize::from(*rhs)]) {
+        let res = match (&vm.get_stack(*lhs)?, &vm.get_stack(*rhs)?) {
             (Value::Integer(l), Value::Integer(r)) => Value::Float(*l as f64 / *r as f64),
             (Value::Float(l), Value::Float(r)) => Value::Float(l / r),
             (Value::Integer(l), Value::Float(r)) => Value::Float(*l as f64 / r),
@@ -740,7 +735,7 @@ impl ByteCode {
     pub fn idiv(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::Idiv(dst, lhs, rhs));
 
-        let res = match (&vm.stack[usize::from(*lhs)], &vm.stack[usize::from(*rhs)]) {
+        let res = match (&vm.get_stack(*lhs)?, &vm.get_stack(*rhs)?) {
             (Value::Integer(l), Value::Integer(r)) => Value::Integer(l / r),
             (Value::Float(l), Value::Float(r)) => Value::Float((l / r).trunc()),
             (Value::Integer(l), Value::Float(r)) => Value::Float((*l as f64 / r).trunc()),
@@ -759,7 +754,7 @@ impl ByteCode {
     pub fn bit_and(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::BitAnd(dst, lhs, rhs));
 
-        let res = match (&vm.stack[usize::from(*lhs)], &vm.stack[usize::from(*rhs)]) {
+        let res = match (&vm.get_stack(*lhs)?, &vm.get_stack(*rhs)?) {
             (Value::Integer(l), Value::Integer(r)) => Value::Integer(l & r),
             (lhs, rhs) => {
                 return Err(Error::BitwiseOperand(
@@ -775,7 +770,7 @@ impl ByteCode {
     pub fn bit_or(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::BitOr(dst, lhs, rhs));
 
-        let res = match (&vm.stack[usize::from(*lhs)], &vm.stack[usize::from(*rhs)]) {
+        let res = match (&vm.get_stack(*lhs)?, &vm.get_stack(*rhs)?) {
             (Value::Integer(l), Value::Integer(r)) => Value::Integer(l | r),
             (lhs, rhs) => {
                 return Err(Error::BitwiseOperand(
@@ -791,7 +786,7 @@ impl ByteCode {
     pub fn bit_xor(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::BitXor(dst, lhs, rhs));
 
-        let res = match (&vm.stack[usize::from(*lhs)], &vm.stack[usize::from(*rhs)]) {
+        let res = match (&vm.get_stack(*lhs)?, &vm.get_stack(*rhs)?) {
             (Value::Integer(l), Value::Integer(r)) => Value::Integer(l ^ r),
             (lhs, rhs) => {
                 return Err(Error::BitwiseOperand(
@@ -807,7 +802,7 @@ impl ByteCode {
     pub fn shiftl(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::ShiftL(dst, lhs, rhs));
 
-        let res = match (&vm.stack[usize::from(*lhs)], &vm.stack[usize::from(*rhs)]) {
+        let res = match (&vm.get_stack(*lhs)?, &vm.get_stack(*rhs)?) {
             (Value::Integer(l), Value::Integer(r)) => Value::Integer(l << r),
             (lhs, rhs) => {
                 return Err(Error::BitwiseOperand(
@@ -823,7 +818,7 @@ impl ByteCode {
     pub fn shiftr(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::ShiftR(dst, lhs, rhs));
 
-        let res = match (&vm.stack[usize::from(*lhs)], &vm.stack[usize::from(*rhs)]) {
+        let res = match (&vm.get_stack(*lhs)?, &vm.get_stack(*rhs)?) {
             (Value::Integer(l), Value::Integer(r)) => Value::Integer(l >> r),
             (lhs, rhs) => {
                 return Err(Error::BitwiseOperand(
@@ -839,7 +834,7 @@ impl ByteCode {
     pub fn neg(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::Neg(dst, rhs));
 
-        let value = match vm.stack[usize::from(*rhs)] {
+        let value = match vm.get_stack(*rhs)? {
             Value::Integer(integer) => Value::Integer(-integer),
             Value::Float(float) => Value::Float(-float),
             _ => return Err(Error::InvalidNegOperand),
@@ -850,7 +845,7 @@ impl ByteCode {
     pub fn bit_not(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::BitNot(dst, rhs));
 
-        let value = match vm.stack[usize::from(*rhs)] {
+        let value = match vm.get_stack(*rhs)? {
             Value::Integer(integer) => Value::Integer(!integer),
             _ => return Err(Error::InvalidBitNotOperand),
         };
@@ -860,7 +855,7 @@ impl ByteCode {
     pub fn not(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::Not(dst, rhs));
 
-        let value = match &vm.stack[usize::from(*rhs)] {
+        let value = match &vm.get_stack(*rhs)? {
             Value::Boolean(false) | Value::Nil => Value::Boolean(true),
             _ => Value::Boolean(false),
         };
@@ -870,7 +865,7 @@ impl ByteCode {
     pub fn len(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::Len(dst, rhs));
 
-        let value = match &vm.stack[usize::from(*rhs)] {
+        let value = match &vm.get_stack(*rhs)? {
             Value::String(string) => Value::Integer(i64::try_from(string.len())?),
             Value::ShortString(string) => Value::Integer(i64::try_from(string.len())?),
             _ => return Err(Error::InvalidLenOperand),
@@ -881,7 +876,7 @@ impl ByteCode {
     pub fn concat(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::Concat(dst, lhs, rhs));
 
-        let value = match (&vm.stack[usize::from(*lhs)], &vm.stack[usize::from(*rhs)]) {
+        let value = match (&vm.get_stack(*lhs)?, &vm.get_stack(*rhs)?) {
             (Value::Nil, _) => return Err(Error::NilConcat),
             (Value::Boolean(_), _) => return Err(Error::BoolConcat),
             (Value::Table(_), _) => return Err(Error::TableConcat),
@@ -913,82 +908,87 @@ impl ByteCode {
     pub fn less_than(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::LessThan(lhs, rhs, test));
 
-        let lhs = &vm.stack[*lhs as usize];
-        let rhs = &vm.stack[*rhs as usize];
+        let lhs = vm.get_stack(*lhs)?;
+        let rhs = vm.get_stack(*rhs)?;
 
-        Self::relational_comparison(
-            lhs,
-            rhs,
-            &mut vm.program_counter,
-            |ordering| ordering == Ordering::Less,
-            *test == 1,
-        )
+        Self::relational_comparison(lhs, rhs, |ordering| ordering == Ordering::Less, *test == 1)
+            .map(|should_advance_pc| {
+                if should_advance_pc {
+                    vm.program_counter += 1;
+                }
+            })
     }
 
     pub fn less_equal(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::LessEqual(lhs, rhs, test));
 
-        let lhs = &vm.stack[*lhs as usize];
-        let rhs = &vm.stack[*rhs as usize];
+        let lhs = &vm.get_stack(*lhs)?;
+        let rhs = &vm.get_stack(*rhs)?;
 
         Self::relational_comparison(
             lhs,
             rhs,
-            &mut vm.program_counter,
             |ordering| ordering != Ordering::Greater,
             *test == 1,
         )
+        .map(|should_advance_pc| {
+            if should_advance_pc {
+                vm.program_counter += 1;
+            }
+        })
     }
 
     pub fn equal_constant(&self, vm: &mut Lua, program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::EqualConstant(register, constant, test));
 
-        let lhs = &vm.stack[*register as usize];
+        let lhs = vm.get_stack(*register)?;
         let rhs = &program.constants[*constant as usize];
 
-        Self::relational_comparison(
-            lhs,
-            rhs,
-            &mut vm.program_counter,
-            |ordering| ordering == Ordering::Equal,
-            *test == 1,
-        )
+        Self::relational_comparison(lhs, rhs, |ordering| ordering == Ordering::Equal, *test == 1)
+            .map(|should_advance_pc| {
+                if should_advance_pc {
+                    vm.program_counter += 1;
+                }
+            })
     }
 
     pub fn greater_than_integer(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::GreaterThanInteger(register, integer, test));
 
-        let lhs = &vm.stack[*register as usize];
+        let lhs = vm.get_stack(*register)?;
         let rhs = Value::Integer(i64::from(*integer));
 
         Self::relational_comparison(
             lhs,
             &rhs,
-            &mut vm.program_counter,
             |ordering| ordering == Ordering::Greater,
             *test == 1,
         )
+        .map(|should_advance_pc| {
+            if should_advance_pc {
+                vm.program_counter += 1;
+            }
+        })
     }
 
     pub fn greater_equal_integer(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::GreaterEqualInteger(register, integer, test));
 
-        let lhs = &vm.stack[*register as usize];
+        let lhs = vm.get_stack(*register)?;
         let rhs = Value::Integer(i64::from(*integer));
 
-        Self::relational_comparison(
-            lhs,
-            &rhs,
-            &mut vm.program_counter,
-            |ordering| ordering != Ordering::Less,
-            *test == 1,
-        )
+        Self::relational_comparison(lhs, &rhs, |ordering| ordering != Ordering::Less, *test == 1)
+            .map(|should_advance_pc| {
+                if should_advance_pc {
+                    vm.program_counter += 1;
+                }
+            })
     }
 
     pub fn test(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::Test(src, test));
 
-        let cond = &vm.stack[*src as usize];
+        let cond = vm.get_stack(*src)?;
         match (cond, test) {
             (Value::Nil | Value::Boolean(false), 0) => (),
             (Value::Nil | Value::Boolean(false), 1) => vm.program_counter += 1,
@@ -1003,9 +1003,23 @@ impl ByteCode {
         validate_bytecode!(self, ByteCode::Call(func, _args));
 
         vm.func_index = *func as usize;
-        let func = &vm.stack[vm.func_index];
+        let func = vm.get_stack(*func)?;
         if let Value::Function(f) = func {
+            log::trace!("Calling native function");
             f(vm);
+            Ok(())
+        } else if let Value::Closure(f) = func {
+            log::trace!("Calling closure");
+            let f = f.clone();
+
+            let cache_program_counter = core::mem::take(&mut vm.program_counter);
+            vm.return_stack.push(vm.stack.len());
+
+            vm.run_program(f.as_ref())?;
+
+            vm.return_stack.pop();
+            vm.program_counter = cache_program_counter;
+
             Ok(())
         } else {
             Err(Error::InvalidFunction(func.clone()))
@@ -1015,7 +1029,7 @@ impl ByteCode {
     pub fn for_loop(&self, vm: &mut Lua, program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::ForLoop(for_stack, jmp));
 
-        if let Value::Integer(counter) = &mut vm.stack[usize::from(*for_stack) + 1] {
+        if let Value::Integer(counter) = &mut vm.get_stack_mut(for_stack + 1)? {
             if counter != &0 {
                 *counter -= 1;
                 ByteCode::Add(for_stack + 3, for_stack + 3, for_stack + 2).add(vm, program)?;
@@ -1031,9 +1045,9 @@ impl ByteCode {
     pub fn for_prepare(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::ForPrepare(for_stack, jmp));
 
-        let init = &vm.stack[usize::from(*for_stack)];
-        let limit = &vm.stack[usize::from(*for_stack + 1)];
-        let step = &vm.stack[usize::from(*for_stack + 2)];
+        let init = vm.get_stack(*for_stack)?;
+        let limit = vm.get_stack(for_stack + 1)?;
+        let step = vm.get_stack(for_stack + 2)?;
 
         if let (&Value::Integer(init), &Value::Integer(step)) = (init, step) {
             if step == 0 {
@@ -1086,7 +1100,7 @@ impl ByteCode {
         validate_bytecode!(self, ByteCode::SetList(table, count));
 
         let table_items_start = usize::from(*table) + 1;
-        if let Value::Table(table) = vm.stack[usize::from(*table)].clone() {
+        if let Value::Table(table) = vm.get_stack(*table)?.clone() {
             let values = vm
                 .stack
                 .drain(table_items_start..(table_items_start + usize::from(*count)));
@@ -1153,16 +1167,11 @@ impl ByteCode {
     fn relational_comparison(
         lhs: &Value,
         rhs: &Value,
-        program_counter: &mut usize,
         ordering_test: fn(Ordering) -> bool,
         test: bool,
-    ) -> Result<(), Error> {
+    ) -> Result<bool, Error> {
         if let Some(ordering) = lhs.partial_cmp(rhs) {
-            if ordering_test(ordering) != test {
-                *program_counter += 1;
-            }
-
-            Ok(())
+            Ok(ordering_test(ordering) != test)
         } else {
             Err(Error::RelationalOperand(
                 lhs.static_type_name(),
