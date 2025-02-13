@@ -156,7 +156,7 @@ print(100>>a) -- panic
 }
 
 #[test]
-fn chapter5_concat() {
+fn concat() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
     let program = Program::parse(
         r#"
