@@ -81,7 +81,7 @@ else
 end
 
 if b then
-  print "yes, here"
+  print "not here"
 end
 "#,
     )
@@ -151,7 +151,7 @@ end
             ByteCode::Jmp(3),
             //   print "yes, here"
             ByteCode::GetGlobal(2, 0),
-            ByteCode::LoadConstant(3, 3),
+            ByteCode::LoadConstant(3, 1),
             ByteCode::Call(2, 1),
             // end
         ]
