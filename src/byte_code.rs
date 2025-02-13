@@ -835,7 +835,10 @@ impl ByteCode {
     pub fn shiftr(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::ShiftR(dst, lhs, rhs));
 
-        let res = match (&vm.get_stack(*lhs)?, &vm.get_stack(*rhs)?) {
+        let res = match (
+            &vm.get_stack(*lhs)?.clone().try_int(),
+            &vm.get_stack(*rhs)?.clone().try_int(),
+        ) {
             (Value::Integer(l), Value::Integer(r)) => Value::Integer(l >> r),
             (lhs, rhs) => {
                 return Err(Error::BitwiseOperand(
