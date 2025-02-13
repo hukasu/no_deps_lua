@@ -556,7 +556,8 @@ impl Program {
                 funcbody(TokenType::Funcbody)
             ) => {
                 compile_context.locals.push((*name).into());
-                self.funcbody(funcbody, compile_context)
+                let (_, function_body) = compile_context.reserve_stack_top();
+                self.funcbody(funcbody, compile_context, &function_body)
             }
             make_deconstruct!(
                 _local(TokenType::Local),
@@ -1286,9 +1287,9 @@ impl Program {
             }
             make_deconstruct!(_float(TokenType::Float(float))) => Ok(Some(self.float(*float))),
             make_deconstruct!(_dots(TokenType::Dots)) => unimplemented!("exp production"),
-            make_deconstruct!(_functiondef(TokenType::Functiondef)) => {
-                unimplemented!("exp production")
-            }
+            make_deconstruct!(functiondef(TokenType::Functiondef)) => self
+                .functiondef(functiondef, compile_context, exp_desc)
+                .map(|_| None),
             make_deconstruct!(prefixexp(TokenType::Prefixexp)) => {
                 self.prefixexp(prefixexp, compile_context, exp_desc)
             }
@@ -1604,13 +1605,14 @@ impl Program {
     fn functiondef<'a>(
         &mut self,
         functiondef: &Token<'a>,
-        _compile_context: &CompileContext<'a>,
+        compile_context: &mut CompileContext<'a>,
+        exp_desc: &ExpDesc<'a>,
     ) -> Result<(), Error> {
         match functiondef.tokens.as_slice() {
             make_deconstruct!(
                 _function(TokenType::Function),
-                _funcbody(TokenType::Funcbody)
-            ) => unimplemented!("functiondef production"),
+                funcbody(TokenType::Funcbody)
+            ) => self.funcbody(funcbody, compile_context, exp_desc),
             _ => {
                 unreachable!(
                     "Functiondef did not match any of the productions. Had {:#?}.",
@@ -1627,7 +1629,8 @@ impl Program {
     fn funcbody<'a>(
         &mut self,
         funcbody: &Token<'a>,
-        compile_context: &mut CompileContext<'a>,
+        _compile_context: &mut CompileContext<'a>,
+        exp_desc: &ExpDesc<'a>,
     ) -> Result<(), Error> {
         match funcbody.tokens.as_slice() {
             make_deconstruct!(
@@ -1637,30 +1640,34 @@ impl Program {
                 block(TokenType::Block),
                 _end(TokenType::End),
             ) => {
-                let parlist = self.funcbody_parlist(funcbody_parlist)?;
-                let parlist_name_count = parlist.names.len();
+                if let ExpDesc::Local(top_index) = exp_desc {
+                    let top_index = u8::try_from(*top_index)?;
 
-                let (top_index, _) = compile_context.reserve_stack_top();
+                    let parlist = self.funcbody_parlist(funcbody_parlist)?;
+                    let parlist_name_count = parlist.names.len();
 
-                let mut func_program = Program::default();
-                let mut func_compile_context = CompileContext::default();
+                    let mut func_program = Program::default();
+                    let mut func_compile_context = CompileContext::default();
 
-                func_compile_context.locals.extend(parlist.names);
-                func_compile_context.stack_top = u8::try_from(parlist_name_count)?;
+                    func_compile_context.locals.extend(parlist.names);
+                    func_compile_context.stack_top = u8::try_from(parlist_name_count)?;
 
-                func_program.block(block, &mut func_compile_context)?;
+                    func_program.block(block, &mut func_compile_context)?;
 
-                func_program.byte_codes.push(ByteCode::ZeroReturn);
+                    func_program.byte_codes.push(ByteCode::ZeroReturn);
 
-                let closure_position = self.push_function(Rc::new(Closure::new(
-                    func_program,
-                    parlist_name_count,
-                    parlist.variadic_args,
-                )))?;
-                self.byte_codes
-                    .push(ByteCode::Closure(top_index, closure_position));
+                    let closure_position = self.push_function(Rc::new(Closure::new(
+                        func_program,
+                        parlist_name_count,
+                        parlist.variadic_args,
+                    )))?;
+                    self.byte_codes
+                        .push(ByteCode::Closure(top_index, closure_position));
 
-                Ok(())
+                    Ok(())
+                } else {
+                    unimplemented!("Can only create function bodies into locals for now");
+                }
             }
             _ => {
                 unreachable!(

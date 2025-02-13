@@ -1,6 +1,6 @@
 use core::{cell::RefCell, cmp::Ordering};
 
-use alloc::{format, rc::Rc};
+use alloc::{format, rc::Rc, vec::Vec};
 
 use crate::{
     table::Table,
@@ -1030,9 +1030,15 @@ impl ByteCode {
             vm.stack
                 .resize(vm.get_return_stack() + usize::from(*args), Value::Nil);
 
-            func(vm);
+            let returns = usize::try_from(func(vm))?;
 
+            let returns = vm
+                .stack
+                .drain(vm.get_return_stack()..(vm.get_return_stack() + returns))
+                .collect::<Vec<_>>();
             vm.return_stack.pop();
+            vm.stack.truncate(vm.func_index);
+            vm.stack.extend(returns);
 
             Ok(())
         } else if let Value::Closure(func) = func {
