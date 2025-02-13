@@ -2,7 +2,7 @@ use crate::{byte_code::ByteCode, Program};
 
 #[test]
 fn unops() {
-    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
     let program = Program::parse(
         r#"
 local i = 100
@@ -91,7 +91,7 @@ print(not print)
 
 #[test]
 fn binops() {
-    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
     let program = Program::parse(
         r#"
 g = 10
@@ -157,7 +157,7 @@ print(100>>a) -- panic
 
 #[test]
 fn chapter5_concat() {
-    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
     let program = Program::parse(
         r#"
 print('hello, '..'world')

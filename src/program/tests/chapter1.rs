@@ -2,7 +2,7 @@ use crate::byte_code::ByteCode;
 
 #[test]
 fn hello_world() {
-    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
     let program = crate::Program::parse(
         r#"
 print "hello world"

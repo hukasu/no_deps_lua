@@ -2,7 +2,7 @@ use crate::{byte_code::ByteCode, Program};
 
 #[test]
 fn table() {
-    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
     let program = Program::parse(
         r#"
 local k = "key"
@@ -75,7 +75,7 @@ print(t)
 
 #[test]
 fn prefixexp() {
-    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
     let program = Program::parse(
         r#"
 local a,b = 100,200

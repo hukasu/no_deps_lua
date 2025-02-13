@@ -4,7 +4,7 @@ use crate::{byte_code::ByteCode, ext::Unescape, Program};
 
 #[test]
 fn escape() {
-    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
     let program = Program::parse(
         r#"
 print "tab:\thi" -- tab
@@ -66,7 +66,7 @@ print "null: \0." -- '\0'
 
 #[test]
 fn strings() {
-    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
     let program = Program::parse(
         r#"
 local s = "hello_world"

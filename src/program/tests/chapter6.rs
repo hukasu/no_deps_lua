@@ -2,7 +2,7 @@ use crate::{byte_code::ByteCode, Program};
 
 #[test]
 fn if_statement() {
-    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
     let program = Program::parse(
         r#"
 if a then
@@ -60,7 +60,7 @@ print (a) -- should be nil
 
 #[test]
 fn if_else() {
-    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
     let program = Program::parse(
         r#"
 local a,b = 123
@@ -161,7 +161,7 @@ end
 
 #[test]
 fn while_statement() {
-    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
     let program = Program::parse(
         r#"
 local a = 123
@@ -196,7 +196,7 @@ end
 
 #[test]
 fn break_statement() {
-    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
     let program = Program::parse(
         r#"
 local z = 1
@@ -266,7 +266,7 @@ end
 
 #[test]
 fn repeat() {
-    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
     let program = Program::parse(
         r#"
 local a = false
@@ -300,7 +300,7 @@ until a
 
 #[test]
 fn for_statement() {
-    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
     let program = Program::parse(
         r#"
 -- 1~3
@@ -407,7 +407,7 @@ end
 
 #[test]
 fn goto() {
-    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
     let program = Program::parse(
         r#"
 ::label1::

@@ -2,7 +2,7 @@ use crate::{byte_code::ByteCode, Program};
 
 #[test]
 fn types() {
-    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
     let program = Program::parse(
         r#"
 print(nil)
@@ -47,7 +47,7 @@ print(123456.0)
 
 #[test]
 fn local() {
-    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
     let program = Program::parse(
         r#"
 local a = "hello, local!" -- define a local by string
@@ -95,7 +95,7 @@ print "I'm local-print!" -- call local function
 
 #[test]
 fn assign() {
-    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
     let program = Program::parse(
         r#"
 local a = 456

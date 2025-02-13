@@ -2,7 +2,7 @@ use crate::{byte_code::ByteCode, value::Value, Lua, Program};
 
 #[test]
 fn base_function() {
-    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
 
     let program = Program::parse(
         r#"
@@ -56,7 +56,7 @@ hello()
 
 #[test]
 fn args() {
-    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
 
     let program = Program::parse(
         r#"
