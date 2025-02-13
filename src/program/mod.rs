@@ -1204,6 +1204,7 @@ impl Program {
         compile_context: &mut CompileContext<'a>,
         maybe_exp_descs: Option<&[ExpDesc<'a>]>,
     ) -> Result<(), Error> {
+        let exp_top = compile_context.stack_top;
         match explist_cont.tokens.as_slice() {
             [] => {
                 if let Some(exp_descs) = maybe_exp_descs {
@@ -1223,10 +1224,31 @@ impl Program {
                     |exp_descs| (exp_descs[0].clone(), Some(&exp_descs[1..])),
                 );
 
-                let Some(exp) = self.exp(exp, compile_context, &exp_desc)? else {
-                    unreachable!("Exp of explist must always exist");
+                if let Some(exp) = self.exp(exp, compile_context, &exp_desc)? {
+                    exp.discharge(&exp_desc, self, compile_context)?;
+
+                    if compile_context.last_expdesc_was_relational {
+                        self.byte_codes.push(ByteCode::LoadFalseSkip(exp_top));
+
+                        let after_false_skip = self.byte_codes.len() - 2;
+                        for jump in compile_context.jump_to_false.drain(..) {
+                            self.byte_codes[jump] =
+                                ByteCode::Jmp(i16::try_from(after_false_skip - jump)?);
+                        }
+
+                        match &mut self.byte_codes[after_false_skip - 1] {
+                        ByteCode::EqualConstant(_, _, test) | ByteCode::LessThan(_, _, test) | ByteCode::LessEqual(_, _, test) | ByteCode::GreaterThanInteger(_, _, test) | ByteCode::GreaterEqualInteger(_, _, test) => {
+                            *test ^= 1
+                        }
+                        other => unreachable!(
+                            "The second to last bytecode should always be a relational comparison. Was {:?}", other
+                        ),
+                    }
+                        self.byte_codes[after_false_skip] = ByteCode::Jmp(1);
+
+                        self.byte_codes.push(ByteCode::LoadTrue(exp_top));
+                    }
                 };
-                exp.discharge(&exp_desc, self, compile_context)?;
 
                 self.explist_cont(
                     explist_cont,

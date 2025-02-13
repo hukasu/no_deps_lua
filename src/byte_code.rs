@@ -1019,25 +1019,31 @@ impl ByteCode {
     }
 
     pub fn call(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
-        validate_bytecode!(self, ByteCode::Call(func_index, _args));
+        validate_bytecode!(self, ByteCode::Call(func_index, args));
 
-        vm.func_index = *func_index as usize;
-        let func = vm.get_stack(*func_index)?;
+        vm.func_index = usize::from(*func_index);
+        let func = vm.get_stack(*func_index)?.clone();
         if let Value::Function(func) = func {
             log::trace!("Calling native function");
+
+            vm.push_return_stack(vm.func_index);
+            vm.stack
+                .resize(vm.get_return_stack() + usize::from(*args), Value::Nil);
+
             func(vm);
+
+            vm.return_stack.pop();
+
             Ok(())
         } else if let Value::Closure(func) = func {
             log::trace!("Calling closure");
-            let f = func.clone();
 
             vm.program_counter.push(0);
-            let return_stack = usize::from(*func_index) + f.arg_count();
+            vm.push_return_stack(vm.func_index);
+            vm.stack
+                .resize(vm.get_return_stack() + func.arg_count(), Value::Nil);
 
-            vm.stack.resize(return_stack + 1, Value::Nil);
-            vm.return_stack.push(return_stack - 1);
-
-            vm.run_program(f.program())?;
+            vm.run_program(func.program())?;
 
             vm.program_counter.pop();
 
@@ -1051,7 +1057,7 @@ impl ByteCode {
         validate_bytecode!(self, ByteCode::ZeroReturn);
 
         vm.stack.truncate(vm.func_index);
-        vm.return_stack.pop();
+        vm.pop_return_stack();
 
         Ok(())
     }
@@ -1063,7 +1069,7 @@ impl ByteCode {
         let return_value = vm.get_stack(*return_loc)?.clone();
 
         vm.stack.truncate(vm.func_index + 1);
-        vm.return_stack.pop();
+        vm.pop_return_stack();
 
         vm.set_stack(func_index, return_value)?;
 

@@ -6,7 +6,7 @@ use core::{
 
 use alloc::rc::Rc;
 
-use crate::{stack_str::StackStr, table::Table, Closure, Lua};
+use crate::{ext::FloatExt, stack_str::StackStr, table::Table, Closure, Lua};
 
 const SHORT_STRING_LEN: usize = 23;
 
@@ -24,6 +24,19 @@ pub enum Value {
 }
 
 impl Value {
+    pub fn try_int(self) -> Value {
+        match self {
+            val @ Value::Float(float) => {
+                if float.zero_frac() {
+                    Value::Integer(float as i64)
+                } else {
+                    val
+                }
+            }
+            other => other,
+        }
+    }
+
     pub fn try_float(&self) -> Option<Value> {
         match self {
             Value::Integer(i) => Some(Value::Float(*i as f64)),

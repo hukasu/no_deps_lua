@@ -78,15 +78,29 @@ impl Lua {
     }
 
     fn get_stack(&self, src: u8) -> Result<&Value, Error> {
-        let offset = self.return_stack.last().copied().unwrap_or(0);
+        let offset = self.get_return_stack();
         let src = offset + usize::from(src);
         Ok(&self.stack[src])
     }
 
     fn get_stack_mut(&mut self, src: u8) -> Result<&mut Value, Error> {
-        let offset = self.return_stack.last().copied().unwrap_or(0);
+        let offset = self.get_return_stack();
         let src = offset + usize::from(src);
         Ok(&mut self.stack[src])
+    }
+
+    fn push_return_stack(&mut self, function_location: usize) {
+        let last = self.return_stack.last().copied().unwrap_or(0);
+        self.return_stack.push(last + function_location + 1);
+    }
+
+    fn get_return_stack(&self) -> usize {
+        let last = self.return_stack.last().copied().unwrap_or(0);
+        last
+    }
+
+    fn pop_return_stack(&mut self) {
+        self.return_stack.pop();
     }
 
     fn read_bytecode<'a>(&mut self, program: &'a Program) -> Option<&'a ByteCode> {
