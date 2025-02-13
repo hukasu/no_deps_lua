@@ -1789,7 +1789,9 @@ impl Program {
 
                 self.byte_codes[table_initialization_bytecode_position] =
                     ByteCode::NewTable(dst, array_items, table_items);
-                self.byte_codes.push(ByteCode::SetList(dst, array_items));
+                if array_items > 0 {
+                    self.byte_codes.push(ByteCode::SetList(dst, array_items));
+                }
 
                 // Clear the list values
                 compile_context.stack_top -= array_items;

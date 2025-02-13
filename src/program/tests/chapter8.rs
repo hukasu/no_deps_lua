@@ -183,3 +183,74 @@ print(f(100,200))
     assert!(matches!(vm.stack[1], Value::Function(_)));
     assert_eq!(vm.stack[2], Value::Integer(300));
 }
+
+#[test]
+fn rustf() {
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
+
+    let program = Program::parse(
+        r#"
+print(type(123))
+print(type(123.123))
+print(type("123"))
+print(type({}))
+print(type(print))
+print(type(function()end))
+"#,
+    )
+    .unwrap();
+
+    let expected_constants: &[Value] =
+        &["print".into(), "type".into(), 123.123.into(), "123".into()];
+    let expected_bytecodes = &[
+        // print(type(123))
+        ByteCode::GetGlobal(0, 0),
+        ByteCode::GetGlobal(1, 1),
+        ByteCode::LoadInt(2, 123),
+        ByteCode::Call(1, 1),
+        ByteCode::Call(0, 1),
+        // print(type(123.123))
+        ByteCode::GetGlobal(0, 0),
+        ByteCode::GetGlobal(1, 1),
+        ByteCode::LoadConstant(2, 2),
+        ByteCode::Call(1, 1),
+        ByteCode::Call(0, 1),
+        // print(type("123"))
+        ByteCode::GetGlobal(0, 0),
+        ByteCode::GetGlobal(1, 1),
+        ByteCode::LoadConstant(2, 3),
+        ByteCode::Call(1, 1),
+        ByteCode::Call(0, 1),
+        // print(type({}))
+        ByteCode::GetGlobal(0, 0),
+        ByteCode::GetGlobal(1, 1),
+        ByteCode::NewTable(2, 0, 0),
+        ByteCode::Call(1, 1),
+        ByteCode::Call(0, 1),
+        // print(type(print))
+        ByteCode::GetGlobal(0, 0),
+        ByteCode::GetGlobal(1, 1),
+        ByteCode::GetGlobal(2, 0),
+        ByteCode::Call(1, 1),
+        ByteCode::Call(0, 1),
+        // print(type(function()end))
+        ByteCode::GetGlobal(0, 0),
+        ByteCode::GetGlobal(1, 1),
+        ByteCode::Closure(2, 0),
+        ByteCode::Call(1, 1),
+        ByteCode::Call(0, 1),
+    ];
+    assert_eq!(program.constants, expected_constants);
+    assert_eq!(program.byte_codes, expected_bytecodes);
+    assert_eq!(program.functions.len(), 1);
+
+    let Value::Closure(closure) = &program.functions[0] else {
+        panic!("Closure must be a closure")
+    };
+    assert!(closure.program().constants.is_empty());
+    assert_eq!(closure.program().byte_codes, &[ByteCode::ZeroReturn]);
+    assert!(closure.program().functions.is_empty());
+
+    let mut vm = Lua::new();
+    vm.run_program(&program).expect("Should work");
+}
