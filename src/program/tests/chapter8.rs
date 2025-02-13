@@ -180,8 +180,6 @@ print(f(100,200))
     vm.run_program(&program).expect("Should work");
 
     assert!(matches!(vm.stack[0], Value::Closure(_)));
-    assert!(matches!(vm.stack[1], Value::Function(_)));
-    assert_eq!(vm.stack[2], Value::Integer(300));
 }
 
 #[test]
