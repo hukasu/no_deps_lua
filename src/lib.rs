@@ -33,7 +33,10 @@ pub struct Lua {
 
 impl Lua {
     fn new() -> Self {
-        let globals = Vec::from([("print".into(), Value::Function(std::lib_print))]);
+        let globals = Vec::from([
+            ("print".into(), Value::Function(std::lib_print)),
+            ("type".into(), Value::Function(std::lib_type)),
+        ]);
 
         Self {
             globals,
