@@ -311,7 +311,9 @@ pub enum ByteCode {
     ZeroReturn,
     /// `RETURN1`  
     /// Returns from function with 1 out values
-    OneReturn,
+    ///
+    /// `return`: Location on stack of the returned value
+    OneReturn(u8),
     /// `FORLOOP`  
     /// Increment counter and jumps back to start of loop
     ///
@@ -404,7 +406,7 @@ impl ByteCode {
     pub fn load_false_skip(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::LoadFalseSkip(dst));
 
-        vm.program_counter += 1;
+        vm.jump(1)?;
         vm.set_stack(*dst, Value::Boolean(false))
     }
 
@@ -911,13 +913,7 @@ impl ByteCode {
     pub fn jmp(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::Jmp(jump));
 
-        if jump.is_negative() {
-            vm.program_counter -= isize::from(*jump).unsigned_abs();
-        } else {
-            vm.program_counter += usize::try_from(*jump)?;
-        }
-
-        Ok(())
+        vm.jump(isize::from(*jump))
     }
 
     pub fn less_than(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
@@ -927,10 +923,11 @@ impl ByteCode {
         let rhs = vm.get_stack(*rhs)?;
 
         Self::relational_comparison(lhs, rhs, |ordering| ordering == Ordering::Less, *test == 1)
-            .map(|should_advance_pc| {
+            .and_then(|should_advance_pc| {
                 if should_advance_pc {
-                    vm.program_counter += 1;
+                    vm.jump(1)?;
                 }
+                Ok(())
             })
     }
 
@@ -946,10 +943,11 @@ impl ByteCode {
             |ordering| ordering != Ordering::Greater,
             *test == 1,
         )
-        .map(|should_advance_pc| {
+        .and_then(|should_advance_pc| {
             if should_advance_pc {
-                vm.program_counter += 1;
+                vm.jump(1)?;
             }
+            Ok(())
         })
     }
 
@@ -960,10 +958,11 @@ impl ByteCode {
         let rhs = &program.constants[*constant as usize];
 
         Self::relational_comparison(lhs, rhs, |ordering| ordering == Ordering::Equal, *test == 1)
-            .map(|should_advance_pc| {
+            .and_then(|should_advance_pc| {
                 if should_advance_pc {
-                    vm.program_counter += 1;
+                    vm.jump(1)?;
                 }
+                Ok(())
             })
     }
 
@@ -979,10 +978,11 @@ impl ByteCode {
             |ordering| ordering == Ordering::Greater,
             *test == 1,
         )
-        .map(|should_advance_pc| {
+        .and_then(|should_advance_pc| {
             if should_advance_pc {
-                vm.program_counter += 1;
+                vm.jump(1)?;
             }
+            Ok(())
         })
     }
 
@@ -993,10 +993,11 @@ impl ByteCode {
         let rhs = Value::Integer(i64::from(*integer));
 
         Self::relational_comparison(lhs, &rhs, |ordering| ordering != Ordering::Less, *test == 1)
-            .map(|should_advance_pc| {
+            .and_then(|should_advance_pc| {
                 if should_advance_pc {
-                    vm.program_counter += 1;
+                    vm.jump(1)?;
                 }
+                Ok(())
             })
     }
 
@@ -1006,9 +1007,9 @@ impl ByteCode {
         let cond = vm.get_stack(*src)?;
         match (cond, test) {
             (Value::Nil | Value::Boolean(false), 0) => (),
-            (Value::Nil | Value::Boolean(false), 1) => vm.program_counter += 1,
+            (Value::Nil | Value::Boolean(false), 1) => vm.jump(1)?,
             (_, 1) => (),
-            _ => vm.program_counter += 1,
+            _ => vm.jump(1)?,
         };
 
         Ok(())
@@ -1027,8 +1028,7 @@ impl ByteCode {
             log::trace!("Calling closure");
             let f = func.clone();
 
-            let cache_program_counter = core::mem::take(&mut vm.program_counter);
-            let stack_size = vm.stack.len();
+            vm.program_counter.push(0);
             let return_stack = usize::from(*func_index) + f.arg_count();
 
             vm.stack.resize(return_stack + 1, Value::Nil);
@@ -1036,9 +1036,7 @@ impl ByteCode {
 
             vm.run_program(f.program())?;
 
-            vm.return_stack.pop();
-            vm.stack.truncate(stack_size - f.arg_count());
-            vm.program_counter = cache_program_counter;
+            vm.program_counter.pop();
 
             Ok(())
         } else {
@@ -1046,8 +1044,25 @@ impl ByteCode {
         }
     }
 
-    pub fn zero_return(&self, _vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    pub fn zero_return(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::ZeroReturn);
+
+        vm.stack.truncate(vm.func_index);
+        vm.return_stack.pop();
+
+        Ok(())
+    }
+
+    pub fn one_return(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+        validate_bytecode!(self, ByteCode::OneReturn(return_loc));
+
+        let func_index = u8::try_from(vm.func_index)?;
+        let return_value = vm.get_stack(*return_loc)?.clone();
+
+        vm.stack.truncate(vm.func_index + 1);
+        vm.return_stack.pop();
+
+        vm.set_stack(func_index, return_value)?;
 
         Ok(())
     }
@@ -1059,7 +1074,7 @@ impl ByteCode {
             if counter != &0 {
                 *counter -= 1;
                 ByteCode::Add(for_stack + 3, for_stack + 3, for_stack + 2).add(vm, program)?;
-                vm.program_counter -= usize::from(*jmp);
+                vm.jump(-isize::try_from(*jmp)?)?;
             }
             Ok(())
         } else {
@@ -1092,7 +1107,7 @@ impl ByteCode {
             vm.set_stack(for_stack + 1, Value::Integer(count))?;
             vm.set_stack(for_stack + 3, Value::Integer(init))?;
             if count <= 0 {
-                vm.program_counter += usize::from(*jmp) + 1;
+                vm.jump(isize::try_from(*jmp)? + 1)?;
             }
             Ok(())
         } else {
@@ -1116,7 +1131,7 @@ impl ByteCode {
             vm.set_stack(for_stack + 2, Value::Float(step))?;
             vm.set_stack(for_stack + 3, Value::Float(init))?;
             if count <= 0.0 {
-                vm.program_counter += usize::from(*jmp) + 1;
+                vm.jump(isize::try_from(*jmp)? + 1)?;
             }
             Ok(())
         }

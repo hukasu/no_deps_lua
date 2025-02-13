@@ -25,7 +25,7 @@ pub use {closure::Closure, error::Error, program::Program};
 #[derive(Debug, Default)]
 pub struct Lua {
     func_index: usize,
-    program_counter: usize,
+    program_counter: Vec<usize>,
     globals: Vec<(Value, Value)>,
     stack: Vec<Value>,
     return_stack: Vec<usize>,
@@ -37,7 +37,20 @@ impl Lua {
 
         Self {
             globals,
+            program_counter: Vec::from([0]),
             ..Default::default()
+        }
+    }
+
+    fn jump(&mut self, jump: isize) -> Result<(), Error> {
+        let Some(pc) = self.program_counter.last_mut() else {
+            unreachable!("Program counter stack of Vm should never be empty.");
+        };
+        if let Some(new_pc) = pc.checked_add_signed(jump) {
+            *pc = new_pc;
+            Ok(())
+        } else {
+            Err(Error::InvalidJump)
         }
     }
 
@@ -77,10 +90,14 @@ impl Lua {
     }
 
     fn read_bytecode<'a>(&mut self, program: &'a Program) -> Option<&'a ByteCode> {
-        program
-            .byte_codes
-            .get(self.program_counter)
-            .inspect(|_| self.program_counter += 1)
+        let Some(pc) = self.program_counter.last_mut() else {
+            unreachable!("Program counter stack of Vm should never be empty.");
+        };
+
+        let next_bytecode = program.byte_codes.get(*pc);
+        *pc += 1;
+
+        next_bytecode
     }
 
     pub fn execute(program: &Program) -> Result<(), Error> {
@@ -158,8 +175,14 @@ impl Lua {
                 test @ ByteCode::Test(_, _) => test.test(self, program)?,
                 call @ ByteCode::Call(_, _) => call.call(self, program)?,
                 ByteCode::Return => unimplemented!("return bytecode"),
-                zero_return @ ByteCode::ZeroReturn => zero_return.zero_return(self, program)?,
-                ByteCode::OneReturn => unimplemented!("one_return bytecode"),
+                zero_return @ ByteCode::ZeroReturn => {
+                    zero_return.zero_return(self, program)?;
+                    break;
+                }
+                one_return @ ByteCode::OneReturn(_) => {
+                    one_return.one_return(self, program)?;
+                    break;
+                }
                 forloop @ ByteCode::ForLoop(_, _) => forloop.for_loop(self, program)?,
                 forprep @ ByteCode::ForPrepare(_, _) => forprep.for_prepare(self, program)?,
                 set_list @ ByteCode::SetList(_, _) => set_list.set_list(self, program)?,

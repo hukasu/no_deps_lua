@@ -28,6 +28,7 @@ pub enum Error {
     IntegerConversion,
     ForZeroStep,
     StackOverflow,
+    InvalidJump,
 }
 
 impl Display for Error {
@@ -60,6 +61,7 @@ impl Display for Error {
             ),
             Self::ForZeroStep => write!(f, "For loop had a step of zero."),
             Self::StackOverflow => write!(f, "Vm's stack has overflown."),
+            Self::InvalidJump => write!(f, "Vm's program counter became invalid."),
         }
     }
 }
