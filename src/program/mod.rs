@@ -561,7 +561,7 @@ impl Program {
                 attnamelist(TokenType::Attnamelist),
                 stat_attexplist(TokenType::StatAttexplist)
             ) => {
-                let namelist = self.attnamelist(attnamelist, compile_context)?;
+                let namelist = self.attnamelist(attnamelist)?;
                 let mut explist = self.stat_attexplist(stat_attexplist, compile_context)?;
 
                 explist.resize(namelist.len(), ExpDesc::Nil);
@@ -673,11 +673,7 @@ impl Program {
         }
     }
 
-    fn attnamelist<'a>(
-        &mut self,
-        attnamelist: &Token<'a>,
-        compile_context: &mut CompileContext<'a>,
-    ) -> Result<NameList, Error> {
+    fn attnamelist(&mut self, attnamelist: &Token<'_>) -> Result<NameList, Error> {
         match attnamelist.tokens.as_slice() {
             make_deconstruct!(
                 _name(TokenType::Name(name)),
@@ -687,7 +683,7 @@ impl Program {
                 let mut namelist = NameList::default();
                 namelist.push((*name).into());
 
-                self.attnamelist_cont(attnamelist_cont, compile_context, &mut namelist)?;
+                self.attnamelist_cont(attnamelist_cont, &mut namelist)?;
 
                 Ok(namelist)
             }
@@ -704,10 +700,9 @@ impl Program {
         }
     }
 
-    fn attnamelist_cont<'a>(
+    fn attnamelist_cont(
         &mut self,
-        attnamelist_cont: &Token<'a>,
-        compile_context: &mut CompileContext<'a>,
+        attnamelist_cont: &Token<'_>,
         namelist: &mut NameList,
     ) -> Result<(), Error> {
         match attnamelist_cont.tokens.as_slice() {
@@ -720,7 +715,7 @@ impl Program {
             ) => {
                 namelist.push((*name).into());
 
-                self.attnamelist_cont(attnamelist_cont, compile_context, namelist)
+                self.attnamelist_cont(attnamelist_cont, namelist)
             }
             _ => {
                 unreachable!(

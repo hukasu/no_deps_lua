@@ -1,6 +1,6 @@
 use crate::parser::TokenType;
 
-use super::{ByteCode, Error};
+use super::Error;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Binop {
