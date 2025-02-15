@@ -120,8 +120,8 @@ pub enum ByteCode {
     ///
     /// `dst`: Location on stack to store result of operation  
     /// `lhs`: Location on stack of left-hand operand  
-    /// `int`: Integer value to add
-    AddInteger(u8, u8, u8),
+    /// `integer`: Integer value to add
+    AddInteger(u8, u8, i8),
     /// `ADDK`  
     /// Performs arithmetic addition with a constant.
     ///
