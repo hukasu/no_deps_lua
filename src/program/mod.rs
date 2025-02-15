@@ -2,18 +2,21 @@ mod binops;
 mod compile_context;
 mod error;
 mod exp_desc;
-mod parlist;
+mod helper_types;
 #[cfg(test)]
 mod tests;
+mod unops;
 
 use alloc::{boxed::Box, rc::Rc, vec::Vec};
-use binops::Binop;
-use compile_context::GotoLabel;
-use parlist::Parlist;
+use helper_types::{NameList, TableKey};
+
+use {
+    compile_context::GotoLabel,
+    helper_types::{ExpList, FunctionNameList, ParList, TableFields, VarList},
+};
 
 use crate::{
     byte_code::ByteCode,
-    ext::Unescape,
     parser::{Parser, Token, TokenType},
     Closure,
 };
@@ -76,15 +79,6 @@ impl Program {
         u8::try_from(new_position).map_err(Error::from)
     }
 
-    fn invert_last_test(&mut self) {
-        let start_of_block = self.byte_codes.len();
-        if let ByteCode::Test(_, test) = &mut self.byte_codes[start_of_block - 2] {
-            *test ^= 1;
-        } else {
-            unreachable!("When inverting a test, the penultimate bytecode must be a `Test`.");
-        }
-    }
-
     fn make_if<'a>(
         &mut self,
         compile_context: &mut CompileContext<'a>,
@@ -92,37 +86,18 @@ impl Program {
         block: &Token<'a>,
         stat_if: &Token<'a>,
     ) -> Result<(), Error> {
-        assert!(
-            compile_context.jumps_to_block.is_empty() && compile_context.jumps_to_end.is_empty(),
-            "At the start of an `if`, compile context jumps must be empty."
-        );
+        let jump_to_block_count = compile_context.jumps_to_block.len();
+        let jump_to_end_count = compile_context.jumps_to_end.len();
 
-        let (top_index, top) = compile_context.reserve_stack_top();
-        let Some(cond) = self.exp(exp, compile_context, &top)? else {
-            unreachable!("Condition of if must always exist");
-        };
-
-        cond.discharge(
-            &ExpDesc::IfCondition(usize::from(top_index), false),
-            self,
-            compile_context,
-        )?;
-
-        // Finish use of condition
-        compile_context.stack_top = top_index;
+        let cond = self.exp(exp, compile_context)?;
+        let test = !matches!(cond, ExpDesc::Name(_));
+        cond.discharge(&ExpDesc::Condition(test), self, compile_context)?;
 
         let start_of_block = self.byte_codes.len() - 1;
-        for jump in compile_context.jumps_to_block.drain(..) {
+        for jump in compile_context.jumps_to_block.drain(jump_to_block_count..) {
             self.byte_codes[jump] =
                 ByteCode::Jmp(i16::try_from(start_of_block - jump).map_err(|_| Error::LongJump)?);
         }
-
-        // If the last test of an `if` is an `or` it's test flipped
-        if compile_context.last_expdesc_was_or {
-            self.invert_last_test();
-        }
-        compile_context.last_expdesc_was_or = false;
-        compile_context.last_expdesc_was_relational = false;
 
         let locals = compile_context.locals.len();
         self.block(block, compile_context)?;
@@ -130,31 +105,32 @@ impl Program {
             .inspect_err(|_| log::error!("Failed to rewind stack top after `if`s block."))?;
         compile_context.locals.truncate(locals);
 
-        let end_of_block = self.byte_codes.len();
-        // Update jump to have the correct number
-
-        let jump_end = self.byte_codes.len();
+        let jump_out_of_if = self.byte_codes.len();
         self.byte_codes.push(ByteCode::Jmp(0));
 
-        let jumps = core::mem::take(&mut compile_context.jumps_to_end);
+        let start_of_block = self.byte_codes.len() - 1;
+        for jump in compile_context.jumps_to_block.drain(jump_to_block_count..) {
+            self.byte_codes[jump] =
+                ByteCode::Jmp(i16::try_from(start_of_block - jump).map_err(|_| Error::LongJump)?);
+        }
 
         self.stat_if(stat_if, compile_context)?;
-        let end_of_if = self.byte_codes.len();
 
-        let fix_up = if end_of_block == (end_of_if - 1) {
-            // Last else, so no need to jump
-            self.byte_codes.pop();
-            end_of_block - 1
-        } else {
-            self.byte_codes[jump_end] = ByteCode::Jmp(
-                i16::try_from(end_of_if - (jump_end + 1)).map_err(|_| Error::LongJump)?,
+        let after_elses = self.byte_codes.len();
+        let offset = if after_elses != jump_out_of_if + 1 {
+            self.byte_codes[jump_out_of_if] = ByteCode::Jmp(
+                i16::try_from(after_elses - jump_out_of_if - 1).map_err(|_| Error::LongJump)?,
             );
-            end_of_block
+            0
+        } else {
+            self.byte_codes.pop();
+            1
         };
 
-        for jump in jumps {
-            self.byte_codes[jump] =
-                ByteCode::Jmp(i16::try_from(fix_up - jump).map_err(|_| Error::LongJump)?);
+        for jump in compile_context.jumps_to_end.drain(jump_to_end_count..) {
+            self.byte_codes[jump] = ByteCode::Jmp(
+                i16::try_from(start_of_block - jump - offset).map_err(|_| Error::LongJump)?,
+            );
         }
 
         Ok(())
@@ -317,12 +293,22 @@ impl Program {
                 _assing(TokenType::Assign),
                 explist(TokenType::Explist)
             ) => {
-                let exp_descs = self.varlist(varlist, compile_context)?;
-                self.explist(explist, compile_context, Some(&exp_descs))
+                let varlist = self.varlist(varlist, compile_context)?;
+                let mut explist = self.explist(explist, compile_context)?;
+
+                explist.resize(varlist.len(), ExpDesc::Nil);
+
+                for (var, exp) in varlist.iter().zip(explist.iter()) {
+                    exp.discharge(var, self, compile_context)?;
+                }
+
+                Ok(())
             }
             make_deconstruct!(functioncall(TokenType::Functioncall)) => {
+                let function_call = self.functioncall(functioncall, compile_context)?;
+
                 let (_, stack_top) = compile_context.reserve_stack_top();
-                self.functioncall(functioncall, compile_context, &stack_top)?;
+                function_call.discharge(&stack_top, self, compile_context)?;
                 compile_context.stack_top -= 1;
 
                 Ok(())
@@ -369,60 +355,55 @@ impl Program {
                 block(TokenType::Block),
                 _end(TokenType::End)
             ) => {
-                let mut jump_cache = core::mem::take(&mut compile_context.jumps_to_end);
-
-                let (top_index, top) = compile_context.reserve_stack_top();
-                let Some(cond) = self.exp(exp, compile_context, &top)? else {
-                    unreachable!("Condition of while must always exist)")
-                };
-                cond.discharge(
-                    &ExpDesc::IfCondition(usize::from(top_index), false),
-                    self,
-                    compile_context,
-                )?;
-
-                // Finish use of condition
-                compile_context.stack_top = top_index;
-
+                let jump_to_block_count = compile_context.jumps_to_block.len();
+                let jump_to_end_count = compile_context.jumps_to_end.len();
                 let locals = compile_context.locals.len();
-                let cache_breaks = compile_context.breaks.replace(Vec::with_capacity(16));
+                let mut cache_break = compile_context.breaks.replace(Vec::with_capacity(16));
+
+                let start_of_cond = self.byte_codes.len();
+                let cond = self.exp(exp, compile_context)?;
+                cond.discharge(&ExpDesc::Condition(false), self, compile_context)?;
+
+                let end_of_cond = self.byte_codes.len();
+                for jump in compile_context.jumps_to_block.drain(jump_to_block_count..) {
+                    self.byte_codes[jump] = ByteCode::Jmp(
+                        i16::try_from(end_of_cond - jump).map_err(|_| Error::LongJump)?,
+                    );
+                }
 
                 self.block(block, compile_context)?;
+                compile_context.locals.truncate(locals);
                 compile_context.stack_top -= u8::try_from(compile_context.locals.len() - locals)
                     .inspect_err(|_| {
                         log::error!("Failed to rewind stack top after `while`s block.")
                     })?;
 
-                core::mem::swap(&mut compile_context.jumps_to_end, &mut jump_cache);
-                assert_eq!(
-                    jump_cache.len(),
-                    1,
-                    "While loops should only have one conditional jump."
-                );
-                let jump_end = self.byte_codes.len();
+                let end_of_block = self.byte_codes.len();
+                for jump in compile_context.jumps_to_end.drain(jump_to_end_count..) {
+                    self.byte_codes[jump] = ByteCode::Jmp(
+                        i16::try_from(end_of_block - jump).map_err(|_| Error::LongJump)?,
+                    );
+                }
 
-                self.byte_codes[jump_cache[0]] = ByteCode::Jmp(
-                    i16::try_from(jump_end - jump_cache[0]).map_err(|_| Error::LongJump)?,
-                );
-
-                self.byte_codes.push(ByteCode::Jmp(
-                    i16::try_from(isize::try_from(jump_cache[0])? - isize::try_from(jump_end)? - 2)
-                        .map_err(|_| Error::LongJump)?,
-                ));
-
-                let Some(breaks) = compile_context.breaks.take() else {
+                core::mem::swap(&mut compile_context.breaks, &mut cache_break);
+                let Some(breaks) = cache_break else {
                     unreachable!(
                         "Compile Context breaks should only ever be None outside of loops."
                     );
                 };
                 for break_bytecode in breaks {
                     self.byte_codes[break_bytecode] = ByteCode::Jmp(
-                        i16::try_from(jump_end - break_bytecode).map_err(|_| Error::LongJump)?,
+                        i16::try_from(end_of_block - break_bytecode)
+                            .map_err(|_| Error::LongJump)?,
                     );
                 }
 
-                compile_context.locals.truncate(locals);
-                compile_context.breaks = cache_breaks;
+                self.byte_codes.push(ByteCode::Jmp(
+                    i16::try_from(start_of_cond)
+                        .and_then(|lhs| i16::try_from(end_of_block + 1).map(|rhs| (lhs, rhs)))
+                        .map(|(lhs, rhs)| lhs - rhs)
+                        .map_err(|_| Error::LongJump)?,
+                ));
 
                 Ok(())
             }
@@ -435,23 +416,15 @@ impl Program {
                 let mut jump_cache = core::mem::take(&mut compile_context.jumps_to_end);
 
                 let locals = compile_context.locals.len();
-                let stack_top = compile_context.stack_top;
                 let repeat_start = self.byte_codes.len();
 
                 self.block(block, compile_context)?;
 
-                let (top_index, top) = compile_context.reserve_stack_top();
-                let Some(cond) = self.exp(exp, compile_context, &top)? else {
-                    unreachable!("Condition of repeat must always exist");
-                };
-                cond.discharge(
-                    &ExpDesc::IfCondition(usize::from(top_index), false),
-                    self,
-                    compile_context,
-                )?;
+                let cond = self.exp(exp, compile_context)?;
+
+                cond.discharge(&ExpDesc::Condition(false), self, compile_context)?;
 
                 compile_context.locals.truncate(locals);
-                compile_context.stack_top = stack_top;
 
                 core::mem::swap(&mut compile_context.jumps_to_end, &mut jump_cache);
                 assert_eq!(
@@ -496,16 +469,12 @@ impl Program {
                 compile_context.locals.push("?step".into());
                 compile_context.locals.push((*name).into());
 
+                let start = self.exp(start, compile_context)?;
                 let (for_stack, start_stack) = compile_context.reserve_stack_top();
-                let Some(start) = self.exp(start, compile_context, &start_stack)? else {
-                    unreachable!("Start of for must always exist.");
-                };
                 start.discharge(&start_stack, self, compile_context)?;
 
+                let end = self.exp(end, compile_context)?;
                 let (_, end_stack) = compile_context.reserve_stack_top();
-                let Some(end) = self.exp(end, compile_context, &end_stack)? else {
-                    unreachable!("End of for must always exist.");
-                };
                 end.discharge(&end_stack, self, compile_context)?;
 
                 let step = self.stat_forexp(stat_forexp, compile_context)?;
@@ -546,9 +515,15 @@ impl Program {
             ) => unimplemented!("stat production"),
             make_deconstruct!(
                 _function(TokenType::Function),
-                _funcname(TokenType::Funcname),
-                _funcbody(TokenType::Funcbody)
-            ) => unimplemented!("stat production"),
+                funcname(TokenType::Funcname),
+                funcbody(TokenType::Funcbody)
+            ) => {
+                let _function_name = self.funcname(funcname)?;
+
+                let _funcbody = self.funcbody(funcbody, compile_context)?;
+
+                Ok(())
+            }
             make_deconstruct!(
                 _local(TokenType::Local),
                 _function(TokenType::Function),
@@ -556,20 +531,33 @@ impl Program {
                 funcbody(TokenType::Funcbody)
             ) => {
                 compile_context.locals.push((*name).into());
+
+                let funcbody = self.funcbody(funcbody, compile_context)?;
+
                 let (_, function_body) = compile_context.reserve_stack_top();
-                self.funcbody(funcbody, compile_context, &function_body)
+                funcbody.discharge(&function_body, self, compile_context)?;
+
+                Ok(())
             }
             make_deconstruct!(
                 _local(TokenType::Local),
                 attnamelist(TokenType::Attnamelist),
                 stat_attexplist(TokenType::StatAttexplist)
             ) => {
-                let (new_locals, exp_descs) = self.attnamelist(attnamelist, compile_context)?;
-                self.stat_attexplist(stat_attexplist, compile_context, &exp_descs)?;
+                let namelist = self.attnamelist(attnamelist, compile_context)?;
+                let mut explist = self.stat_attexplist(stat_attexplist, compile_context)?;
+
+                explist.resize(namelist.len(), ExpDesc::Nil);
+
+                for exp in explist.iter() {
+                    let (_, stack_top) = compile_context.reserve_stack_top();
+                    exp.discharge(&stack_top, self, compile_context)?;
+                }
+
                 // Adding the new names into `locals` to prevent
                 // referencing the new name when you could be trying to shadow a
                 // global or another local
-                compile_context.locals.extend(new_locals);
+                compile_context.locals.extend(namelist);
                 Ok(())
             }
             _ => {
@@ -630,13 +618,7 @@ impl Program {
         match stat_forexp.tokens.as_slice() {
             [] => Ok(ExpDesc::Integer(1)),
             make_deconstruct!(_comma(TokenType::Comma), exp(TokenType::Exp)) => {
-                let (_, top) = compile_context.reserve_stack_top();
-                let Some(exp_desc) = self.exp(exp, compile_context, &top)? else {
-                    unreachable!("Forexp must always exist.");
-                };
-                compile_context.stack_top -= 1;
-
-                Ok(exp_desc)
+                self.exp(exp, compile_context)
             }
             _ => {
                 unreachable!(
@@ -655,17 +637,11 @@ impl Program {
         &mut self,
         stat_attexplist: &Token<'a>,
         compile_context: &mut CompileContext<'a>,
-        exp_descs: &[ExpDesc<'a>],
-    ) -> Result<(), Error> {
+    ) -> Result<ExpList<'a>, Error> {
         match stat_attexplist.tokens.as_slice() {
-            [] => {
-                for exp_desc in exp_descs {
-                    { ExpDesc::Nil }.discharge(exp_desc, self, compile_context)?;
-                }
-                Ok(())
-            }
+            [] => Ok(ExpList::default()),
             make_deconstruct!(_assign(TokenType::Assign), explist(TokenType::Explist)) => {
-                self.explist(explist, compile_context, Some(exp_descs))
+                self.explist(explist, compile_context)
             }
             _ => {
                 unreachable!(
@@ -684,26 +660,19 @@ impl Program {
         &mut self,
         attnamelist: &Token<'a>,
         compile_context: &mut CompileContext<'a>,
-    ) -> Result<(Vec<Value>, Vec<ExpDesc<'a>>), Error> {
+    ) -> Result<NameList, Error> {
         match attnamelist.tokens.as_slice() {
             make_deconstruct!(
                 _name(TokenType::Name(name)),
                 _attrib(TokenType::Attrib),
                 attnamelist_cont(TokenType::AttnamelistCont)
             ) => {
-                let mut new_locals = [(*name).into()].to_vec();
+                let mut namelist = NameList::default();
+                namelist.push((*name).into());
 
-                let (_, stack_top) = compile_context.reserve_stack_top();
-                let mut exp_descs = [stack_top].to_vec();
+                self.attnamelist_cont(attnamelist_cont, compile_context, &mut namelist)?;
 
-                self.attnamelist_cont(
-                    attnamelist_cont,
-                    compile_context,
-                    &mut new_locals,
-                    &mut exp_descs,
-                )?;
-
-                Ok((new_locals, exp_descs))
+                Ok(namelist)
             }
             _ => {
                 unreachable!(
@@ -722,8 +691,7 @@ impl Program {
         &mut self,
         attnamelist_cont: &Token<'a>,
         compile_context: &mut CompileContext<'a>,
-        new_locals: &mut Vec<Value>,
-        exp_descs: &mut Vec<ExpDesc<'a>>,
+        namelist: &mut NameList,
     ) -> Result<(), Error> {
         match attnamelist_cont.tokens.as_slice() {
             [] => Ok(()),
@@ -733,12 +701,9 @@ impl Program {
                 _attrib(TokenType::Attrib),
                 attnamelist_cont(TokenType::AttnamelistCont)
             ) => {
-                new_locals.push((*name).into());
+                namelist.push((*name).into());
 
-                let (_, stack_top) = compile_context.reserve_stack_top();
-                exp_descs.push(stack_top);
-
-                self.attnamelist_cont(attnamelist_cont, compile_context, new_locals, exp_descs)
+                self.attnamelist_cont(attnamelist_cont, compile_context, namelist)
             }
             _ => {
                 unreachable!(
@@ -785,11 +750,14 @@ impl Program {
                 retstat_explist(TokenType::RetstatExplist),
                 retstat_end(TokenType::RetstatEnd)
             ) => {
-                let stack_top = compile_context.stack_top;
-                self.retstat_explist(retstat_explist, compile_context)?;
-                let ret_count = compile_context.stack_top - stack_top;
+                let explist = self.retstat_explist(retstat_explist, compile_context)?;
 
-                match ret_count {
+                for exp in explist.iter() {
+                    let (_, stack_top) = compile_context.reserve_stack_top();
+                    exp.discharge(&stack_top, self, compile_context)?;
+                }
+
+                match explist.len() {
                     0 => self.byte_codes.push(ByteCode::ZeroReturn),
                     1 => self
                         .byte_codes
@@ -797,7 +765,7 @@ impl Program {
                     _ => unimplemented!("Variadic return"),
                 }
 
-                compile_context.stack_top = stack_top;
+                compile_context.stack_top -= u8::try_from(explist.len())?;
 
                 self.retstat_end(retstat_end, compile_context)?;
 
@@ -820,11 +788,11 @@ impl Program {
         &mut self,
         retstat_explist: &Token<'a>,
         compile_context: &mut CompileContext<'a>,
-    ) -> Result<(), Error> {
+    ) -> Result<ExpList<'a>, Error> {
         match retstat_explist.tokens.as_slice() {
-            [] => Ok(()),
+            [] => Ok(ExpList::default()),
             make_deconstruct!(explist(TokenType::Explist)) => {
-                self.explist(explist, compile_context, None)
+                self.explist(explist, compile_context)
             }
             _ => {
                 unreachable!(
@@ -888,17 +856,23 @@ impl Program {
         }
     }
 
-    fn funcname(
-        &mut self,
-        funcname: &Token,
-        _compile_context: &CompileContext,
-    ) -> Result<(), Error> {
+    fn funcname<'a>(&mut self, funcname: &Token<'a>) -> Result<FunctionNameList<'a>, Error> {
         match funcname.tokens.as_slice() {
             make_deconstruct!(
-                _name(TokenType::Name(_)),
-                _funcname_cont(TokenType::FuncnameCont),
-                _funcname_end(TokenType::FuncnameEnd)
-            ) => unimplemented!("funcname production"),
+                _name(TokenType::Name(name)),
+                funcname_cont(TokenType::FuncnameCont),
+                funcname_end(TokenType::FuncnameEnd)
+            ) => {
+                let mut func_namelist = FunctionNameList::default();
+
+                func_namelist.names.push(name);
+
+                self.funcname_cont(funcname_cont, &mut func_namelist)?;
+
+                self.funcname_end(funcname_end, &mut func_namelist)?;
+
+                Ok(func_namelist)
+            }
             _ => {
                 unreachable!(
                     "Funcname did not match any of the productions. Had {:#?}.",
@@ -912,22 +886,28 @@ impl Program {
         }
     }
 
-    fn funcname_cont(
+    fn funcname_cont<'a>(
         &mut self,
-        attrib: &Token,
-        _compile_context: &CompileContext,
+        funcname_cont: &Token<'a>,
+        func_namelist: &mut FunctionNameList<'a>,
     ) -> Result<(), Error> {
-        match attrib.tokens.as_slice() {
+        match funcname_cont.tokens.as_slice() {
             [] => Ok(()),
             make_deconstruct!(
                 _dot(TokenType::Dot),
-                _name(TokenType::Name(_)),
-                _funcname_cont(TokenType::FuncnameCont)
-            ) => unimplemented!("funcname_cont production"),
+                _name(TokenType::Name(name)),
+                funcname_cont(TokenType::FuncnameCont)
+            ) => {
+                func_namelist.names.push(name);
+
+                self.funcname_cont(funcname_cont, func_namelist)?;
+
+                Ok(())
+            }
             _ => {
                 unreachable!(
                     "FuncnameCont did not match any of the productions. Had {:#?}.",
-                    attrib
+                    funcname_cont
                         .tokens
                         .iter()
                         .map(|t| &t.token_type)
@@ -937,15 +917,17 @@ impl Program {
         }
     }
 
-    fn funcname_end(
+    fn funcname_end<'a>(
         &mut self,
-        funcname_end: &Token,
-        _compile_context: &CompileContext,
+        funcname_end: &Token<'a>,
+        func_namelist: &mut FunctionNameList<'a>,
     ) -> Result<(), Error> {
         match funcname_end.tokens.as_slice() {
             [] => Ok(()),
-            make_deconstruct!(_colon(TokenType::Colon), _name(TokenType::Name(_))) => {
-                unimplemented!("funcname_end production")
+            make_deconstruct!(_colon(TokenType::Colon), _name(TokenType::Name(name))) => {
+                func_namelist.method.replace(name);
+
+                Ok(())
             }
             _ => {
                 unreachable!(
@@ -964,17 +946,17 @@ impl Program {
         &mut self,
         varlist: &Token<'a>,
         compile_context: &mut CompileContext<'a>,
-    ) -> Result<Vec<ExpDesc<'a>>, Error> {
+    ) -> Result<VarList<'a>, Error> {
         match varlist.tokens.as_slice() {
             make_deconstruct!(var(TokenType::Var), varlist_cont(TokenType::VarlistCont)) => {
-                let mut exp_descs = Vec::new();
+                let mut varlist = VarList::default();
 
-                let var_exp_desc = self.var(var, compile_context)?;
-                exp_descs.push(var_exp_desc);
+                let var = self.var(var, compile_context)?;
+                varlist.push(var);
 
-                self.varlist_cont(varlist_cont, compile_context, &mut exp_descs)?;
+                self.varlist_cont(varlist_cont, &mut varlist, compile_context)?;
 
-                Ok(exp_descs)
+                Ok(varlist)
             }
             _ => {
                 unreachable!(
@@ -992,8 +974,8 @@ impl Program {
     fn varlist_cont<'a>(
         &mut self,
         varlist_cont: &Token<'a>,
+        varlist: &mut VarList<'a>,
         compile_context: &mut CompileContext<'a>,
-        exp_descs: &mut Vec<ExpDesc<'a>>,
     ) -> Result<(), Error> {
         match varlist_cont.tokens.as_slice() {
             [] => Ok(()),
@@ -1003,9 +985,8 @@ impl Program {
                 varlist_cont(TokenType::VarlistCont)
             ) => {
                 let var_exp_desc = self.var(var, compile_context)?;
-                exp_descs.push(var_exp_desc);
-
-                self.varlist_cont(varlist_cont, compile_context, exp_descs)
+                varlist.push(var_exp_desc);
+                self.varlist_cont(varlist_cont, varlist, compile_context)
             }
             _ => {
                 unreachable!(
@@ -1026,61 +1007,35 @@ impl Program {
         compile_context: &mut CompileContext<'a>,
     ) -> Result<ExpDesc<'a>, Error> {
         match var.tokens.as_slice() {
-            make_deconstruct!(_name(TokenType::Name(name))) => self.name(name, compile_context),
+            make_deconstruct!(_name(TokenType::Name(name))) => Ok(self.name(name)),
             make_deconstruct!(
                 prefixexp(TokenType::Prefixexp),
                 _lsquare(TokenType::LSquare),
                 exp(TokenType::Exp),
                 _rsquare(TokenType::RSquare)
             ) => {
-                let (_, prefix_top) = compile_context.reserve_stack_top();
-                let Some(prefixexp_exp_desc) =
-                    self.prefixexp(prefixexp, compile_context, &prefix_top)?
-                else {
-                    unreachable!("Prefixexp of var must always exist.");
-                };
+                let table = self.prefixexp(prefixexp, compile_context)?;
+                let key = self.exp(exp, compile_context)?;
 
-                let (_, top) = compile_context.reserve_stack_top();
-                let Some(exp_exp_desc) = self.exp(exp, compile_context, &top)? else {
-                    unreachable!("Exp of var must always exist.");
-                };
-
-                compile_context.stack_top -= 2;
-                match prefixexp_exp_desc {
-                    ExpDesc::Local(table) => Ok(ExpDesc::TableLocal(table, Box::new(exp_exp_desc))),
-                    ExpDesc::Global(table) => {
-                        Ok(ExpDesc::TableGlobal(table, Box::new(exp_exp_desc)))
-                    }
-                    _ => {
-                        unimplemented!("Only local table access is available.");
-                    }
-                }
+                Ok(ExpDesc::TableAccess {
+                    table: Box::new(table),
+                    key: Box::new(key),
+                    record: false,
+                })
             }
             make_deconstruct!(
                 prefixexp(TokenType::Prefixexp),
                 _dot(TokenType::Dot),
                 _name(TokenType::Name(name))
             ) => {
-                let (_, prefix_top) = compile_context.reserve_stack_top();
-                let Some(prefixexp_exp_desc) =
-                    self.prefixexp(prefixexp, compile_context, &prefix_top)?
-                else {
-                    unreachable!("Prefix exp of var must always exist");
-                };
-                let name_exp_desc = self.string(name);
-                compile_context.stack_top -= 1;
+                let table = self.prefixexp(prefixexp, compile_context)?;
+                let key = self.name(name);
 
-                match prefixexp_exp_desc {
-                    ExpDesc::Local(table) => {
-                        Ok(ExpDesc::TableLocal(table, Box::new(name_exp_desc)))
-                    }
-                    ExpDesc::Global(table) => {
-                        Ok(ExpDesc::TableGlobal(table, Box::new(name_exp_desc)))
-                    }
-                    _ => {
-                        unimplemented!("Only local table access is available.");
-                    }
-                }
+                Ok(ExpDesc::TableAccess {
+                    table: Box::new(table),
+                    key: Box::new(key),
+                    record: true,
+                })
             }
 
             _ => {
@@ -1144,47 +1099,16 @@ impl Program {
         &mut self,
         explist: &Token<'a>,
         compile_context: &mut CompileContext<'a>,
-        maybe_exp_descs: Option<&[ExpDesc<'a>]>,
-    ) -> Result<(), Error> {
-        let exp_top = compile_context.stack_top;
+    ) -> Result<ExpList<'a>, Error> {
         match explist.tokens.as_slice() {
             make_deconstruct!(exp(TokenType::Exp), explist_cont(TokenType::ExplistCont)) => {
-                let (exp_desc, tail) = maybe_exp_descs.map_or_else(
-                    || (compile_context.reserve_stack_top().1, None),
-                    |exp_descs| (exp_descs[0].clone(), Some(&exp_descs[1..])),
-                );
+                let mut explist = ExpList::default();
 
-                if let Some(exp) = self.exp(exp, compile_context, &exp_desc)? {
-                    exp.discharge(&exp_desc, self, compile_context)?;
+                let exp = self.exp(exp, compile_context)?;
+                explist.push(exp);
+                self.explist_cont(explist_cont, &mut explist, compile_context)?;
 
-                    if compile_context.last_expdesc_was_relational {
-                        self.byte_codes.push(ByteCode::LoadFalseSkip(exp_top));
-
-                        let after_false_skip = self.byte_codes.len() - 2;
-                        for jump in compile_context.jump_to_false.drain(..) {
-                            self.byte_codes[jump] =
-                                ByteCode::Jmp(i16::try_from(after_false_skip - jump)?);
-                        }
-
-                        match &mut self.byte_codes[after_false_skip - 1] {
-                        ByteCode::EqualConstant(_, _, test) | ByteCode::LessThan(_, _, test) | ByteCode::LessEqual(_, _, test) | ByteCode::GreaterThanInteger(_, _, test) | ByteCode::GreaterEqualInteger(_, _, test) => {
-                            *test ^= 1
-                        }
-                        other => unreachable!(
-                            "The second to last bytecode should always be a relational comparison. Was {:?}", other
-                        ),
-                    }
-                        self.byte_codes[after_false_skip] = ByteCode::Jmp(1);
-
-                        self.byte_codes.push(ByteCode::LoadTrue(exp_top));
-                    }
-                };
-
-                self.explist_cont(
-                    explist_cont,
-                    compile_context,
-                    tail.filter(|slice| !slice.is_empty()),
-                )
+                Ok(explist)
             }
             _ => {
                 unreachable!(
@@ -1202,60 +1126,19 @@ impl Program {
     fn explist_cont<'a>(
         &mut self,
         explist_cont: &Token<'a>,
+        explist: &mut ExpList<'a>,
         compile_context: &mut CompileContext<'a>,
-        maybe_exp_descs: Option<&[ExpDesc<'a>]>,
     ) -> Result<(), Error> {
-        let exp_top = compile_context.stack_top;
         match explist_cont.tokens.as_slice() {
-            [] => {
-                if let Some(exp_descs) = maybe_exp_descs {
-                    for exp_desc in exp_descs {
-                        { ExpDesc::Nil }.discharge(exp_desc, self, compile_context)?;
-                    }
-                }
-                Ok(())
-            }
+            [] => Ok(()),
             make_deconstruct!(
                 _comma(TokenType::Comma),
                 exp(TokenType::Exp),
                 explist_cont(TokenType::ExplistCont)
             ) => {
-                let (exp_desc, tail) = maybe_exp_descs.map_or_else(
-                    || (compile_context.reserve_stack_top().1, None),
-                    |exp_descs| (exp_descs[0].clone(), Some(&exp_descs[1..])),
-                );
-
-                if let Some(exp) = self.exp(exp, compile_context, &exp_desc)? {
-                    exp.discharge(&exp_desc, self, compile_context)?;
-
-                    if compile_context.last_expdesc_was_relational {
-                        self.byte_codes.push(ByteCode::LoadFalseSkip(exp_top));
-
-                        let after_false_skip = self.byte_codes.len() - 2;
-                        for jump in compile_context.jump_to_false.drain(..) {
-                            self.byte_codes[jump] =
-                                ByteCode::Jmp(i16::try_from(after_false_skip - jump)?);
-                        }
-
-                        match &mut self.byte_codes[after_false_skip - 1] {
-                        ByteCode::EqualConstant(_, _, test) | ByteCode::LessThan(_, _, test) | ByteCode::LessEqual(_, _, test) | ByteCode::GreaterThanInteger(_, _, test) | ByteCode::GreaterEqualInteger(_, _, test) => {
-                            *test ^= 1
-                        }
-                        other => unreachable!(
-                            "The second to last bytecode should always be a relational comparison. Was {:?}", other
-                        ),
-                    }
-                        self.byte_codes[after_false_skip] = ByteCode::Jmp(1);
-
-                        self.byte_codes.push(ByteCode::LoadTrue(exp_top));
-                    }
-                };
-
-                self.explist_cont(
-                    explist_cont,
-                    compile_context,
-                    tail.filter(|slice| !slice.is_empty()),
-                )
+                let exp = self.exp(exp, compile_context)?;
+                explist.push(exp);
+                self.explist_cont(explist_cont, explist, compile_context)
             }
             _ => {
                 unreachable!(
@@ -1275,167 +1158,48 @@ impl Program {
         &mut self,
         exp: &Token<'a>,
         compile_context: &mut CompileContext<'a>,
-        exp_desc: &ExpDesc<'a>,
-    ) -> Result<Option<ExpDesc<'a>>, Error> {
+    ) -> Result<ExpDesc<'a>, Error> {
         match exp.tokens.as_slice() {
-            make_deconstruct!(_nil(TokenType::Nil)) => Ok(Some(self.nil())),
-            make_deconstruct!(_false(TokenType::False)) => Ok(Some(self.boolean(false))),
-            make_deconstruct!(_true(TokenType::True)) => Ok(Some(self.boolean(true))),
-            make_deconstruct!(_string(TokenType::String(string))) => Ok(Some(self.string(string))),
-            make_deconstruct!(_integer(TokenType::Integer(integer))) => {
-                Ok(Some(self.integer(*integer)))
-            }
-            make_deconstruct!(_float(TokenType::Float(float))) => Ok(Some(self.float(*float))),
+            make_deconstruct!(_nil(TokenType::Nil)) => Ok(self.nil()),
+            make_deconstruct!(_false(TokenType::False)) => Ok(self.boolean(false)),
+            make_deconstruct!(_true(TokenType::True)) => Ok(self.boolean(true)),
+            make_deconstruct!(_string(TokenType::String(string))) => Ok(self.string(string)),
+            make_deconstruct!(_integer(TokenType::Integer(integer))) => Ok(self.integer(*integer)),
+            make_deconstruct!(_float(TokenType::Float(float))) => Ok(self.float(*float)),
             make_deconstruct!(_dots(TokenType::Dots)) => unimplemented!("exp production"),
-            make_deconstruct!(functiondef(TokenType::Functiondef)) => self
-                .functiondef(functiondef, compile_context, exp_desc)
-                .map(|_| None),
-            make_deconstruct!(prefixexp(TokenType::Prefixexp)) => {
-                self.prefixexp(prefixexp, compile_context, exp_desc)
+            make_deconstruct!(functiondef(TokenType::Functiondef)) => {
+                self.functiondef(functiondef, compile_context)
             }
-            make_deconstruct!(tableconstructor(TokenType::Tableconstructor)) => self
-                .tableconstructor(tableconstructor, compile_context, exp_desc)
-                .map(Some),
+            make_deconstruct!(prefixexp(TokenType::Prefixexp)) => {
+                self.prefixexp(prefixexp, compile_context)
+            }
+            make_deconstruct!(tableconstructor(TokenType::Tableconstructor)) => {
+                self.tableconstructor(tableconstructor, compile_context)
+            }
             make_deconstruct!(
                 lhs(TokenType::Exp),
                 op(TokenType::Binop),
                 rhs(TokenType::Exp)
             ) => {
                 let op = self.binop(op)?;
+                let lhs = self.exp(lhs, compile_context)?;
+                let rhs = self.exp(rhs, compile_context)?;
 
-                let (lhs_dst, lhs_top) = match exp_desc {
-                    ExpDesc::Local(dst) => (u8::try_from(*dst)?, exp_desc.clone()),
-                    ExpDesc::Global(_) => compile_context.reserve_stack_top(),
-                    _ => todo!("binop: see what other cases are needed"),
-                };
-                let Some(lhs) = self.exp(lhs, compile_context, &lhs_top)? else {
-                    unreachable!("Left operand of binary operator must always exist.");
-                };
-
-                let (rhs_dst, rhs_top) = compile_context.reserve_stack_top();
-                let Some(rhs) = self.exp(rhs, compile_context, &rhs_top)? else {
-                    unreachable!("Right operand of binary operator must always exist.");
-                };
-
-                compile_context.stack_top -= if matches!(exp_desc, ExpDesc::Local(_)) {
-                    1
-                } else {
-                    2
-                };
-
-                let func = match op {
-                    TokenType::Add => binops::binop_add,
-                    TokenType::Sub => binops::binop_sub,
-                    TokenType::Mul => binops::binop_mul,
-                    TokenType::Mod => binops::binop_mod,
-                    TokenType::Pow => binops::binop_pow,
-                    TokenType::Div => binops::binop_div,
-                    TokenType::Idiv => binops::binop_idiv,
-                    TokenType::BitAnd => binops::binop_bitand,
-                    TokenType::BitOr => binops::binop_bitor,
-                    TokenType::BitXor => binops::binop_bitxor,
-                    TokenType::ShiftL => binops::binop_shiftl,
-                    TokenType::ShiftR => binops::binop_shiftr,
-                    TokenType::Or => binops::binop_or,
-                    TokenType::And => binops::binop_and,
-                    TokenType::Less => binops::binop_lt,
-                    TokenType::Greater => binops::binop_gt,
-                    TokenType::Leq => binops::binop_le,
-                    TokenType::Geq => binops::binop_ge,
-                    TokenType::Eq => binops::binop_eq,
-                    TokenType::Neq => binops::binop_ne,
-                    TokenType::Concat => binops::binop_concat,
-                    other => unreachable!("{:?} is not a binary operator", other),
-                };
-                func(
-                    self,
-                    compile_context,
-                    Binop {
-                        expdesc: &lhs,
-                        top: &lhs_top,
-                        dst: lhs_dst,
-                    },
-                    Binop {
-                        expdesc: &rhs,
-                        top: &rhs_top,
-                        dst: rhs_dst,
-                    },
-                )
-                .map(Some)
+                let binop = op.try_into()?;
+                Ok(ExpDesc::Binop(binop, Box::new(lhs), Box::new(rhs)))
             }
             make_deconstruct!(op(TokenType::Unop), rhs(TokenType::Exp)) => {
                 let op = self.unop(op)?;
+                let rhs = self.exp(rhs, compile_context)?;
 
-                let (stack_top, top) = match exp_desc {
-                    ExpDesc::Local(top) => (*top, exp_desc.clone()),
-                    _ => {
-                        let (stack_top, top) = compile_context.reserve_stack_top();
-                        (usize::from(stack_top), top)
-                    }
+                let func = match op {
+                    TokenType::Not => unops::unop_not,
+                    TokenType::Len => unops::unop_len,
+                    TokenType::Sub => unops::unop_neg,
+                    TokenType::BitXor => unops::unop_bitnot,
+                    other => unreachable!("{:?} is not a unary operator", other),
                 };
-                let Some(exp_exp_desc) = self.exp(rhs, compile_context, &top)? else {
-                    unreachable!("Operand of unary operator must always exist");
-                };
-
-                match (exp_exp_desc, op) {
-                    (ExpDesc::Local(src), TokenType::Not) => Ok(ExpDesc::Unop(ByteCode::Not, src)),
-                    (global @ ExpDesc::Global(_), TokenType::Not) => {
-                        global.discharge(&top, self, compile_context)?;
-                        Ok(ExpDesc::Unop(ByteCode::Not, stack_top))
-                    }
-                    (ExpDesc::Nil, TokenType::Not) => Ok(ExpDesc::Boolean(true)),
-                    (ExpDesc::Boolean(boolean), TokenType::Not) => Ok(ExpDesc::Boolean(!boolean)),
-                    (other, TokenType::Not) => {
-                        // TODO check what to do here
-                        other.discharge(&top, self, compile_context)?;
-                        Ok(top)
-                    }
-                    (ExpDesc::Local(src), TokenType::Len) => Ok(ExpDesc::Unop(ByteCode::Len, src)),
-                    (global @ ExpDesc::Global(_), TokenType::Len) => {
-                        global.discharge(&top, self, compile_context)?;
-                        Ok(ExpDesc::Unop(ByteCode::Len, stack_top))
-                    }
-                    (ExpDesc::String(string), TokenType::Len) => {
-                        let string = string.unescape()?;
-                        Ok(ExpDesc::Integer(i64::try_from(string.len())?))
-                    }
-                    (other, TokenType::Len) => {
-                        // TODO check what to do here
-                        other.discharge(&top, self, compile_context)?;
-                        Ok(top)
-                    }
-                    (ExpDesc::Local(src), TokenType::Sub) => Ok(ExpDesc::Unop(ByteCode::Neg, src)),
-                    (global @ ExpDesc::Global(_), TokenType::Sub) => {
-                        global.discharge(&top, self, compile_context)?;
-                        Ok(ExpDesc::Unop(ByteCode::Neg, stack_top))
-                    }
-                    (ExpDesc::Integer(integer), TokenType::Sub) => Ok(ExpDesc::Integer(-integer)),
-                    (ExpDesc::Float(float), TokenType::Sub) => Ok(ExpDesc::Float(-float)),
-                    (other, TokenType::Sub) => {
-                        // TODO check what to do here
-                        other.discharge(&top, self, compile_context)?;
-                        Ok(top)
-                    }
-                    (ExpDesc::Local(src), TokenType::BitXor) => {
-                        Ok(ExpDesc::Unop(ByteCode::BitNot, src))
-                    }
-                    (global @ ExpDesc::Global(_), TokenType::BitXor) => {
-                        global.discharge(&top, self, compile_context)?;
-                        Ok(ExpDesc::Unop(ByteCode::BitNot, stack_top))
-                    }
-                    (ExpDesc::Integer(integer), TokenType::BitXor) => {
-                        Ok(ExpDesc::Integer(!integer))
-                    }
-                    (other, TokenType::BitXor) => {
-                        // TODO check what to do here
-                        other.discharge(&top, self, compile_context)?;
-                        Ok(top)
-                    }
-                    _ => {
-                        unimplemented!("Could't process Unop.");
-                    }
-                }
-                .map(Some)
+                func(&rhs)
             }
             _ => {
                 unreachable!(
@@ -1450,18 +1214,17 @@ impl Program {
         &mut self,
         prefixexp: &Token<'a>,
         compile_context: &mut CompileContext<'a>,
-        exp_desc: &ExpDesc<'a>,
-    ) -> Result<Option<ExpDesc<'a>>, Error> {
+    ) -> Result<ExpDesc<'a>, Error> {
         match prefixexp.tokens.as_slice() {
-            make_deconstruct!(var(TokenType::Var)) => self.var(var, compile_context).map(Some),
-            make_deconstruct!(functioncall(TokenType::Functioncall)) => self
-                .functioncall(functioncall, compile_context, exp_desc)
-                .map(|()| None),
+            make_deconstruct!(var(TokenType::Var)) => self.var(var, compile_context),
+            make_deconstruct!(functioncall(TokenType::Functioncall)) => {
+                self.functioncall(functioncall, compile_context)
+            }
             make_deconstruct!(
                 _lparen(TokenType::LParen),
                 exp(TokenType::Exp),
                 _rparen(TokenType::RParen)
-            ) => self.exp(exp, compile_context, exp_desc),
+            ) => self.exp(exp, compile_context),
             _ => {
                 unreachable!(
                     "Prefixexp did not match any of the productions. Had {:#?}.",
@@ -1479,40 +1242,13 @@ impl Program {
         &mut self,
         functioncall: &Token<'a>,
         compile_context: &mut CompileContext<'a>,
-        function_discharge_location: &ExpDesc<'a>,
-    ) -> Result<(), Error> {
-        assert!(!compile_context.last_expdesc_was_or);
-        assert!(!compile_context.last_expdesc_was_relational);
-
+    ) -> Result<ExpDesc<'a>, Error> {
         match functioncall.tokens.as_slice() {
             make_deconstruct!(prefixexp(TokenType::Prefixexp), args(TokenType::Args)) => {
-                if let prefixexp_top @ ExpDesc::Local(func_index_usize) =
-                    function_discharge_location
-                {
-                    let func_index =
-                        u8::try_from(*func_index_usize).map_err(|_| Error::StackOverflow)?;
-                    let Some(top) = self.prefixexp(prefixexp, compile_context, prefixexp_top)?
-                    else {
-                        unreachable!("Function must always exist.");
-                    };
-                    top.discharge(prefixexp_top, self, compile_context)?;
+                let prefix = self.prefixexp(prefixexp, compile_context)?;
+                let args = self.args(args, compile_context)?;
 
-                    let stack_before_args = compile_context.stack_top;
-                    self.args(args, compile_context)?;
-
-                    self.byte_codes.push(ByteCode::Call(
-                        func_index,
-                        (compile_context.stack_top - 1) - func_index,
-                    ));
-                    compile_context.stack_top = stack_before_args;
-
-                    compile_context.last_expdesc_was_or = false;
-                    compile_context.last_expdesc_was_relational = false;
-
-                    Ok(())
-                } else {
-                    unimplemented!("functioncall can only be discharged on local for now")
-                }
+                Ok(ExpDesc::FunctionCall(Box::new(prefix), args))
             }
             make_deconstruct!(
                 _prefixexp(TokenType::Prefixexp),
@@ -1537,36 +1273,27 @@ impl Program {
         &mut self,
         args: &Token<'a>,
         compile_context: &mut CompileContext<'a>,
-    ) -> Result<(), Error> {
+    ) -> Result<ExpList<'a>, Error> {
         match args.tokens.as_slice() {
             make_deconstruct!(
                 _lparen(TokenType::LParen),
                 args_explist(TokenType::ArgsExplist),
                 _rparen(TokenType::RParen)
-            ) => {
-                let count_end_jumps = compile_context.jumps_to_end.len();
-                let count_block_jumps = compile_context.jumps_to_block.len();
-                let count_false_jumps = compile_context.jump_to_false.len();
-
-                let res = self.args_explist(args_explist, compile_context);
-
-                assert_eq!(compile_context.jumps_to_end.len(), count_end_jumps);
-                assert_eq!(compile_context.jumps_to_block.len(), count_block_jumps);
-                assert_eq!(compile_context.jump_to_false.len(), count_false_jumps);
-
-                res
-            }
+            ) => self.args_explist(args_explist, compile_context),
             make_deconstruct!(tableconstructor(TokenType::Tableconstructor)) => {
-                let (_, top) = compile_context.reserve_stack_top();
-                self.tableconstructor(tableconstructor, compile_context, &top)?;
-                // Already on top of the stack, no need to move
-                Ok(())
+                let table = self.tableconstructor(tableconstructor, compile_context)?;
+
+                let mut explist = ExpList::default();
+                explist.push(table);
+
+                Ok(explist)
             }
-            make_deconstruct!(_string(TokenType::String(string))) => self.string(string).discharge(
-                &compile_context.reserve_stack_top().1,
-                self,
-                compile_context,
-            ),
+            make_deconstruct!(_string(TokenType::String(string))) => {
+                let mut explist = ExpList::default();
+                explist.push(self.string(string));
+
+                Ok(explist)
+            }
             _ => {
                 unreachable!(
                     "Args did not match any of the productions. Had {:#?}.",
@@ -1583,11 +1310,11 @@ impl Program {
         &mut self,
         args_explist: &Token<'a>,
         compile_context: &mut CompileContext<'a>,
-    ) -> Result<(), Error> {
+    ) -> Result<ExpList<'a>, Error> {
         match args_explist.tokens.as_slice() {
-            [] => Ok(()),
+            [] => Ok(ExpList::default()),
             make_deconstruct!(explist(TokenType::Explist)) => {
-                self.explist(explist, compile_context, None)
+                self.explist(explist, compile_context)
             }
             _ => {
                 unreachable!(
@@ -1606,13 +1333,12 @@ impl Program {
         &mut self,
         functiondef: &Token<'a>,
         compile_context: &mut CompileContext<'a>,
-        exp_desc: &ExpDesc<'a>,
-    ) -> Result<(), Error> {
+    ) -> Result<ExpDesc<'a>, Error> {
         match functiondef.tokens.as_slice() {
             make_deconstruct!(
                 _function(TokenType::Function),
                 funcbody(TokenType::Funcbody)
-            ) => self.funcbody(funcbody, compile_context, exp_desc),
+            ) => self.funcbody(funcbody, compile_context),
             _ => {
                 unreachable!(
                     "Functiondef did not match any of the productions. Had {:#?}.",
@@ -1630,8 +1356,7 @@ impl Program {
         &mut self,
         funcbody: &Token<'a>,
         _compile_context: &mut CompileContext<'a>,
-        exp_desc: &ExpDesc<'a>,
-    ) -> Result<(), Error> {
+    ) -> Result<ExpDesc<'a>, Error> {
         match funcbody.tokens.as_slice() {
             make_deconstruct!(
                 _lparen(TokenType::LParen),
@@ -1640,34 +1365,26 @@ impl Program {
                 block(TokenType::Block),
                 _end(TokenType::End),
             ) => {
-                if let ExpDesc::Local(top_index) = exp_desc {
-                    let top_index = u8::try_from(*top_index)?;
+                let parlist = self.funcbody_parlist(funcbody_parlist)?;
+                let parlist_name_count = parlist.names.len();
 
-                    let parlist = self.funcbody_parlist(funcbody_parlist)?;
-                    let parlist_name_count = parlist.names.len();
+                let mut func_program = Program::default();
+                let mut func_compile_context = CompileContext::default();
 
-                    let mut func_program = Program::default();
-                    let mut func_compile_context = CompileContext::default();
+                func_compile_context.locals.extend(parlist.names);
+                func_compile_context.stack_top = u8::try_from(parlist_name_count)?;
 
-                    func_compile_context.locals.extend(parlist.names);
-                    func_compile_context.stack_top = u8::try_from(parlist_name_count)?;
+                func_program.block(block, &mut func_compile_context)?;
 
-                    func_program.block(block, &mut func_compile_context)?;
+                func_program.byte_codes.push(ByteCode::ZeroReturn);
 
-                    func_program.byte_codes.push(ByteCode::ZeroReturn);
+                let closure_position = self.push_function(Rc::new(Closure::new(
+                    func_program,
+                    parlist_name_count,
+                    parlist.variadic_args,
+                )))?;
 
-                    let closure_position = self.push_function(Rc::new(Closure::new(
-                        func_program,
-                        parlist_name_count,
-                        parlist.variadic_args,
-                    )))?;
-                    self.byte_codes
-                        .push(ByteCode::Closure(top_index, closure_position));
-
-                    Ok(())
-                } else {
-                    unimplemented!("Can only create function bodies into locals for now");
-                }
+                Ok(ExpDesc::Closure(closure_position))
             }
             _ => {
                 unreachable!(
@@ -1682,11 +1399,11 @@ impl Program {
         }
     }
 
-    fn funcbody_parlist(&mut self, funcbody_parlist: &Token<'_>) -> Result<Parlist, Error> {
+    fn funcbody_parlist(&mut self, funcbody_parlist: &Token<'_>) -> Result<ParList, Error> {
         match funcbody_parlist.tokens.as_slice() {
-            [] => Ok(Parlist::default()),
+            [] => Ok(ParList::default()),
             make_deconstruct!(parlist(TokenType::Parlist)) => {
-                let mut func_parlist = Parlist::default();
+                let mut func_parlist = ParList::default();
                 self.parlist(parlist, &mut func_parlist)?;
                 Ok(func_parlist)
             }
@@ -1703,7 +1420,7 @@ impl Program {
         }
     }
 
-    fn parlist(&mut self, parlist: &Token<'_>, func_parlist: &mut Parlist) -> Result<(), Error> {
+    fn parlist(&mut self, parlist: &Token<'_>, func_parlist: &mut ParList) -> Result<(), Error> {
         match parlist.tokens.as_slice() {
             make_deconstruct!(
                 _name(TokenType::Name(name)),
@@ -1732,7 +1449,7 @@ impl Program {
     fn parlist_cont(
         &mut self,
         parlist_cont: &Token<'_>,
-        func_parlist: &mut Parlist,
+        func_parlist: &mut ParList,
     ) -> Result<(), Error> {
         match parlist_cont.tokens.as_slice() {
             [] => Ok(()),
@@ -1765,7 +1482,6 @@ impl Program {
         &mut self,
         tableconstructor: &Token<'a>,
         compile_context: &mut CompileContext<'a>,
-        exp_desc: &ExpDesc<'a>,
     ) -> Result<ExpDesc<'a>, Error> {
         match tableconstructor.tokens.as_slice() {
             make_deconstruct!(
@@ -1773,40 +1489,10 @@ impl Program {
                 tableconstructor_fieldlist(TokenType::TableconstructorFieldlist),
                 _rcurly(TokenType::RCurly)
             ) => {
-                let dst = match exp_desc {
-                    ExpDesc::Local(dst) => u8::try_from(*dst)?,
-                    ExpDesc::Global(_) => {
-                        let dst = compile_context.stack_top;
-                        compile_context.stack_top += 1;
-                        dst
-                    }
-                    _ => {
-                        unimplemented!("Only table creation on stack is supported.");
-                    }
-                };
+                let fields =
+                    self.tableconstructor_fieldlist(tableconstructor_fieldlist, compile_context)?;
 
-                let table_initialization_bytecode_position = self.byte_codes.len();
-                self.byte_codes.push(ByteCode::NewTable(0, 0, 0));
-
-                let (array_items, table_items) = self.tableconstructor_fieldlist(
-                    tableconstructor_fieldlist,
-                    compile_context,
-                    dst,
-                )?;
-
-                self.byte_codes[table_initialization_bytecode_position] =
-                    ByteCode::NewTable(dst, array_items, table_items);
-                if array_items > 0 {
-                    self.byte_codes.push(ByteCode::SetList(dst, array_items));
-                }
-
-                // Clear the list values
-                compile_context.stack_top -= array_items;
-                if let ExpDesc::Global(_) = exp_desc {
-                    compile_context.stack_top -= 1;
-                }
-
-                Ok(ExpDesc::Local(usize::from(dst)))
+                Ok(ExpDesc::Table(fields))
             }
             _ => {
                 unreachable!(
@@ -1825,12 +1511,11 @@ impl Program {
         &mut self,
         tableconstructor_fieldlist: &Token<'a>,
         compile_context: &mut CompileContext<'a>,
-        table: u8,
-    ) -> Result<(u8, u8), Error> {
+    ) -> Result<TableFields<'a>, Error> {
         match tableconstructor_fieldlist.tokens.as_slice() {
-            [] => Ok((0, 0)),
+            [] => Ok(TableFields::default()),
             make_deconstruct!(fieldlist(TokenType::Fieldlist)) => {
-                self.fieldlist(fieldlist, compile_context, table)
+                self.fieldlist(fieldlist, compile_context)
             }
             _ => {
                 unreachable!(
@@ -1849,18 +1534,18 @@ impl Program {
         &mut self,
         fieldlist: &Token<'a>,
         compile_context: &mut CompileContext<'a>,
-        table: u8,
-    ) -> Result<(u8, u8), Error> {
+    ) -> Result<TableFields<'a>, Error> {
         match fieldlist.tokens.as_slice() {
             make_deconstruct!(
                 field(TokenType::Field),
                 fieldlist_cont(TokenType::FieldlistCont)
             ) => {
-                let (array_item, table_item) = self.field(field, compile_context, table)?;
-                let (array_len, table_len) =
-                    self.fieldlist_cont(fieldlist_cont, compile_context, table)?;
+                let mut fields = TableFields::default();
 
-                Ok((array_len + array_item, table_len + table_item))
+                self.field(field, &mut fields, compile_context)?;
+                self.fieldlist_cont(fieldlist_cont, &mut fields, compile_context)?;
+
+                Ok(fields)
             }
             _ => {
                 unreachable!(
@@ -1878,27 +1563,23 @@ impl Program {
     fn fieldlist_cont<'a>(
         &mut self,
         fieldlist_cont: &Token<'a>,
+        fields: &mut TableFields<'a>,
         compile_context: &mut CompileContext<'a>,
-        table: u8,
-    ) -> Result<(u8, u8), Error> {
+    ) -> Result<(), Error> {
         match fieldlist_cont.tokens.as_slice() {
-            [] => Ok((0, 0)),
+            [] => Ok(()),
             make_deconstruct!(
                 fieldsep(TokenType::Fieldsep),
                 field(TokenType::Field),
                 fieldlist_cont(TokenType::FieldlistCont)
-            ) => self
-                .fieldsep(fieldsep)
-                .and_then(|()| self.field(field, compile_context, table))
-                .and_then(|(array_item, table_item)| {
-                    self.fieldlist_cont(fieldlist_cont, compile_context, table)
-                        .map(|(array_len, table_len)| {
-                            (array_len + array_item, table_len + table_item)
-                        })
-                }),
-            make_deconstruct!(fieldsep(TokenType::Fieldsep)) => {
-                self.fieldsep(fieldsep).map(|()| (0, 0))
+            ) => {
+                self.fieldsep(fieldsep)?;
+                self.field(field, fields, compile_context)?;
+                self.fieldlist_cont(fieldlist_cont, fields, compile_context)?;
+
+                Ok(())
             }
+            make_deconstruct!(fieldsep(TokenType::Fieldsep)) => self.fieldsep(fieldsep),
             _ => {
                 unreachable!(
                     "FieldlistCont did not match any of the productions. Had {:#?}.",
@@ -1915,9 +1596,9 @@ impl Program {
     fn field<'a>(
         &mut self,
         field: &Token<'a>,
+        fields: &mut TableFields<'a>,
         compile_context: &mut CompileContext<'a>,
-        table: u8,
-    ) -> Result<(u8, u8), Error> {
+    ) -> Result<(), Error> {
         match field.tokens.as_slice() {
             make_deconstruct!(
                 _lsquare(TokenType::LSquare),
@@ -1926,58 +1607,30 @@ impl Program {
                 _assing(TokenType::Assign),
                 exp(TokenType::Exp)
             ) => {
-                let (dst, key_top) = compile_context.reserve_stack_top();
-                let Some(key) = self.exp(key, compile_context, &key_top)? else {
-                    unreachable!("Field key must always exist.");
-                };
-                key.discharge(&key_top, self, compile_context)?;
-                let (_, exp_top) = compile_context.reserve_stack_top();
-                let Some(exp) = self.exp(exp, compile_context, &exp_top)? else {
-                    unreachable!("Exp of keyd field must always exist.");
-                };
-                exp.discharge(&exp_top, self, compile_context)?;
+                let key = self.exp(key, compile_context)?;
+                let exp = self.exp(exp, compile_context)?;
 
-                match (key_top, exp_top) {
-                    (ExpDesc::Local(key), ExpDesc::Local(value)) => {
-                        self.byte_codes.push(ByteCode::SetTable(
-                            table,
-                            u8::try_from(key)?,
-                            u8::try_from(value)?,
-                        ));
+                fields.push((TableKey::General(Box::new(key)), exp));
 
-                        compile_context.stack_top = dst;
-
-                        Ok((0, 1))
-                    }
-                    _ => unimplemented!("field production"),
-                }
+                Ok(())
             }
             make_deconstruct!(
                 _name(TokenType::Name(name)),
                 _assign(TokenType::Assign),
                 exp(TokenType::Exp)
             ) => {
-                let (dst, top) = compile_context.reserve_stack_top();
-                let Some(exp) = self.exp(exp, compile_context, &top)? else {
-                    unreachable!("Exp of named field must always exist.");
-                };
-                exp.discharge(&top, self, compile_context)?;
+                let constant = self.name(name);
+                let exp = self.exp(exp, compile_context)?;
+                fields.push((TableKey::Record(Box::new(constant)), exp));
 
-                let constant = self.push_constant(*name)?;
-                self.byte_codes
-                    .push(ByteCode::SetField(table, constant, dst));
-
-                compile_context.stack_top = dst;
-                Ok((0, 1))
+                Ok(())
             }
             make_deconstruct!(exp(TokenType::Exp)) => {
-                let (_, top) = compile_context.reserve_stack_top();
-                let Some(exp) = self.exp(exp, compile_context, &top)? else {
-                    unreachable!("Exp of field must always exist.");
-                };
-                exp.discharge(&top, self, compile_context)?;
+                let exp = self.exp(exp, compile_context)?;
 
-                Ok((1, 0))
+                fields.push((TableKey::Array, exp));
+
+                Ok(())
             }
             _ => {
                 unreachable!(
@@ -2097,20 +1750,7 @@ impl Program {
     }
 
     #[inline(always)]
-    fn name<'a>(
-        &mut self,
-        name: &'a str,
-        compile_context: &CompileContext,
-    ) -> Result<ExpDesc<'a>, Error> {
-        if let Some(i) = compile_context
-            .locals
-            .iter()
-            .rposition(|v| v == &Value::from(name))
-        {
-            Ok(ExpDesc::Local(i))
-        } else {
-            self.push_constant(name)
-                .map(|i| ExpDesc::Global(usize::from(i)))
-        }
+    fn name<'a>(&mut self, name: &'a str) -> ExpDesc<'a> {
+        ExpDesc::Name(name)
     }
 }

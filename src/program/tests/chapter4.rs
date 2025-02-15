@@ -22,10 +22,10 @@ print(t)
         &program.constants,
         &[
             "key".into(),
-            "hello".into(),
             "x".into(),
-            "world".into(),
+            "hello".into(),
             "y".into(),
+            "world".into(),
             "val".into(),
             "print".into(),
         ]
@@ -42,10 +42,10 @@ print(t)
             ByteCode::LoadInt(3, 200),
             ByteCode::LoadInt(4, 300),
             // x="hello", y="world";
-            ByteCode::LoadConstant(5, 1),
-            ByteCode::SetField(1, 2, 5),
-            ByteCode::LoadConstant(5, 3),
-            ByteCode::SetField(1, 4, 5),
+            ByteCode::LoadConstant(5, 2),
+            ByteCode::SetField(1, 1, 5),
+            ByteCode::LoadConstant(5, 4),
+            ByteCode::SetField(1, 3, 5),
             // [key]="val";
             ByteCode::Move(5, 0),
             ByteCode::LoadConstant(6, 5),
@@ -58,7 +58,7 @@ print(t)
             ByteCode::Call(2, 1),
             // print(t['x'])
             ByteCode::GetGlobal(2, 6),
-            ByteCode::GetField(3, 1, 2),
+            ByteCode::GetField(3, 1, 1),
             ByteCode::Call(2, 1),
             // print(t.key)
             ByteCode::GetGlobal(2, 6),

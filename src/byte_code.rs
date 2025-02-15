@@ -212,14 +212,14 @@ pub enum ByteCode {
     /// `dst`: Location on stack to store result of operation  
     /// `lhs`: Location on stack of left-hand operand  
     /// `rhs`: Location on stack of right-hand operand
-    ShiftL(u8, u8, u8),
+    ShiftLeft(u8, u8, u8),
     /// `SHR`  
     /// Performs bitwise shift right.
     ///
     /// `dst`: Location on stack to store result of operation  
     /// `lhs`: Location on stack of left-hand operand  
     /// `rhs`: Location on stack of right-hand operand
-    ShiftR(u8, u8, u8),
+    ShiftRight(u8, u8, u8),
     /// `UNM`  
     /// Performs negation.
     ///
@@ -277,6 +277,13 @@ pub enum ByteCode {
     /// `constant`: Id of constant  
     /// `test`: If it should test for `true` or `false`
     EqualConstant(u8, u8, u8),
+    /// `EQI`
+    /// Peforms equal comparison (==) between the register and i8.
+    ///
+    /// `register`: Location on stack of left operand  
+    /// `integer`: Integer constant  
+    /// `test`: If it should test for `true` or `false`
+    EqualInteger(u8, i8, u8),
     /// `GTI`
     /// Peforms a greater than (>) comparison between the register and integer constant.
     ///
@@ -817,7 +824,7 @@ impl ByteCode {
     }
 
     pub fn shiftl(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
-        validate_bytecode!(self, ByteCode::ShiftL(dst, lhs, rhs));
+        validate_bytecode!(self, ByteCode::ShiftLeft(dst, lhs, rhs));
 
         let res = match (&vm.get_stack(*lhs)?, &vm.get_stack(*rhs)?) {
             (Value::Integer(l), Value::Integer(r)) => Value::Integer(l << r),
@@ -833,7 +840,7 @@ impl ByteCode {
     }
 
     pub fn shiftr(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
-        validate_bytecode!(self, ByteCode::ShiftR(dst, lhs, rhs));
+        validate_bytecode!(self, ByteCode::ShiftRight(dst, lhs, rhs));
 
         let res = match (
             &vm.get_stack(*lhs)?.clone().try_int(),
@@ -967,6 +974,26 @@ impl ByteCode {
                 }
                 Ok(())
             })
+    }
+
+    pub fn equal_integer(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+        validate_bytecode!(self, ByteCode::EqualInteger(register, integer, test));
+
+        let lhs = vm.get_stack(*register)?;
+        let rhs = Value::Integer(i64::from(*integer));
+
+        Self::relational_comparison(
+            lhs,
+            &rhs,
+            |ordering| ordering == Ordering::Equal,
+            *test == 1,
+        )
+        .and_then(|should_advance_pc| {
+            if should_advance_pc {
+                vm.jump(1)?;
+            }
+            Ok(())
+        })
     }
 
     pub fn greater_than_integer(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {

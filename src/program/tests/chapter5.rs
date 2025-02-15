@@ -44,7 +44,7 @@ print(not print)
             ByteCode::SetGlobalConstant(1, 2),
             // print(~100)
             ByteCode::GetGlobal(2, 3),
-            ByteCode::LoadInt(3, !100),
+            ByteCode::LoadInt(3, -101),
             ByteCode::Call(2, 1),
             // print(~i)
             ByteCode::GetGlobal(2, 3),
@@ -126,27 +126,23 @@ print(100>>a) -- panic
             ByteCode::Call(3, 1),
             // print(a-1)
             ByteCode::GetGlobal(3, 2),
-            ByteCode::Move(4, 0),
-            ByteCode::LoadInt(5, 1),
-            ByteCode::Sub(4, 4, 5),
+            ByteCode::LoadInt(4, 1),
+            ByteCode::Sub(4, 0, 4),
             ByteCode::Call(3, 1),
             // print(100/c) -- result is float
             ByteCode::GetGlobal(3, 2),
             ByteCode::LoadInt(4, 100),
-            ByteCode::Move(5, 2),
-            ByteCode::Div(4, 4, 5),
+            ByteCode::Div(4, 4, 2),
             ByteCode::Call(3, 1),
             // print(100>>b) -- 2.0 will be convert to int 2
             ByteCode::GetGlobal(3, 2),
             ByteCode::LoadInt(4, 100),
-            ByteCode::Move(5, 1),
-            ByteCode::ShiftR(4, 4, 5),
+            ByteCode::ShiftRight(4, 4, 1),
             ByteCode::Call(3, 1),
             // print(100>>a) -- panic
             ByteCode::GetGlobal(3, 2),
             ByteCode::LoadInt(4, 100),
-            ByteCode::Move(5, 0),
-            ByteCode::ShiftR(4, 4, 5),
+            ByteCode::ShiftRight(4, 4, 0),
             ByteCode::Call(3, 1),
         ]
     );
@@ -204,8 +200,7 @@ print('hello' .. a) -- panic
             ByteCode::LoadTrue(0),
             ByteCode::GetGlobal(1, 0),
             ByteCode::LoadConstant(2, 4),
-            ByteCode::Move(3, 0),
-            ByteCode::Concat(2, 2, 3),
+            ByteCode::Concat(2, 2, 0),
             ByteCode::Call(1, 1),
         ]
     );

@@ -172,8 +172,8 @@ impl Lua {
                 bit_and @ ByteCode::BitAnd(_, _, _) => bit_and.bit_and(self, program)?,
                 bit_or @ ByteCode::BitOr(_, _, _) => bit_or.bit_or(self, program)?,
                 bit_xor @ ByteCode::BitXor(_, _, _) => bit_xor.bit_xor(self, program)?,
-                shiftl @ ByteCode::ShiftL(_, _, _) => shiftl.shiftl(self, program)?,
-                shiftr @ ByteCode::ShiftR(_, _, _) => shiftr.shiftr(self, program)?,
+                shiftl @ ByteCode::ShiftLeft(_, _, _) => shiftl.shiftl(self, program)?,
+                shiftr @ ByteCode::ShiftRight(_, _, _) => shiftr.shiftr(self, program)?,
                 neg @ ByteCode::Neg(_, _) => neg.neg(self, program)?,
                 bit_not @ ByteCode::BitNot(_, _) => bit_not.bit_not(self, program)?,
                 not @ ByteCode::Not(_, _) => not.not(self, program)?,
@@ -183,6 +183,7 @@ impl Lua {
                 lt @ ByteCode::LessThan(_, _, _) => lt.less_than(self, program)?,
                 le @ ByteCode::LessEqual(_, _, _) => le.less_equal(self, program)?,
                 eqk @ ByteCode::EqualConstant(_, _, _) => eqk.equal_constant(self, program)?,
+                eqi @ ByteCode::EqualInteger(_, _, _) => eqi.equal_integer(self, program)?,
                 gti @ ByteCode::GreaterThanInteger(_, _, _) => {
                     gti.greater_than_integer(self, program)?
                 }

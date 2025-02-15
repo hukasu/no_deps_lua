@@ -5,9 +5,11 @@ pub enum Error {
     Parse,
     StringDecode,
     OrphanExp,
-    NilTableIndex,
     IncompatibleConditional,
+    // TableAccess
+    TableRecordAccess(&'static str),
     // Binary arithmetic operators
+    NotBinaryOperator,
     NilArithmetic,
     BoolArithmetic,
     StringArithmetic,
@@ -44,14 +46,17 @@ impl Display for Error {
             Self::OrphanExp => {
                 write!(f, "Exp had nowhere to be stored.")
             }
-            Self::NilTableIndex => {
-                write!(f, "Can't use Nil as index to a table.")
+            Self::TableRecordAccess(key_type) => {
+                write!(f, "Can't access table using {}.", key_type)
             }
             Self::IncompatibleConditional => {
                 write!(
                     f,
                     "A conditional was not a variable, global, constant, or logical operation."
                 )
+            }
+            Self::NotBinaryOperator => {
+                write!(f, "Token was not a binary operator.")
             }
             Self::NilArithmetic => {
                 write!(f, "Can't use Nil in arithmetic operations.")

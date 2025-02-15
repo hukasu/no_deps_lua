@@ -13,9 +13,7 @@ pub struct CompileContext<'a> {
     pub labels: Vec<GotoLabel<'a>>,
     pub jumps_to_block: Vec<usize>,
     pub jumps_to_end: Vec<usize>,
-    pub jump_to_false: Vec<usize>,
-    pub last_expdesc_was_or: bool,
-    pub last_expdesc_was_relational: bool,
+    pub jumps_to_false: Vec<usize>,
 }
 
 impl<'a> CompileContext<'a> {
@@ -40,6 +38,14 @@ impl<'a> CompileContext<'a> {
             self.labels.push(goto_label);
             Ok(())
         }
+    }
+
+    pub fn find_name(&self, name: &'a str) -> Option<ExpDesc<'a>> {
+        let name: Value = name.into();
+        self.locals
+            .iter()
+            .position(|local| local == &name)
+            .map(ExpDesc::Local)
     }
 }
 
