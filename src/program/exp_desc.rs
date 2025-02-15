@@ -44,7 +44,6 @@ impl<'a> ExpDesc<'a> {
         program: &mut Program,
         compile_context: &mut CompileContext,
     ) -> Result<(), Error> {
-        log::trace!("{:?} {:?}", self, dst);
         match self {
             ExpDesc::Nil => self.discharge_nil(dst, program),
             ExpDesc::Boolean(_) => self.discharge_boolean(dst, program),
@@ -478,6 +477,26 @@ impl<'a> ExpDesc<'a> {
             Ok(())
         }
 
+        fn discharge_binop_integer(
+            bytecode: fn(u8, u8, i8) -> ByteCode,
+            lhs: &ExpDesc,
+            integer: i8,
+            dst: u8,
+            program: &mut Program,
+            compile_context: &mut CompileContext,
+        ) -> Result<(), Error> {
+            let lhs_loc = if let name @ ExpDesc::Name(_) = lhs {
+                name.get_local_or_discharge_at_location(program, dst, compile_context)?
+            } else {
+                lhs.discharge(&ExpDesc::Local(usize::from(dst)), program, compile_context)?;
+                dst
+            };
+
+            program.byte_codes.push(bytecode(dst, lhs_loc, integer));
+
+            Ok(())
+        }
+
         fn discharge_binop_constant(
             bytecode: fn(u8, u8, u8) -> ByteCode,
             lhs: &ExpDesc,
@@ -544,6 +563,29 @@ impl<'a> ExpDesc<'a> {
         }
 
         match (self, dst) {
+            (Self::Binop(Binop::Add, lhs, rhs), Self::Local(dst)) => {
+                let dst = u8::try_from(*dst)?;
+
+                if rhs.is_i8_integer() {
+                    let ExpDesc::Integer(integer) = rhs.as_ref() else {
+                        unreachable!("Exp should be Integer, but was {:?}.", rhs);
+                    };
+                    let Ok(integer) = i8::try_from(*integer) else {
+                        unreachable!("Integer should fit into i8, but was {}.", integer);
+                    };
+
+                    discharge_binop_integer(
+                        ByteCode::AddInteger,
+                        lhs,
+                        integer,
+                        dst,
+                        program,
+                        compile_context,
+                    )
+                } else {
+                    discharge_binop(ByteCode::Add, lhs, rhs, dst, program, compile_context)
+                }
+            }
             (Self::Binop(Binop::And, lhs, rhs), local @ Self::Local(dst)) => {
                 let dst = u8::try_from(*dst)?;
 
@@ -767,6 +809,45 @@ impl<'a> ExpDesc<'a> {
                 compile_context.jumps_to_end.push(jump);
 
                 compile_context.stack_top -= 1;
+
+                Ok(())
+            }
+            (Self::Binop(Binop::GreaterThan, lhs, rhs), Self::Condition(_)) => {
+                let (stack_loc, stack_top) = compile_context.reserve_stack_top();
+                let mut reserved_stack = 1;
+                let (lhs_loc, used_stack_top) = if matches!(lhs.as_ref(), ExpDesc::Name(_)) {
+                    let loc = lhs.get_local_or_discharge_at_location(
+                        program,
+                        stack_loc,
+                        compile_context,
+                    )?;
+                    (loc, loc == stack_loc)
+                } else {
+                    lhs.discharge(&stack_top, program, compile_context)?;
+                    (stack_loc, true)
+                };
+
+                let (rhs_loc, stack_top) = if used_stack_top {
+                    reserved_stack += 1;
+                    compile_context.reserve_stack_top()
+                } else {
+                    (stack_loc, stack_top)
+                };
+                let rhs_loc = if matches!(rhs.as_ref(), ExpDesc::Name(_)) {
+                    rhs.get_local_or_discharge_at_location(program, rhs_loc, compile_context)?
+                } else {
+                    rhs.discharge(&stack_top, program, compile_context)?;
+                    rhs_loc
+                };
+
+                program
+                    .byte_codes
+                    .push(ByteCode::LessThan(rhs_loc, lhs_loc, 0));
+                let jump = program.byte_codes.len();
+                program.byte_codes.push(ByteCode::Jmp(0));
+                compile_context.jumps_to_end.push(jump);
+
+                compile_context.stack_top -= reserved_stack;
 
                 Ok(())
             }
@@ -1474,7 +1555,7 @@ impl<'a> ExpDesc<'a> {
         }
     }
 
-    fn get_local_or_discharge_at_location(
+    pub fn get_local_or_discharge_at_location(
         &self,
         program: &mut Program,
         location: u8,

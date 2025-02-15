@@ -24,7 +24,7 @@ pub use {closure::Closure, error::Error, program::Program};
 
 #[derive(Debug, Default)]
 pub struct Lua {
-    func_index: usize,
+    func_indexes: Vec<usize>,
     program_counter: Vec<usize>,
     globals: Vec<(Value, Value)>,
     stack: Vec<Value>,
@@ -40,7 +40,6 @@ impl Lua {
 
         Self {
             globals,
-            program_counter: Vec::from([0]),
             ..Default::default()
         }
     }
@@ -55,6 +54,10 @@ impl Lua {
         } else {
             Err(Error::InvalidJump)
         }
+    }
+
+    fn get_func_index(&self) -> Option<usize> {
+        self.func_indexes.last().copied()
     }
 
     fn set_stack(&mut self, dst: u8, value: Value) -> Result<(), Error> {
@@ -102,27 +105,43 @@ impl Lua {
         last
     }
 
-    fn pop_return_stack(&mut self) {
-        self.return_stack.pop();
+    fn pop_return_stack(&mut self) -> Option<usize> {
+        self.return_stack.pop()
     }
 
-    fn read_bytecode<'a>(&mut self, program: &'a Program) -> Option<&'a ByteCode> {
+    fn read_bytecode(&mut self, program: &Program) -> Option<ByteCode> {
         let Some(pc) = self.program_counter.last_mut() else {
-            unreachable!("Program counter stack of Vm should never be empty.");
+            unreachable!("Program counter should never be empty.");
         };
-
-        let next_bytecode = program.byte_codes.get(*pc);
+        let old = *pc;
         *pc += 1;
 
-        next_bytecode
+        self.get_running_closure()
+            .unwrap_or(program)
+            .read_bytecode(old)
+    }
+
+    fn get_running_closure(&self) -> Option<&Program> {
+        self.return_stack
+            .last()
+            .map(|return_stack| match &self.stack[return_stack - 1] {
+                Value::Closure(func) => func.program(),
+                other => unreachable!(
+                    "Value at {} should be a closure, but was {:?}",
+                    return_stack, other
+                ),
+            })
     }
 
     pub fn execute(program: &Program) -> Result<(), Error> {
         Self::new().run_program(program)
     }
 
-    pub fn run_program(&mut self, program: &Program) -> Result<(), Error> {
+    fn run_program(&mut self, program: &Program) -> Result<(), Error> {
         log::trace!("Running program");
+
+        self.program_counter.push(0);
+
         loop {
             let Some(code) = self.read_bytecode(program) else {
                 break;
@@ -192,15 +211,10 @@ impl Lua {
                 }
                 test @ ByteCode::Test(_, _) => test.test(self, program)?,
                 call @ ByteCode::Call(_, _) => call.call(self, program)?,
+                tail_call @ ByteCode::TailCall(_, _, _) => tail_call.tail_call(self, program)?,
                 ByteCode::Return => unimplemented!("return bytecode"),
-                zero_return @ ByteCode::ZeroReturn => {
-                    zero_return.zero_return(self, program)?;
-                    break;
-                }
-                one_return @ ByteCode::OneReturn(_) => {
-                    one_return.one_return(self, program)?;
-                    break;
-                }
+                zero_return @ ByteCode::ZeroReturn => zero_return.zero_return(self, program)?,
+                one_return @ ByteCode::OneReturn(_) => one_return.one_return(self, program)?,
                 forloop @ ByteCode::ForLoop(_, _) => forloop.for_loop(self, program)?,
                 forprep @ ByteCode::ForPrepare(_, _) => forprep.for_prepare(self, program)?,
                 set_list @ ByteCode::SetList(_, _) => set_list.set_list(self, program)?,

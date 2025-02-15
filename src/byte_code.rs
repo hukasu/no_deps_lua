@@ -5,12 +5,12 @@ use alloc::{format, rc::Rc, vec::Vec};
 use crate::{
     table::Table,
     value::{Value, ValueKey},
-    Lua, Program,
+    Closure, Lua, Program,
 };
 
 use super::Error;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ByteCode {
     /// `MOVE`  
     /// Moves a value from one location on the stack to another
@@ -310,6 +310,13 @@ pub enum ByteCode {
     /// `func`: Location on the stack where the function was loaded  
     /// `args`: Count of arguments
     Call(u8, u8),
+    /// `TAILCALL`  
+    /// Calls a function
+    ///
+    /// `func`: Location on the stack where the function was loaded  
+    /// `args`: Count of arguments  
+    /// `variadics`: Number of variadic arguments
+    TailCall(u8, u8, u8),
     /// `RETURN0`  
     /// Returns from function
     Return,
@@ -432,7 +439,7 @@ impl ByteCode {
     pub fn get_global(&self, vm: &mut Lua, program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::GetGlobal(dst, name));
 
-        let key = &program.constants[*name as usize];
+        let key = &vm.get_running_closure().unwrap_or(program).constants[*name as usize];
         if let Some(index) = vm.globals.iter().position(|global| global.0.eq(key)) {
             vm.set_stack(*dst, vm.globals[index].1.clone())
         } else {
@@ -1047,50 +1054,59 @@ impl ByteCode {
 
     pub fn call(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::Call(func_index, args));
+        let func_index_usize = usize::from(*func_index);
 
-        vm.func_index = usize::from(*func_index);
-        let func = vm.get_stack(*func_index)?.clone();
+        let func = &vm.get_stack(*func_index)?;
         if let Value::Function(func) = func {
-            log::trace!("Calling native function");
-
-            vm.push_return_stack(vm.func_index);
-            vm.stack
-                .resize(vm.get_return_stack() + usize::from(*args), Value::Nil);
-
-            let returns = usize::try_from(func(vm))?;
-
-            let returns = vm
-                .stack
-                .drain(vm.get_return_stack()..(vm.get_return_stack() + returns))
-                .collect::<Vec<_>>();
-            vm.return_stack.pop();
-            vm.stack.truncate(vm.func_index);
-            vm.stack.extend(returns);
-
-            Ok(())
+            Self::run_native_function(vm, func_index_usize, usize::from(*args), *func)
         } else if let Value::Closure(func) = func {
-            log::trace!("Calling closure");
-
-            vm.program_counter.push(0);
-            vm.push_return_stack(vm.func_index);
-            vm.stack
-                .resize(vm.get_return_stack() + func.arg_count(), Value::Nil);
-
-            vm.run_program(func.program())?;
-
-            vm.program_counter.pop();
-
-            Ok(())
+            let func = func.clone();
+            Self::setup_closure(vm, func_index_usize, func.as_ref())
         } else {
-            Err(Error::InvalidFunction(func.clone()))
+            Err(Error::InvalidFunction((*func).clone()))
+        }
+    }
+
+    pub fn tail_call(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+        validate_bytecode!(self, ByteCode::TailCall(func_index, args, _));
+        let func_index_usize = usize::from(*func_index);
+
+        let tail = vm
+            .stack
+            .drain((vm.get_return_stack() + func_index_usize)..)
+            .collect::<Vec<_>>();
+
+        vm.program_counter.pop();
+        vm.func_indexes.pop();
+
+        vm.pop_return_stack();
+        vm.stack.truncate(vm.get_return_stack() + func_index_usize);
+
+        vm.stack.extend(tail);
+
+        let func = &vm.get_stack(*func_index)?;
+        if let Value::Function(func) = func {
+            Self::run_native_function(vm, func_index_usize, usize::from(*args), *func)
+        } else if let Value::Closure(func) = func {
+            let func = func.clone();
+            Self::setup_closure(vm, func_index_usize, func.as_ref())
+        } else {
+            Err(Error::InvalidFunction((*func).clone()))
         }
     }
 
     pub fn zero_return(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::ZeroReturn);
 
-        vm.stack.truncate(vm.func_index);
-        vm.pop_return_stack();
+        if vm.get_func_index().is_some() {
+            vm.program_counter.pop();
+            let func_index = vm.func_indexes.pop().unwrap_or(0);
+
+            vm.pop_return_stack();
+            vm.stack.truncate(vm.get_return_stack() + func_index);
+        } else {
+            unimplemented!("Return from main is unimplemented");
+        }
 
         Ok(())
     }
@@ -1098,13 +1114,19 @@ impl ByteCode {
     pub fn one_return(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::OneReturn(return_loc));
 
-        let func_index = u8::try_from(vm.func_index)?;
-        let return_value = vm.get_stack(*return_loc)?.clone();
+        if let Some(func_index) = vm.get_func_index() {
+            vm.program_counter.pop();
+            vm.func_indexes.pop();
 
-        vm.stack.truncate(vm.func_index + 1);
-        vm.pop_return_stack();
+            let return_value = vm.get_stack(*return_loc)?.clone();
+            vm.stack.truncate(func_index + 1);
+            vm.pop_return_stack();
 
-        vm.set_stack(func_index, return_value)?;
+            let func_index = u8::try_from(func_index)?;
+            vm.set_stack(func_index, return_value)?;
+        } else {
+            unimplemented!("Return from main is unimplemented");
+        }
 
         Ok(())
     }
@@ -1268,5 +1290,43 @@ impl ByteCode {
                 rhs.static_type_name(),
             ))
         }
+    }
+
+    fn run_native_function(
+        vm: &mut Lua,
+        func_index: usize,
+        args: usize,
+        func: fn(&mut Lua) -> i32,
+    ) -> Result<(), Error> {
+        log::trace!("Calling native function");
+
+        vm.push_return_stack(func_index);
+        vm.func_indexes.push(func_index);
+        vm.stack.resize(vm.get_return_stack() + args, Value::Nil);
+
+        let returns = usize::try_from(func(vm))?;
+        let returns = vm
+            .stack
+            .drain(vm.get_return_stack()..(vm.get_return_stack() + returns))
+            .collect::<Vec<_>>();
+
+        vm.func_indexes.pop();
+        vm.pop_return_stack();
+        vm.stack.truncate(vm.get_return_stack() + func_index);
+        vm.stack.extend(returns);
+
+        Ok(())
+    }
+
+    fn setup_closure(vm: &mut Lua, func_index: usize, func: &Closure) -> Result<(), Error> {
+        log::trace!("Calling closure");
+
+        vm.push_return_stack(func_index);
+        vm.func_indexes.push(func_index);
+        vm.program_counter.push(0);
+        vm.stack
+            .resize(vm.get_return_stack() + func.arg_count(), Value::Nil);
+
+        Ok(())
     }
 }

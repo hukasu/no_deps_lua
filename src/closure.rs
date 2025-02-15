@@ -16,14 +16,6 @@ impl Closure {
         }
     }
 
-    pub fn from_program(program: Program) -> Self {
-        Self {
-            program,
-            arg_count: 0,
-            variadic_args: false,
-        }
-    }
-
     pub fn program(&self) -> &Program {
         &self.program
     }
@@ -34,5 +26,15 @@ impl Closure {
 
     pub fn variadic_args(&self) -> bool {
         self.variadic_args
+    }
+}
+
+impl From<Program> for Closure {
+    fn from(program: Program) -> Self {
+        Self {
+            program,
+            arg_count: 0,
+            variadic_args: false,
+        }
     }
 }

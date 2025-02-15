@@ -252,3 +252,62 @@ print(type(function()end))
     let mut vm = Lua::new();
     vm.run_program(&program).expect("Should work");
 }
+
+#[test]
+fn tailcall() {
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
+
+    let program = Program::parse(
+        r#"
+function f(n)
+    if n > 10000 then return n end
+    return f(n+1)
+end
+
+print(f(0))
+"#,
+    )
+    .unwrap();
+
+    let expected_constants: &[Value] = &["f".into(), "print".into()];
+    let expected_bytecodes = &[
+        // function f(n)
+        ByteCode::Closure(0, 0),
+        ByteCode::SetGlobal(0, 0),
+        // print(f(0))
+        ByteCode::GetGlobal(0, 1),
+        ByteCode::GetGlobal(1, 0),
+        ByteCode::LoadInt(2, 0),
+        ByteCode::Call(1, 1),
+        ByteCode::Call(0, 1),
+    ];
+    assert_eq!(program.constants, expected_constants);
+    assert_eq!(program.byte_codes, expected_bytecodes);
+    assert_eq!(program.functions.len(), 1);
+
+    let Value::Closure(closure) = &program.functions[0] else {
+        panic!("Closure must be a closure")
+    };
+    let expected_constants: &[Value] = &["f".into()];
+    let expected_bytecodes = &[
+        // function f(n)
+        //     if n > 10000 then return n end
+        ByteCode::LoadInt(1, 10000),
+        ByteCode::LessThan(1, 0, 0),
+        ByteCode::Jmp(1),
+        ByteCode::OneReturn(0),
+        //     return f(n+1)
+        ByteCode::GetGlobal(1, 0),
+        ByteCode::AddInteger(2, 0, 1),
+        ByteCode::TailCall(1, 2, 0),
+        ByteCode::OneReturn(1),
+        // end
+        ByteCode::ZeroReturn,
+    ];
+    assert_eq!(closure.program().constants, expected_constants);
+    assert_eq!(closure.program().byte_codes, expected_bytecodes);
+    assert!(closure.program().functions.is_empty());
+
+    let mut vm = Lua::new();
+    vm.run_program(&program).expect("Should work");
+}

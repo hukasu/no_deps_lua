@@ -54,6 +54,10 @@ impl Program {
         Ok(program)
     }
 
+    pub fn read_bytecode(&self, index: usize) -> Option<ByteCode> {
+        self.byte_codes.get(index).copied()
+    }
+
     fn push_constant(&mut self, value: impl Into<Value>) -> Result<u8, Error> {
         let value = value.into();
         u8::try_from(
@@ -518,9 +522,22 @@ impl Program {
                 funcname(TokenType::Funcname),
                 funcbody(TokenType::Funcbody)
             ) => {
-                let _function_name = self.funcname(funcname)?;
+                let function_name = self.funcname(funcname)?;
 
-                let _funcbody = self.funcbody(funcbody, compile_context)?;
+                let [name] = function_name.names.as_slice() else {
+                    unimplemented!("Only functions with single name are supported");
+                };
+                let name_constant = self.push_constant(*name)?;
+
+                let funcbody = self.funcbody(funcbody, compile_context)?;
+
+                let (func_loc, stack_top) = compile_context.reserve_stack_top();
+                funcbody.discharge(&stack_top, self, compile_context)?;
+
+                self.byte_codes
+                    .push(ByteCode::SetGlobal(name_constant, func_loc));
+
+                compile_context.stack_top -= 1;
 
                 Ok(())
             }
@@ -752,20 +769,50 @@ impl Program {
             ) => {
                 let explist = self.retstat_explist(retstat_explist, compile_context)?;
 
-                for exp in explist.iter() {
-                    let (_, stack_top) = compile_context.reserve_stack_top();
-                    exp.discharge(&stack_top, self, compile_context)?;
-                }
-
                 match explist.len() {
                     0 => self.byte_codes.push(ByteCode::ZeroReturn),
-                    1 => self
-                        .byte_codes
-                        .push(ByteCode::OneReturn(compile_context.stack_top - 1)),
-                    _ => unimplemented!("Variadic return"),
-                }
+                    1 => {
+                        let Some(last) = explist.last() else {
+                            unreachable!(
+                                "Return list should only have 1 exp, but had {}.",
+                                explist.len()
+                            );
+                        };
+                        let (stack_loc, stack_top) = compile_context.reserve_stack_top();
+                        let dst = if let ExpDesc::Name(_) = last {
+                            last.get_local_or_discharge_at_location(
+                                self,
+                                stack_loc,
+                                compile_context,
+                            )?
+                        } else {
+                            last.discharge(&stack_top, self, compile_context)?;
 
-                compile_context.stack_top -= u8::try_from(explist.len())?;
+                            if let ExpDesc::FunctionCall(_, _) = last {
+                                let Some(ByteCode::Call(func_index, args)) = self.byte_codes.pop()
+                                else {
+                                    unreachable!("Last should always be a function call");
+                                };
+
+                                self.byte_codes
+                                    .push(ByteCode::TailCall(func_index, args + 1, 0));
+                            }
+
+                            stack_loc
+                        };
+                        compile_context.stack_top -= 1;
+
+                        self.byte_codes.push(ByteCode::OneReturn(dst))
+                    }
+                    _ => {
+                        for exp in explist.iter() {
+                            let (_, stack_top) = compile_context.reserve_stack_top();
+                            exp.discharge(&stack_top, self, compile_context)?;
+                        }
+                        compile_context.stack_top -= u8::try_from(explist.len())?;
+                        unimplemented!("Variadic return")
+                    }
+                }
 
                 self.retstat_end(retstat_end, compile_context)?;
 
@@ -864,11 +911,9 @@ impl Program {
                 funcname_end(TokenType::FuncnameEnd)
             ) => {
                 let mut func_namelist = FunctionNameList::default();
-
                 func_namelist.names.push(name);
 
                 self.funcname_cont(funcname_cont, &mut func_namelist)?;
-
                 self.funcname_end(funcname_end, &mut func_namelist)?;
 
                 Ok(func_namelist)
