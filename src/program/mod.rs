@@ -523,21 +523,56 @@ impl Program {
                 funcbody(TokenType::Funcbody)
             ) => {
                 let function_name = self.funcname(funcname)?;
-
-                let [name] = function_name.names.as_slice() else {
-                    unimplemented!("Only functions with single name are supported");
-                };
-                let name_constant = self.push_constant(*name)?;
+                if function_name.method.is_some() {
+                    unimplemented!("Methods are unimplemented");
+                }
 
                 let funcbody = self.funcbody(funcbody, compile_context)?;
 
-                let (func_loc, stack_top) = compile_context.reserve_stack_top();
-                funcbody.discharge(&stack_top, self, compile_context)?;
+                if function_name.names.len() == 1 {
+                    let (_, funcbody_stack) = compile_context.reserve_stack_top();
+                    let constant = self.push_constant(function_name.names[0])?;
 
-                self.byte_codes
-                    .push(ByteCode::SetGlobal(name_constant, func_loc));
+                    funcbody.discharge(&funcbody_stack, self, compile_context)?;
+                    funcbody_stack.discharge(
+                        &ExpDesc::Global(usize::from(constant)),
+                        self,
+                        compile_context,
+                    )?;
 
-                compile_context.stack_top -= 1;
+                    compile_context.stack_top -= 1;
+                } else {
+                    let mut stacks_used = 0;
+
+                    let mut previous =
+                        if let Some(local) = compile_context.find_name(function_name.names[0]) {
+                            local
+                        } else {
+                            stacks_used += 1;
+                            compile_context.reserve_stack_top().1
+                        };
+
+                    for (i, name) in function_name.names.iter().enumerate() {
+                        if i + 1 == function_name.names.len() {
+                            let (_, funcbody_stack) = compile_context.reserve_stack_top();
+                            stacks_used += 1;
+
+                            funcbody.discharge(&funcbody_stack, self, compile_context)?;
+
+                            funcbody_stack.discharge(
+                                &ExpDesc::TableAccess {
+                                    table: Box::new(previous.clone()),
+                                    key: Box::new(self.name(name)),
+                                    record: true,
+                                },
+                                self,
+                                compile_context,
+                            )?;
+                        }
+                    }
+
+                    compile_context.stack_top -= stacks_used;
+                }
 
                 Ok(())
             }

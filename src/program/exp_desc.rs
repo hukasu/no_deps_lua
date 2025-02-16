@@ -1112,12 +1112,11 @@ impl<'a> ExpDesc<'a> {
 
                 Ok(())
             }
-
             Self::TableAccess {
                 table,
                 key,
                 record: true,
-            } => {
+            } if table.is_name() => {
                 let (table_loc, _) = compile_context.reserve_stack_top();
                 let table_loc = table.get_local_or_discharge_at_location(
                     program,
@@ -1139,6 +1138,55 @@ impl<'a> ExpDesc<'a> {
                     }
                     other => Err(Error::TableRecordAccess(other.static_type_name())),
                 }
+            }
+            Self::TableAccess {
+                table,
+                key,
+                record: true,
+            } if table.is_local() => {
+                let ExpDesc::Local(table_loc) = table.as_ref() else {
+                    unreachable!("Should be a Local, but was {:?}", table);
+                };
+
+                match key.as_ref() {
+                    ExpDesc::Name(name) => {
+                        let constant = program.push_constant(*name)?;
+                        program.byte_codes.push(ByteCode::SetField(
+                            u8::try_from(*table_loc)?,
+                            constant,
+                            u8::try_from(*src)?,
+                        ));
+
+                        Ok(())
+                    }
+                    other => Err(Error::TableRecordAccess(other.static_type_name())),
+                }
+            }
+            Self::TableAccess {
+                table,
+                key,
+                record: true,
+            } if table.is_global() => {
+                let ExpDesc::Global(_) = table.as_ref() else {
+                    unreachable!("Should be a Global, but was {:?}", table);
+                };
+
+                let (_, stack_top) = compile_context.reserve_stack_top();
+
+                table.discharge(&stack_top, program, compile_context)?;
+                self.discharge(
+                    &ExpDesc::TableAccess {
+                        table: Box::new(stack_top),
+                        key: key.clone(),
+                        record: true,
+                    },
+                    program,
+                    compile_context,
+                )?;
+
+                compile_context.stack_top -= 1;
+
+                Ok(())
             }
             Self::Condition(condition) => {
                 let src = u8::try_from(*src)?;
@@ -1408,7 +1456,7 @@ impl<'a> ExpDesc<'a> {
                 Ok(())
             }
             (
-                access @ Self::TableAccess {
+                Self::TableAccess {
                     table,
                     key,
                     record: true,
@@ -1419,7 +1467,6 @@ impl<'a> ExpDesc<'a> {
 
                 let table_loc =
                     table.get_local_or_discharge_at_location(program, dst, compile_context)?;
-                log::trace!("{:?} {}", access, table_loc);
 
                 match key.as_ref() {
                     ExpDesc::Name(name) => {
@@ -1595,6 +1642,18 @@ impl<'a> ExpDesc<'a> {
 
     fn is_string(&self) -> bool {
         matches!(self, ExpDesc::String(_))
+    }
+
+    fn is_name(&self) -> bool {
+        matches!(self, ExpDesc::Name(_))
+    }
+
+    fn is_local(&self) -> bool {
+        matches!(self, ExpDesc::Local(_))
+    }
+
+    fn is_global(&self) -> bool {
+        matches!(self, ExpDesc::Global(_))
     }
 
     fn is_relational(&self) -> bool {
