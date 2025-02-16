@@ -408,7 +408,10 @@ impl ByteCode {
     pub fn load_constant(&self, vm: &mut Lua, program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::LoadConstant(dst, key));
 
-        vm.set_stack(*dst, program.constants[*key as usize].clone())
+        vm.set_stack(
+            *dst,
+            vm.get_running_closure().unwrap_or(program).constants[*key as usize].clone(),
+        )
     }
 
     pub fn load_false(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
@@ -450,9 +453,9 @@ impl ByteCode {
     pub fn set_global(&self, vm: &mut Lua, program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::SetGlobal(name, src));
 
-        let key = &program.constants[*name as usize];
+        let key = vm.get_running_closure().unwrap_or(program).constants[*name as usize].clone();
         let value = vm.get_stack(*src)?.clone();
-        if let Some(global) = vm.globals.iter_mut().find(|global| global.0.eq(key)) {
+        if let Some(global) = vm.globals.iter_mut().find(|global| global.0.eq(&key)) {
             global.1 = value;
             Ok(())
         } else if matches!(key, Value::String(_) | Value::ShortString(_)) {
@@ -509,7 +512,9 @@ impl ByteCode {
         validate_bytecode!(self, ByteCode::GetField(dst, table, key));
 
         if let Value::Table(table) = vm.get_stack(*table)?.clone() {
-            let key = ValueKey::from(program.constants[usize::from(*key)].clone());
+            let key = ValueKey::from(
+                vm.get_running_closure().unwrap_or(program).constants[usize::from(*key)].clone(),
+            );
             let bin_search = (*table)
                 .borrow()
                 .table
@@ -556,7 +561,9 @@ impl ByteCode {
         validate_bytecode!(self, ByteCode::SetField(table, key, value));
 
         if let Value::Table(table) = vm.get_stack(*table)?.clone() {
-            let key = ValueKey::from(program.constants[usize::from(*key)].clone());
+            let key = ValueKey::from(
+                vm.get_running_closure().unwrap_or(program).constants[usize::from(*key)].clone(),
+            );
             let value = vm.get_stack(*value)?.clone();
 
             let binary_search = (*table)
@@ -614,7 +621,10 @@ impl ByteCode {
     pub fn add_constant(&self, vm: &mut Lua, program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::AddConstant(dst, lhs, constant));
 
-        let res = match (&vm.get_stack(*lhs)?, &program.constants[*constant as usize]) {
+        let res = match (
+            &vm.get_stack(*lhs)?,
+            &vm.get_running_closure().unwrap_or(program).constants[*constant as usize],
+        ) {
             (Value::Integer(l), Value::Integer(r)) => Value::Integer(l + r),
             (Value::Integer(l), Value::Float(r)) => Value::Float(*l as f64 + r),
             (Value::Float(l), Value::Integer(r)) => Value::Float(l + *r as f64),
@@ -633,7 +643,10 @@ impl ByteCode {
     pub fn mul_constant(&self, vm: &mut Lua, program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::MulConstant(dst, lhs, constant));
 
-        let res = match (&vm.get_stack(*lhs)?, &program.constants[*constant as usize]) {
+        let res = match (
+            &vm.get_stack(*lhs)?,
+            &vm.get_running_closure().unwrap_or(program).constants[*constant as usize],
+        ) {
             (Value::Integer(l), Value::Integer(r)) => Value::Integer(l * r),
             (Value::Integer(l), Value::Float(r)) => Value::Float(*l as f64 * r),
             (Value::Float(l), Value::Integer(r)) => Value::Float(l * *r as f64),
@@ -972,7 +985,7 @@ impl ByteCode {
         validate_bytecode!(self, ByteCode::EqualConstant(register, constant, test));
 
         let lhs = vm.get_stack(*register)?;
-        let rhs = &program.constants[*constant as usize];
+        let rhs = &vm.get_running_closure().unwrap_or(program).constants[*constant as usize];
 
         Self::relational_comparison(lhs, rhs, |ordering| ordering == Ordering::Equal, *test == 1)
             .and_then(|should_advance_pc| {
@@ -1219,9 +1232,9 @@ impl ByteCode {
     pub fn set_global_constant(&self, vm: &mut Lua, program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::SetGlobalConstant(name, src));
 
-        let key = &program.constants[*name as usize];
-        let value = program.constants[*src as usize].clone();
-        if let Some(global) = vm.globals.iter_mut().find(|global| global.0.eq(key)) {
+        let key = vm.get_running_closure().unwrap_or(program).constants[*name as usize].clone();
+        let value = vm.get_running_closure().unwrap_or(program).constants[*src as usize].clone();
+        if let Some(global) = vm.globals.iter_mut().find(|global| global.0.eq(&key)) {
             global.1 = value;
             Ok(())
         } else if matches!(key, Value::String(_) | Value::ShortString(_)) {
@@ -1235,9 +1248,9 @@ impl ByteCode {
     pub fn set_global_integer(&self, vm: &mut Lua, program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::SetGlobalInteger(name, value));
 
-        let key = &program.constants[*name as usize];
+        let key = vm.get_running_closure().unwrap_or(program).constants[*name as usize].clone();
         let value = (*value).into();
-        if let Some(global) = vm.globals.iter_mut().find(|global| global.0.eq(key)) {
+        if let Some(global) = vm.globals.iter_mut().find(|global| global.0.eq(&key)) {
             global.1 = value;
             Ok(())
         } else if matches!(key, Value::String(_) | Value::ShortString(_)) {
@@ -1251,14 +1264,16 @@ impl ByteCode {
     pub fn set_global_global(&self, vm: &mut Lua, program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::SetGlobalGlobal(dst_name, src_name));
 
-        let dst_key = &program.constants[*dst_name as usize];
-        let src_key = &program.constants[*src_name as usize];
+        let dst_key =
+            vm.get_running_closure().unwrap_or(program).constants[*dst_name as usize].clone();
+        let src_key =
+            vm.get_running_closure().unwrap_or(program).constants[*src_name as usize].clone();
         let value = vm
             .globals
             .iter()
-            .find(|global| global.0.eq(src_key))
+            .find(|global| global.0.eq(&src_key))
             .map_or(Value::Nil, |global| global.1.clone());
-        if let Some(global) = vm.globals.iter_mut().find(|global| global.0.eq(dst_key)) {
+        if let Some(global) = vm.globals.iter_mut().find(|global| global.0.eq(&dst_key)) {
             global.1 = value;
             Ok(())
         } else if matches!(dst_key, Value::String(_) | Value::ShortString(_)) {
