@@ -444,7 +444,6 @@ impl<'a> ExpDesc<'a> {
             program: &mut Program,
             compile_context: &mut CompileContext,
         ) -> Result<(), Error> {
-            log::trace!("dischar_binop {:?} {:?}", lhs, rhs);
             let (lhs_loc, used_dst) = if let name @ ExpDesc::Name(_) = lhs {
                 let local =
                     name.get_local_or_discharge_at_location(program, dst, compile_context)?;
@@ -466,7 +465,6 @@ impl<'a> ExpDesc<'a> {
                 rhs.discharge(&stack_top, program, compile_context)?;
                 rhs_loc
             };
-            log::trace!("dischar_binop {:?} {:?}", lhs_loc, rhs_loc);
 
             if used_dst {
                 compile_context.stack_top -= 1;
@@ -1546,6 +1544,11 @@ impl<'a> ExpDesc<'a> {
                     let (_, stack_top) = compile_context.reserve_stack_top();
                     arg.discharge(&stack_top, program, compile_context)?;
                 }
+
+                if let Some(ByteCode::Call(_, _, out)) = program.byte_codes.last_mut() {
+                    *out = 0;
+                }
+
                 let after_args = program.byte_codes.len();
 
                 for jump in compile_context.jumps_to_block.drain(jumps_to_block_count..) {
@@ -1590,9 +1593,16 @@ impl<'a> ExpDesc<'a> {
                     }
                 }
 
+                // TODO do proper bytecode
+                let args_len = if let Some(ExpDesc::FunctionCall(_, _)) = args.last() {
+                    0
+                } else {
+                    u8::try_from(args.len())? + 1
+                };
+
                 program
                     .byte_codes
-                    .push(ByteCode::Call(func_index, u8::try_from(args.len())?));
+                    .push(ByteCode::Call(func_index, args_len, 1));
 
                 compile_context.stack_top -= u8::try_from(args.len())?;
 

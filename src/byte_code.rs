@@ -308,8 +308,11 @@ pub enum ByteCode {
     /// Calls a function
     ///
     /// `func`: Location on the stack where the function was loaded  
-    /// `args`: Count of arguments
-    Call(u8, u8),
+    /// `in`: Number of items on the stack going into the function, the function
+    /// itself counts as one item, `0` means a variable number of items   
+    /// `out`: How many items coming out of the function should be moved into
+    /// the caller stack frame, `0` means all  
+    Call(u8, u8, u8),
     /// `TAILCALL`  
     /// Calls a function
     ///
@@ -1066,18 +1069,20 @@ impl ByteCode {
     }
 
     pub fn call(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
-        validate_bytecode!(self, ByteCode::Call(func_index, args));
+        validate_bytecode!(self, ByteCode::Call(func_index, in_items, out));
         let func_index_usize = usize::from(*func_index);
 
         let func = &vm.get_stack(*func_index)?;
         if let Value::Function(func) = func {
-            Self::run_native_function(vm, func_index_usize, usize::from(*args), *func)
+            Self::run_native_function(vm, func_index_usize, usize::from(*in_items), *func)
         } else if let Value::Closure(func) = func {
             let func = func.clone();
             Self::setup_closure(vm, func_index_usize, func.as_ref())
         } else {
             Err(Error::InvalidFunction((*func).clone()))
         }
+
+        // TODO deal with c
     }
 
     pub fn tail_call(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
@@ -1315,6 +1320,12 @@ impl ByteCode {
     ) -> Result<(), Error> {
         log::trace!("Calling native function");
 
+        let args = if args == 0 {
+            vm.stack.len() - func_index - 1
+        } else {
+            args - 1
+        };
+
         vm.push_return_stack(func_index);
         vm.func_indexes.push(func_index);
         vm.stack.resize(vm.get_return_stack() + args, Value::Nil);
@@ -1336,11 +1347,16 @@ impl ByteCode {
     fn setup_closure(vm: &mut Lua, func_index: usize, func: &Closure) -> Result<(), Error> {
         log::trace!("Calling closure");
 
+        let args = if func.arg_count() == 0 {
+            vm.stack.len() - (vm.get_return_stack() + func_index)
+        } else {
+            func.arg_count()
+        };
+
         vm.push_return_stack(func_index);
         vm.func_indexes.push(func_index);
         vm.program_counter.push(0);
-        vm.stack
-            .resize(vm.get_return_stack() + func.arg_count(), Value::Nil);
+        vm.stack.resize(vm.get_return_stack() + args, Value::Nil);
 
         Ok(())
     }

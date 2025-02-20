@@ -4,9 +4,8 @@
 * Implement decoding of long strings
 * Implement scientific notation numerals
 
-# Parser
-* Fix Shift-Reduces
-
 # VM
-* Change `print` to print `Display` instead of `Debug` of values
 * Improve concat results
+* Concat bytecode only has 2 values
+* Properly implement Call bytecode
+* Methods to prepare and tear down calls

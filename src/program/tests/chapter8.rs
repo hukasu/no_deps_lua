@@ -1,4 +1,4 @@
-use crate::{byte_code::ByteCode, value::Value, Lua, Program};
+use crate::{byte_code::ByteCode, value::Value, Program};
 
 #[test]
 fn base_function() {
@@ -26,7 +26,7 @@ hello()
         ByteCode::Closure(2, 0),
         // hello()
         ByteCode::Move(3, 2),
-        ByteCode::Call(3, 0),
+        ByteCode::Call(3, 1, 1),
     ];
     assert!(program.constants.is_empty());
     assert_eq!(&program.byte_codes, expected_bytecodes);
@@ -43,7 +43,7 @@ hello()
         //     print (a)
         ByteCode::GetGlobal(1, 0),
         ByteCode::Move(2, 0),
-        ByteCode::Call(1, 1),
+        ByteCode::Call(1, 2, 1),
         // end
         ByteCode::ZeroReturn,
     ];
@@ -75,7 +75,7 @@ print(hello)
         // print(hello)
         ByteCode::GetGlobal(1, 0),
         ByteCode::Move(2, 0),
-        ByteCode::Call(1, 1),
+        ByteCode::Call(1, 2, 1),
     ];
     assert_eq!(program.constants, &["print".into()]);
     assert_eq!(&program.byte_codes, expected_bytecodes);
@@ -90,7 +90,7 @@ print(hello)
         //     print "hello, function!"
         ByteCode::GetGlobal(0, 0),
         ByteCode::LoadConstant(1, 1),
-        ByteCode::Call(0, 1),
+        ByteCode::Call(0, 2, 1),
         // end
         ByteCode::ZeroReturn,
     ];
@@ -123,7 +123,7 @@ print (f1)
         // print (f1)
         ByteCode::GetGlobal(1, 0),
         ByteCode::Move(2, 0),
-        ByteCode::Call(1, 1),
+        ByteCode::Call(1, 2, 1),
     ];
     assert_eq!(program.constants, &["print".into()]);
     assert_eq!(&program.byte_codes, expected_bytecodes);
@@ -139,7 +139,7 @@ print (f1)
         //     print (f2)
         ByteCode::GetGlobal(1, 0),
         ByteCode::Move(2, 0),
-        ByteCode::Call(1, 1),
+        ByteCode::Call(1, 2, 1),
         // end
         ByteCode::ZeroReturn,
     ];
@@ -156,7 +156,7 @@ print (f1)
         //      print "internal"
         ByteCode::GetGlobal(0, 0),
         ByteCode::LoadConstant(1, 1),
-        ByteCode::Call(0, 1),
+        ByteCode::Call(0, 2, 1),
         // end
         ByteCode::ZeroReturn,
     ];
@@ -189,7 +189,7 @@ print(t.f)
         // print(t.f)
         ByteCode::GetGlobal(1, 1),
         ByteCode::GetField(2, 0, 0),
-        ByteCode::Call(1, 1),
+        ByteCode::Call(1, 2, 1),
     ];
     assert_eq!(program.constants, &["f".into(), "print".into()]);
     assert_eq!(&program.byte_codes, expected_bytecodes);
@@ -203,7 +203,7 @@ print(t.f)
         //      print "hello"
         ByteCode::GetGlobal(0, 0),
         ByteCode::LoadConstant(1, 1),
-        ByteCode::Call(0, 1),
+        ByteCode::Call(0, 2, 1),
         // end
         ByteCode::ZeroReturn,
     ];
@@ -239,22 +239,22 @@ f(1)
         ByteCode::Move(1, 0),
         ByteCode::LoadInt(2, 1),
         ByteCode::LoadInt(3, 2),
-        ByteCode::Call(1, 2),
+        ByteCode::Call(1, 3, 1),
         // f(100,200)
         ByteCode::Move(1, 0),
         ByteCode::LoadInt(2, 100),
         ByteCode::LoadInt(3, 200),
-        ByteCode::Call(1, 2),
+        ByteCode::Call(1, 3, 1),
         // f(1,2,3)
         ByteCode::Move(1, 0),
         ByteCode::LoadInt(2, 1),
         ByteCode::LoadInt(3, 2),
         ByteCode::LoadInt(4, 3),
-        ByteCode::Call(1, 3),
+        ByteCode::Call(1, 4, 1),
         // f(1)
         ByteCode::Move(1, 0),
         ByteCode::LoadInt(2, 1),
-        ByteCode::Call(1, 1),
+        ByteCode::Call(1, 2, 1),
     ];
     assert!(program.constants.is_empty());
     assert_eq!(&program.byte_codes, expected_bytecodes);
@@ -269,7 +269,7 @@ f(1)
         // print(a+b)
         ByteCode::GetGlobal(2, 0),
         ByteCode::Add(3, 0, 1),
-        ByteCode::Call(2, 1),
+        ByteCode::Call(2, 2, 1),
         // end
         ByteCode::ZeroReturn,
     ];
@@ -307,15 +307,15 @@ print(f(100,200))
         ByteCode::Move(2, 0),
         ByteCode::LoadInt(3, 1),
         ByteCode::LoadInt(4, 2),
-        ByteCode::Call(2, 2),
-        ByteCode::Call(1, 1),
+        ByteCode::Call(2, 3, 0),
+        ByteCode::Call(1, 0, 1),
         // print(f(100,200))
         ByteCode::GetGlobal(1, 0),
         ByteCode::Move(2, 0),
         ByteCode::LoadInt(3, 100),
         ByteCode::LoadInt(4, 200),
-        ByteCode::Call(2, 2),
-        ByteCode::Call(1, 1),
+        ByteCode::Call(2, 3, 0),
+        ByteCode::Call(1, 0, 1),
     ];
     assert_eq!(program.constants, expected_constants);
     assert_eq!(program.byte_codes, expected_bytecodes);
@@ -336,7 +336,7 @@ print(f(100,200))
     assert_eq!(func.program().byte_codes, expected_bytecodes);
     assert!(func.program().functions.is_empty());
 
-    let mut vm = Lua::new();
+    let mut vm = crate::Lua::new();
     vm.run_program(&program).expect("Should work");
 
     assert!(matches!(vm.stack[0], Value::Closure(_)));
@@ -365,38 +365,38 @@ print(type(function()end))
         ByteCode::GetGlobal(0, 0),
         ByteCode::GetGlobal(1, 1),
         ByteCode::LoadInt(2, 123),
-        ByteCode::Call(1, 1),
-        ByteCode::Call(0, 1),
+        ByteCode::Call(1, 2, 0),
+        ByteCode::Call(0, 0, 1),
         // print(type(123.123))
         ByteCode::GetGlobal(0, 0),
         ByteCode::GetGlobal(1, 1),
         ByteCode::LoadConstant(2, 2),
-        ByteCode::Call(1, 1),
-        ByteCode::Call(0, 1),
+        ByteCode::Call(1, 2, 0),
+        ByteCode::Call(0, 0, 1),
         // print(type("123"))
         ByteCode::GetGlobal(0, 0),
         ByteCode::GetGlobal(1, 1),
         ByteCode::LoadConstant(2, 3),
-        ByteCode::Call(1, 1),
-        ByteCode::Call(0, 1),
+        ByteCode::Call(1, 2, 0),
+        ByteCode::Call(0, 0, 1),
         // print(type({}))
         ByteCode::GetGlobal(0, 0),
         ByteCode::GetGlobal(1, 1),
         ByteCode::NewTable(2, 0, 0),
-        ByteCode::Call(1, 1),
-        ByteCode::Call(0, 1),
+        ByteCode::Call(1, 2, 0),
+        ByteCode::Call(0, 0, 1),
         // print(type(print))
         ByteCode::GetGlobal(0, 0),
         ByteCode::GetGlobal(1, 1),
         ByteCode::GetGlobal(2, 0),
-        ByteCode::Call(1, 1),
-        ByteCode::Call(0, 1),
+        ByteCode::Call(1, 2, 0),
+        ByteCode::Call(0, 0, 1),
         // print(type(function()end))
         ByteCode::GetGlobal(0, 0),
         ByteCode::GetGlobal(1, 1),
         ByteCode::Closure(2, 0),
-        ByteCode::Call(1, 1),
-        ByteCode::Call(0, 1),
+        ByteCode::Call(1, 2, 0),
+        ByteCode::Call(0, 0, 1),
     ];
     assert_eq!(program.constants, expected_constants);
     assert_eq!(program.byte_codes, expected_bytecodes);
@@ -409,7 +409,7 @@ print(type(function()end))
     assert_eq!(closure.program().byte_codes, &[ByteCode::ZeroReturn]);
     assert!(closure.program().functions.is_empty());
 
-    let mut vm = Lua::new();
+    let mut vm = crate::Lua::new();
     vm.run_program(&program).expect("Should work");
 }
 
@@ -438,8 +438,8 @@ print(f(0))
         ByteCode::GetGlobal(0, 1),
         ByteCode::GetGlobal(1, 0),
         ByteCode::LoadInt(2, 0),
-        ByteCode::Call(1, 1),
-        ByteCode::Call(0, 1),
+        ByteCode::Call(1, 2, 0),
+        ByteCode::Call(0, 0, 1),
     ];
     assert_eq!(program.constants, expected_constants);
     assert_eq!(program.byte_codes, expected_bytecodes);
@@ -468,6 +468,6 @@ print(f(0))
     assert_eq!(closure.program().byte_codes, expected_bytecodes);
     assert!(closure.program().functions.is_empty());
 
-    let mut vm = Lua::new();
+    let mut vm = crate::Lua::new();
     vm.run_program(&program).expect("Should work");
 }

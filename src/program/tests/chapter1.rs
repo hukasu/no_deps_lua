@@ -5,8 +5,8 @@ fn hello_world() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
     let program = crate::Program::parse(
         r#"
-print "hello world"
-print "hello again..."
+print "hello, world!"
+print "hello, again!"
 "#,
     )
     .unwrap();
@@ -14,8 +14,8 @@ print "hello again..."
         &program.constants,
         &[
             "print".into(),
-            "hello world".into(),
-            "hello again...".into()
+            "hello, world!".into(),
+            "hello, again!".into()
         ]
     );
     assert_eq!(
@@ -23,10 +23,10 @@ print "hello again..."
         &[
             ByteCode::GetGlobal(0, 0),
             ByteCode::LoadConstant(1, 1),
-            ByteCode::Call(0, 1),
+            ByteCode::Call(0, 2, 1),
             ByteCode::GetGlobal(0, 0),
             ByteCode::LoadConstant(1, 2),
-            ByteCode::Call(0, 1),
+            ByteCode::Call(0, 2, 1),
         ]
     );
     crate::Lua::execute(&program).unwrap();

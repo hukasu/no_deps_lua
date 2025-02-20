@@ -544,7 +544,7 @@ impl Program {
                 } else {
                     let mut stacks_used = 0;
 
-                    let mut previous =
+                    let previous =
                         if let Some(local) = compile_context.find_name(function_name.names[0]) {
                             local
                         } else {
@@ -819,13 +819,13 @@ impl Program {
                             last.discharge(&stack_top, self, compile_context)?;
 
                             if let ExpDesc::FunctionCall(_, _) = last {
-                                let Some(ByteCode::Call(func_index, args)) = self.byte_codes.pop()
+                                let Some(ByteCode::Call(func_index, _, c)) = self.byte_codes.pop()
                                 else {
                                     unreachable!("Last should always be a function call");
                                 };
 
                                 self.byte_codes
-                                    .push(ByteCode::TailCall(func_index, args + 1, 0));
+                                    .push(ByteCode::TailCall(func_index, c + 1, 0));
                             }
 
                             stack_loc

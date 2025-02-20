@@ -42,23 +42,23 @@ print "null: \0." -- '\0'
             // print "tab:\thi" -- tab
             ByteCode::GetGlobal(0, 0),
             ByteCode::LoadConstant(1, 1),
-            ByteCode::Call(0, 1),
+            ByteCode::Call(0, 2, 1),
             // print "\xE4\xBD\xA0\xE5\xA5\xBD" -- 你好
             ByteCode::GetGlobal(0, 0),
             ByteCode::LoadConstant(1, 2),
-            ByteCode::Call(0, 1),
+            ByteCode::Call(0, 2, 1),
             // print "\xE4\xBD" -- invalid UTF-8
             ByteCode::GetGlobal(0, 0),
             ByteCode::LoadConstant(1, 3),
-            ByteCode::Call(0, 1),
+            ByteCode::Call(0, 2, 1),
             // print "\72\101\108\108\111" -- Hello
             ByteCode::GetGlobal(0, 0),
             ByteCode::LoadConstant(1, 4),
-            ByteCode::Call(0, 1),
+            ByteCode::Call(0, 2, 1),
             // print "null: \0." -- '\0'
             ByteCode::GetGlobal(0, 0),
             ByteCode::LoadConstant(1, 5),
-            ByteCode::Call(0, 1),
+            ByteCode::Call(0, 2, 1),
         ]
     );
     crate::Lua::execute(&program).unwrap();
@@ -106,15 +106,15 @@ print(long_string_long_string_long_string_long_string_long_string)
             // print(s)
             ByteCode::GetGlobal(3, 3),
             ByteCode::Move(4, 0),
-            ByteCode::Call(3, 1),
+            ByteCode::Call(3, 2, 1),
             // print(m)
             ByteCode::GetGlobal(3, 3),
             ByteCode::Move(4, 1),
-            ByteCode::Call(3, 1),
+            ByteCode::Call(3, 2, 1),
             // print(l)
             ByteCode::GetGlobal(3, 3),
             ByteCode::Move(4, 2),
-            ByteCode::Call(3, 1),
+            ByteCode::Call(3, 2, 1),
             // hello_world = 12
             ByteCode::SetGlobalInteger(0, 12),
             // middle_string_middle_string = 345
@@ -124,15 +124,15 @@ print(long_string_long_string_long_string_long_string_long_string)
             // print(hello_world)
             ByteCode::GetGlobal(3, 3),
             ByteCode::GetGlobal(4, 0),
-            ByteCode::Call(3, 1),
+            ByteCode::Call(3, 2, 1),
             // print(middle_string_middle_string)
             ByteCode::GetGlobal(3, 3),
             ByteCode::GetGlobal(4, 1),
-            ByteCode::Call(3, 1),
+            ByteCode::Call(3, 2, 1),
             // print(long_string_long_string_long_string_long_string_long_string)
             ByteCode::GetGlobal(3, 3),
             ByteCode::GetGlobal(4, 2),
-            ByteCode::Call(3, 1),
+            ByteCode::Call(3, 2, 1),
         ]
     );
     crate::Lua::execute(&program).unwrap();

@@ -59,7 +59,7 @@ end
             //     print "test only once"
             ByteCode::GetGlobal(0, 3),
             ByteCode::LoadConstant(1, 4),
-            ByteCode::Call(0, 1),
+            ByteCode::Call(0, 2, 1),
             // end
 
             // if g3 or g1 and g2 then
@@ -75,7 +75,7 @@ end
             //     print "test 3 times"
             ByteCode::GetGlobal(0, 3),
             ByteCode::LoadConstant(1, 5),
-            ByteCode::Call(0, 1),
+            ByteCode::Call(0, 2, 1),
             // end
 
             // if (g3 or g1) and (g2 or g4) then
@@ -94,7 +94,7 @@ end
             //     print "test 3 times"
             ByteCode::GetGlobal(0, 3),
             ByteCode::LoadConstant(1, 5),
-            ByteCode::Call(0, 1),
+            ByteCode::Call(0, 2, 1),
             // end
 
             // if (g3 or g1) and (g2 and g4) then
@@ -113,7 +113,7 @@ end
             //     print "test 4 times and fail"
             ByteCode::GetGlobal(0, 3),
             ByteCode::LoadConstant(1, 7),
-            ByteCode::Call(0, 1),
+            ByteCode::Call(0, 2, 1),
             // end
         ]
     );
@@ -161,7 +161,7 @@ print( (g3 or g1) and (g2 and g4))
             ByteCode::Test(1, 0),
             ByteCode::Jmp(1),
             ByteCode::GetGlobal(1, 3),
-            ByteCode::Call(0, 1),
+            ByteCode::Call(0, 2, 1),
             // print( g3 or g1 and g2)
             ByteCode::GetGlobal(0, 2),
             ByteCode::GetGlobal(1, 3),
@@ -171,7 +171,7 @@ print( (g3 or g1) and (g2 and g4))
             ByteCode::Test(1, 0),
             ByteCode::Jmp(1),
             ByteCode::GetGlobal(1, 1),
-            ByteCode::Call(0, 1),
+            ByteCode::Call(0, 2, 1),
             // print( (g3 or g1) and (g2 or g4))
             ByteCode::GetGlobal(0, 2),
             ByteCode::GetGlobal(1, 3),
@@ -184,7 +184,7 @@ print( (g3 or g1) and (g2 and g4))
             ByteCode::Test(1, 1),
             ByteCode::Jmp(1),
             ByteCode::GetGlobal(1, 4),
-            ByteCode::Call(0, 1),
+            ByteCode::Call(0, 2, 1),
             // print( (g3 or g1) and (g2 and g4))
             ByteCode::GetGlobal(0, 2),
             ByteCode::GetGlobal(1, 3),
@@ -197,7 +197,7 @@ print( (g3 or g1) and (g2 and g4))
             ByteCode::Test(1, 0),
             ByteCode::Jmp(1),
             ByteCode::GetGlobal(1, 4),
-            ByteCode::Call(0, 1),
+            ByteCode::Call(0, 2, 1),
         ]
     );
     crate::Lua::execute(&program).expect("Should run");
@@ -242,7 +242,7 @@ print (a>=b)
         //     print "yes"
         ByteCode::GetGlobal(2, 1),
         ByteCode::LoadConstant(3, 2),
-        ByteCode::Call(2, 1),
+        ByteCode::Call(2, 2, 1),
         // end
 
         // if b <= "world" then
@@ -255,7 +255,7 @@ print (a>=b)
         ByteCode::Jmp(1),
         ByteCode::LoadFalseSkip(3),
         ByteCode::LoadTrue(3),
-        ByteCode::Call(2, 1),
+        ByteCode::Call(2, 2, 1),
         // end
 
         // print (a == 1000 and b == "hello")
@@ -266,35 +266,35 @@ print (a>=b)
         ByteCode::Jmp(1),
         ByteCode::LoadFalseSkip(3),
         ByteCode::LoadTrue(3),
-        ByteCode::Call(2, 1),
+        ByteCode::Call(2, 2, 1),
         // print (a<b)
         ByteCode::GetGlobal(2, 1),
         ByteCode::LessThan(0, 1, 1),
         ByteCode::Jmp(1),
         ByteCode::LoadFalseSkip(3),
         ByteCode::LoadTrue(3),
-        ByteCode::Call(2, 1),
+        ByteCode::Call(2, 2, 1),
         // print (a>b)
         ByteCode::GetGlobal(2, 1),
         ByteCode::LessThan(1, 0, 1),
         ByteCode::Jmp(1),
         ByteCode::LoadFalseSkip(3),
         ByteCode::LoadTrue(3),
-        ByteCode::Call(2, 1),
+        ByteCode::Call(2, 2, 1),
         // print (a<=b)
         ByteCode::GetGlobal(2, 1),
         ByteCode::LessEqual(0, 1, 1),
         ByteCode::Jmp(1),
         ByteCode::LoadFalseSkip(3),
         ByteCode::LoadTrue(3),
-        ByteCode::Call(2, 1),
+        ByteCode::Call(2, 2, 1),
         // print (a>=b)
         ByteCode::GetGlobal(2, 1),
         ByteCode::LessEqual(1, 0, 1),
         ByteCode::Jmp(1),
         ByteCode::LoadFalseSkip(3),
         ByteCode::LoadTrue(3),
-        ByteCode::Call(2, 1),
+        ByteCode::Call(2, 2, 1),
     ];
 
     let program = Program::parse(code).unwrap();

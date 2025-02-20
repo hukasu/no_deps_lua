@@ -55,19 +55,19 @@ print(t)
             // print(t[1])
             ByteCode::GetGlobal(2, 6),
             ByteCode::GetInt(3, 1, 1),
-            ByteCode::Call(2, 1),
+            ByteCode::Call(2, 2, 1),
             // print(t['x'])
             ByteCode::GetGlobal(2, 6),
             ByteCode::GetField(3, 1, 1),
-            ByteCode::Call(2, 1),
+            ByteCode::Call(2, 2, 1),
             // print(t.key)
             ByteCode::GetGlobal(2, 6),
             ByteCode::GetField(3, 1, 0),
-            ByteCode::Call(2, 1),
+            ByteCode::Call(2, 2, 1),
             // print(t)
             ByteCode::GetGlobal(2, 6),
             ByteCode::Move(3, 1),
-            ByteCode::Call(2, 1),
+            ByteCode::Call(2, 2, 1),
         ]
     );
     crate::Lua::execute(&program).unwrap();
@@ -141,25 +141,25 @@ t.f(t[1000])
             ByteCode::GetField(2, 2, 5),
             ByteCode::GetGlobal(3, 0),
             ByteCode::GetField(3, 3, 1),
-            ByteCode::Call(2, 1),
+            ByteCode::Call(2, 2, 1),
             // t.f(t.x)
             ByteCode::GetGlobal(2, 0),
             ByteCode::GetField(2, 2, 5),
             ByteCode::GetGlobal(3, 0),
             ByteCode::GetField(3, 3, 3),
-            ByteCode::Call(2, 1),
+            ByteCode::Call(2, 2, 1),
             // t.f(t[2])
             ByteCode::GetGlobal(2, 0),
             ByteCode::GetField(2, 2, 5),
             ByteCode::GetGlobal(3, 0),
             ByteCode::GetInt(3, 3, 2),
-            ByteCode::Call(2, 1),
+            ByteCode::Call(2, 2, 1),
             // t.f(t[1000])
             ByteCode::GetGlobal(2, 0),
             ByteCode::GetField(2, 2, 5),
             ByteCode::GetGlobal(3, 0),
             ByteCode::GetField(3, 3, 6),
-            ByteCode::Call(2, 1),
+            ByteCode::Call(2, 2, 1),
         ]
     );
     crate::Lua::execute(&program).unwrap();

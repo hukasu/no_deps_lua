@@ -210,7 +210,7 @@ impl Lua {
                     gei.greater_equal_integer(self, program)?
                 }
                 test @ ByteCode::Test(_, _) => test.test(self, program)?,
-                call @ ByteCode::Call(_, _) => call.call(self, program)?,
+                call @ ByteCode::Call(_, _, _) => call.call(self, program)?,
                 tail_call @ ByteCode::TailCall(_, _, _) => tail_call.tail_call(self, program)?,
                 ByteCode::Return => unimplemented!("return bytecode"),
                 zero_return @ ByteCode::ZeroReturn => zero_return.zero_return(self, program)?,
