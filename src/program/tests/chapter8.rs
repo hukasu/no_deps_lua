@@ -1,4 +1,4 @@
-use crate::{byte_code::ByteCode, value::Value, Program};
+use crate::{byte_code::ByteCode, value::Value, Error, Program};
 
 #[test]
 fn base_function() {
@@ -287,9 +287,11 @@ f(1)
     assert_eq!(func.program().byte_codes, expected_bytecodes);
     assert!(func.program().functions.is_empty());
 
-    crate::Lua::execute(&program)
-        .inspect_err(|err| log::error!("{err}"))
-        .expect_err("Last call should fail due to adding 1 to `nil`");
+    match crate::Lua::execute(&program).inspect_err(|err| log::error!("{err}")) {
+        Ok(_) => panic!("Program should fail"),
+        Err(Error::ArithmeticOperand("add", "integer", "nil")) => (),
+        Err(err) => panic!("Program raised wrong error `{err}`."),
+    }
 }
 
 #[test]

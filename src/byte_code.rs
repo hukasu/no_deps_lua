@@ -1096,26 +1096,28 @@ impl ByteCode {
         validate_bytecode!(self, ByteCode::TailCall(func_index, args, _));
         let func_index_usize = usize::from(*func_index);
         let args = usize::from(*args);
+        let out_params = usize::from(*out_params);
 
         let tail = vm
             .stack
-            .drain((vm.get_return_stack() + func_index_usize)..)
+            .drain((vm.get_stack_frame() + func_index_usize)..)
             .collect::<Vec<_>>();
 
         vm.program_counter.pop();
         vm.func_indexes.pop();
 
-        vm.pop_return_stack();
-        vm.stack.truncate(vm.get_return_stack() + func_index_usize);
+        vm.pop_stack_frame();
+        vm.stack.truncate(vm.get_stack_frame() + func_index_usize);
+        vm.variadic_arguments.pop();
 
         vm.stack.extend(tail);
 
         let func = &vm.get_stack(*func_index)?;
         if let Value::Function(func) = func {
-            Self::run_native_function(vm, func_index_usize, args, *func)
+            Self::run_native_function(vm, func_index_usize, args, out_params, *func)
         } else if let Value::Closure(func) = func {
             let func = func.clone();
-            Self::setup_closure(vm, func_index_usize, args, func.as_ref())
+            Self::setup_closure(vm, func_index_usize, args, out_params, func.as_ref())
         } else {
             Err(Error::InvalidFunction((*func).clone()))
         }
@@ -1124,15 +1126,7 @@ impl ByteCode {
     pub fn zero_return(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::ZeroReturn);
 
-        if vm.get_func_index().is_some() {
-            vm.program_counter.pop();
-            let func_index = vm.func_indexes.pop().unwrap_or(0);
-
-            vm.pop_return_stack();
-            vm.stack.truncate(vm.get_return_stack() + func_index);
-        } else {
-            unimplemented!("Return from main is unimplemented");
-        }
+        vm.drop_stack_frame(0, 0);
 
         Ok(())
     }
@@ -1140,19 +1134,8 @@ impl ByteCode {
     pub fn one_return(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::OneReturn(return_loc));
 
-        if let Some(func_index) = vm.get_func_index() {
-            vm.program_counter.pop();
-            vm.func_indexes.pop();
-
-            let return_value = vm.get_stack(*return_loc)?.clone();
-            vm.stack.truncate(func_index + 1);
-            vm.pop_return_stack();
-
-            let func_index = u8::try_from(func_index)?;
-            vm.set_stack(func_index, return_value)?;
-        } else {
-            unimplemented!("Return from main is unimplemented");
-        }
+        log::trace!("{:#?}", vm.stack);
+        vm.drop_stack_frame(usize::from(*return_loc), 1);
 
         Ok(())
     }
@@ -1324,6 +1307,7 @@ impl ByteCode {
         vm: &mut Lua,
         func_index: usize,
         args: usize,
+        out_params: usize,
         func: fn(&mut Lua) -> i32,
     ) -> Result<(), Error> {
         log::trace!("Calling native function");
@@ -1334,19 +1318,11 @@ impl ByteCode {
             args - 1
         };
 
-        vm.prepare_new_function_stack(func_index, args);
+        vm.prepare_new_function_stack(func_index, args, out_params, 0);
 
         let returns = usize::try_from(func(vm))?;
-        let returns = vm
-            .stack
-            .drain(vm.get_return_stack()..(vm.get_return_stack() + returns))
-            .collect::<Vec<_>>();
 
-        vm.func_indexes.pop();
-        vm.pop_return_stack();
-        vm.program_counter.pop();
-        vm.stack.truncate(vm.get_return_stack() + func_index);
-        vm.stack.extend(returns);
+        vm.drop_stack_frame(0, returns);
 
         Ok(())
     }
@@ -1355,17 +1331,32 @@ impl ByteCode {
         vm: &mut Lua,
         func_index: usize,
         args: usize,
+        out_params: usize,
         func: &Closure,
     ) -> Result<(), Error> {
         log::trace!("Calling closure");
 
+        log::trace!("{} {} {}", args, func.variadic_args(), func.arg_count());
+        let locals_and_temps_on_function_stack =
+            vm.stack.len() - (vm.get_stack_frame() + func_index) - 1;
+
         let args = if args == 0 {
-            vm.stack.len() - (vm.get_return_stack() + func_index)
+            locals_and_temps_on_function_stack
+        } else if func.variadic_args() {
+            func.arg_count() + locals_and_temps_on_function_stack
         } else {
             func.arg_count()
         };
 
-        vm.prepare_new_function_stack(func_index, args);
+        let var_args = if func.variadic_args() {
+            locals_and_temps_on_function_stack - func.arg_count()
+        } else {
+            0
+        };
+
+        log::trace!("{} {:#?}", locals_and_temps_on_function_stack, vm.stack);
+        vm.prepare_new_function_stack(func_index, args, out_params, var_args);
+        log::trace!("{:#?}", vm.stack);
 
         Ok(())
     }

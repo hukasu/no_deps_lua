@@ -28,7 +28,14 @@ pub struct Lua {
     program_counter: Vec<usize>,
     globals: Vec<(Value, Value)>,
     stack: Vec<Value>,
-    return_stack: Vec<usize>,
+    /// The location on stack immediately after the function's location.
+    ///
+    /// The main program does not insert it's location in this list.
+    stack_frame: Vec<usize>,
+    /// Number of variadic arguments in each function stack.
+    variadic_arguments: Vec<usize>,
+    /// Number of values that should be moved at the end of a call
+    out_params: Vec<usize>,
 }
 
 impl Lua {
@@ -56,21 +63,52 @@ impl Lua {
         }
     }
 
-    fn prepare_new_function_stack(&mut self, func_index: usize, args: usize) {
-        self.push_return_stack(func_index);
+    fn prepare_new_function_stack(
+        &mut self,
+        func_index: usize,
+        args: usize,
+        out_param: usize,
+        variadic_arguments: usize,
+    ) {
+        self.push_stack_frame(func_index);
         self.func_indexes.push(func_index);
+
         self.program_counter.push(0);
-        self.stack
-            .resize(self.get_return_stack() + args, Value::Nil);
+
+        self.stack.resize(self.get_stack_frame() + args, Value::Nil);
+        self.variadic_arguments.push(variadic_arguments);
+        self.out_params.push(out_param);
     }
 
-    fn get_func_index(&self) -> Option<usize> {
-        self.func_indexes.last().copied()
+    fn drop_stack_frame(&mut self, return_start: usize, returns: usize) {
+        let start = self.get_stack_frame() + return_start;
+
+        log::trace!("{:#?}", self.stack);
+        let returns = self
+            .stack
+            .drain(start..(start + returns))
+            .collect::<Vec<_>>();
+        log::trace!("{:#?}", returns);
+
+        self.pop_stack_frame();
+        let Some(func_index) = self.func_indexes.pop() else {
+            unreachable!("Should always have a function index when dropping a stack frame.");
+        };
+
+        self.program_counter.pop();
+
+        self.stack.truncate(self.get_stack_frame() + func_index);
+        self.variadic_arguments.pop();
+        self.out_params.pop();
+
+        self.stack.extend(returns);
+        log::trace!("{:#?}", self.stack);
     }
 
     fn set_stack(&mut self, dst: u8, value: Value) -> Result<(), Error> {
-        let offset = self.return_stack.last().copied().unwrap_or(0);
-        let dst = offset + usize::from(dst);
+        let offset = self.stack_frame.last().copied().unwrap_or(0);
+        let variadics = self.get_variadic_arguments();
+        let dst = offset + variadics + usize::from(dst);
         match self.stack.len().cmp(&dst) {
             Ordering::Greater => {
                 self.stack[dst] = value;
@@ -92,29 +130,37 @@ impl Lua {
     }
 
     fn get_stack(&self, src: u8) -> Result<&Value, Error> {
-        let offset = self.get_return_stack();
-        let src = offset + usize::from(src);
+        let offset = self.get_stack_frame();
+        let variadics = self.get_variadic_arguments();
+        let src = offset + variadics + usize::from(src);
         Ok(&self.stack[src])
     }
 
     fn get_stack_mut(&mut self, src: u8) -> Result<&mut Value, Error> {
-        let offset = self.get_return_stack();
+        let offset = self.get_stack_frame();
         let src = offset + usize::from(src);
         Ok(&mut self.stack[src])
     }
 
-    fn push_return_stack(&mut self, function_location: usize) {
-        let last = self.return_stack.last().copied().unwrap_or(0);
-        self.return_stack.push(last + function_location + 1);
+    fn push_stack_frame(&mut self, function_location: usize) {
+        let last = self.stack_frame.last().copied().unwrap_or(0);
+        self.stack_frame.push(last + function_location + 1);
     }
 
-    fn get_return_stack(&self) -> usize {
-        let last = self.return_stack.last().copied().unwrap_or(0);
+    fn get_stack_frame(&self) -> usize {
+        let last = self.stack_frame.last().copied().unwrap_or(0);
         last
     }
 
-    fn pop_return_stack(&mut self) -> Option<usize> {
-        self.return_stack.pop()
+    fn pop_stack_frame(&mut self) -> Option<usize> {
+        self.stack_frame.pop()
+    }
+
+    fn get_variadic_arguments(&self) -> usize {
+        let Some(variadics) = self.variadic_arguments.last() else {
+            unreachable!("Variadics should never be empty.");
+        };
+        *variadics
     }
 
     fn read_bytecode(&mut self, program: &Program) -> Option<ByteCode> {
@@ -130,7 +176,7 @@ impl Lua {
     }
 
     fn get_running_closure(&self) -> Option<&Program> {
-        self.return_stack
+        self.stack_frame
             .last()
             .map(|return_stack| match &self.stack[return_stack - 1] {
                 Value::Closure(func) => func.program(),
@@ -149,6 +195,7 @@ impl Lua {
         log::trace!("Running program");
 
         self.program_counter.push(0);
+        self.variadic_arguments.push(0);
 
         loop {
             let Some(code) = self.read_bytecode(program) else {
