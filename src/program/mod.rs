@@ -47,7 +47,7 @@ impl Program {
         let chunk = Parser::parse(program)?;
 
         let mut program = Program::default();
-        let mut compile_context = CompileContext::default();
+        let mut compile_context = CompileContext::default().with_var_args(true);
 
         program.chunk(&chunk, &mut compile_context)?;
 
@@ -104,7 +104,11 @@ impl Program {
         }
 
         let locals = compile_context.locals.len();
+        let cache_var_args = compile_context.var_args.take();
+
         self.block(block, compile_context)?;
+
+        compile_context.var_args = cache_var_args;
         compile_context.stack_top -= u8::try_from(compile_context.locals.len() - locals)
             .inspect_err(|_| log::error!("Failed to rewind stack top after `if`s block."))?;
         compile_context.locals.truncate(locals);
@@ -223,6 +227,26 @@ impl Program {
                 compile_context.gotos.extend(unmatched);
 
                 compile_context.labels.truncate(labels);
+
+                match compile_context.var_args {
+                    Some(true) => {
+                        if let Some(ByteCode::TailCall(_, _, _)) = self.byte_codes.last() {
+                            self.byte_codes.push(ByteCode::Return(
+                                u8::try_from(compile_context.locals.len())?,
+                                0,
+                                0,
+                            ));
+                        } else {
+                            self.byte_codes.push(ByteCode::Return(
+                                u8::try_from(compile_context.locals.len())?,
+                                1,
+                                1,
+                            ));
+                        }
+                    }
+                    Some(false) => self.byte_codes.push(ByteCode::ZeroReturn),
+                    _ => (),
+                }
 
                 Ok(())
             }
@@ -345,9 +369,11 @@ impl Program {
                 _end(TokenType::End)
             ) => {
                 let locals = compile_context.locals.len();
+                let cache_var_args = compile_context.var_args.take();
 
                 self.block(block, compile_context)?;
 
+                compile_context.var_args = cache_var_args;
                 compile_context.locals.truncate(locals);
 
                 Ok(())
@@ -375,7 +401,11 @@ impl Program {
                     );
                 }
 
+                let cache_var_args = compile_context.var_args.take();
+
                 self.block(block, compile_context)?;
+
+                compile_context.var_args = cache_var_args;
                 compile_context.locals.truncate(locals);
                 compile_context.stack_top -= u8::try_from(compile_context.locals.len() - locals)
                     .inspect_err(|_| {
@@ -422,7 +452,9 @@ impl Program {
                 let locals = compile_context.locals.len();
                 let repeat_start = self.byte_codes.len();
 
+                let cache_var_args = compile_context.var_args.take();
                 self.block(block, compile_context)?;
+                compile_context.var_args = cache_var_args;
 
                 let cond = self.exp(exp, compile_context)?;
 
@@ -491,7 +523,9 @@ impl Program {
                 let counter_bytecode = self.byte_codes.len();
                 self.byte_codes.push(ByteCode::ForPrepare(for_stack, 0));
 
+                let cache_var_args = compile_context.var_args.take();
                 self.block(block, compile_context)?;
+                compile_context.var_args = cache_var_args;
 
                 let end_bytecode = self.byte_codes.len();
                 self.byte_codes.push(ByteCode::ForLoop(
@@ -640,7 +674,11 @@ impl Program {
             ) => self.make_if(compile_context, exp, block, stat_if),
             make_deconstruct!(_else(TokenType::Else), block(TokenType::Block)) => {
                 let locals = compile_context.locals.len();
+                let cache_var_args = compile_context.var_args.take();
+
                 self.block(block, compile_context)?;
+
+                compile_context.var_args = cache_var_args;
                 compile_context.stack_top -= u8::try_from(compile_context.locals.len() - locals)
                     .inspect_err(|_| {
                         log::error!("Failed to rewind stack top after `else`s block.")
@@ -808,13 +846,16 @@ impl Program {
                                 explist.len()
                             );
                         };
+
                         let (stack_loc, stack_top) = compile_context.reserve_stack_top();
-                        let dst = if let ExpDesc::Name(_) = last {
-                            last.get_local_or_discharge_at_location(
+                        if let ExpDesc::Name(_) = last {
+                            let dst = last.get_local_or_discharge_at_location(
                                 self,
                                 stack_loc,
                                 compile_context,
-                            )?
+                            )?;
+
+                            self.byte_codes.push(ByteCode::OneReturn(dst))
                         } else {
                             last.discharge(&stack_top, self, compile_context)?;
 
@@ -826,13 +867,12 @@ impl Program {
 
                                 self.byte_codes
                                     .push(ByteCode::TailCall(func_index, c + 1, 0));
+                                self.byte_codes.push(ByteCode::Return(stack_loc, 0, 0))
+                            } else {
+                                self.byte_codes.push(ByteCode::OneReturn(stack_loc))
                             }
-
-                            stack_loc
                         };
                         compile_context.stack_top -= 1;
-
-                        self.byte_codes.push(ByteCode::OneReturn(dst))
                     }
                     _ => {
                         for exp in explist.iter() {
@@ -1444,14 +1484,13 @@ impl Program {
                 let parlist_name_count = parlist.names.len();
 
                 let mut func_program = Program::default();
-                let mut func_compile_context = CompileContext::default();
+                let mut func_compile_context =
+                    CompileContext::default().with_var_args(parlist.variadic_args);
 
                 func_compile_context.locals.extend(parlist.names);
                 func_compile_context.stack_top = u8::try_from(parlist_name_count)?;
 
                 func_program.block(block, &mut func_compile_context)?;
-
-                func_program.byte_codes.push(ByteCode::ZeroReturn);
 
                 let closure_position = self.push_function(Rc::new(Closure::new(
                     func_program,

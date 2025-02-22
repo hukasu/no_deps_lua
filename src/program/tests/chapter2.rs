@@ -40,6 +40,8 @@ print(123456.0)
             ByteCode::GetGlobal(0, 0),
             ByteCode::LoadConstant(1, 2),
             ByteCode::Call(0, 2, 1),
+            // EOF
+            ByteCode::Return(0, 1, 1),
         ]
     );
     crate::Lua::execute(&program).unwrap();
@@ -88,6 +90,8 @@ print "I'm local-print!"  -- call local function
             ByteCode::Move(3, 2),
             ByteCode::LoadConstant(4, 2),
             ByteCode::Call(3, 2, 1),
+            // EOF
+            ByteCode::Return(3, 1, 1),
         ]
     );
     crate::Lua::execute(&program).unwrap();
@@ -158,6 +162,8 @@ print(g)
             ByteCode::GetGlobal(1, 0),
             ByteCode::GetGlobal(2, 1),
             ByteCode::Call(1, 2, 1),
+            // EOF
+            ByteCode::Return(1, 1, 1),
         ]
     );
     crate::Lua::execute(&program).unwrap();

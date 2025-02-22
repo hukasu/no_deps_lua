@@ -68,6 +68,8 @@ print(t)
             ByteCode::GetGlobal(2, 6),
             ByteCode::Move(3, 1),
             ByteCode::Call(2, 2, 1),
+            // EOF
+            ByteCode::Return(2, 1, 1),
         ]
     );
     crate::Lua::execute(&program).unwrap();
@@ -160,6 +162,8 @@ t.f(t[1000])
             ByteCode::GetGlobal(3, 0),
             ByteCode::GetField(3, 3, 6),
             ByteCode::Call(2, 2, 1),
+            // EOF
+            ByteCode::Return(2, 1, 1),
         ]
     );
     crate::Lua::execute(&program).unwrap();

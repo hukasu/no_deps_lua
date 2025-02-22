@@ -115,6 +115,8 @@ end
             ByteCode::LoadConstant(1, 7),
             ByteCode::Call(0, 2, 1),
             // end
+            // EOF
+            ByteCode::Return(0, 1, 1),
         ]
     );
     crate::Lua::execute(&program).expect("Should run");
@@ -198,6 +200,8 @@ print( (g3 or g1) and (g2 and g4))
             ByteCode::Jmp(1),
             ByteCode::GetGlobal(1, 4),
             ByteCode::Call(0, 2, 1),
+            // EOF
+            ByteCode::Return(0, 1, 1),
         ]
     );
     crate::Lua::execute(&program).expect("Should run");
@@ -295,6 +299,8 @@ print (a>=b)
         ByteCode::LoadFalseSkip(3),
         ByteCode::LoadTrue(3),
         ByteCode::Call(2, 2, 1),
+        // EOF
+        ByteCode::Return(2, 1, 1),
     ];
 
     let program = Program::parse(code).unwrap();

@@ -212,7 +212,9 @@ impl Lua {
                 test @ ByteCode::Test(_, _) => test.test(self, program)?,
                 call @ ByteCode::Call(_, _, _) => call.call(self, program)?,
                 tail_call @ ByteCode::TailCall(_, _, _) => tail_call.tail_call(self, program)?,
-                ByteCode::Return => unimplemented!("return bytecode"),
+                ByteCode::Return(_, _, _) => {
+                    log::trace!("return bytecode")
+                }
                 zero_return @ ByteCode::ZeroReturn => zero_return.zero_return(self, program)?,
                 one_return @ ByteCode::OneReturn(_) => one_return.one_return(self, program)?,
                 forloop @ ByteCode::ForLoop(_, _) => forloop.for_loop(self, program)?,

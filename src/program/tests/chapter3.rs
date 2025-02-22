@@ -59,6 +59,8 @@ print "null: \0." -- '\0'
             ByteCode::GetGlobal(0, 0),
             ByteCode::LoadConstant(1, 5),
             ByteCode::Call(0, 2, 1),
+            // EOF
+            ByteCode::Return(0, 1, 1),
         ]
     );
     crate::Lua::execute(&program).unwrap();
@@ -133,6 +135,8 @@ print(long_string_long_string_long_string_long_string_long_string)
             ByteCode::GetGlobal(3, 3),
             ByteCode::GetGlobal(4, 2),
             ByteCode::Call(3, 2, 1),
+            // EOF
+            ByteCode::Return(3, 1, 1)
         ]
     );
     crate::Lua::execute(&program).unwrap();

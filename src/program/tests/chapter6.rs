@@ -53,6 +53,8 @@ print (a) -- should be nil
             ByteCode::GetGlobal(0, 1),
             ByteCode::GetGlobal(1, 0),
             ByteCode::Call(0, 2, 1),
+            // EOF
+            ByteCode::Return(0, 1, 1),
         ]
     );
     crate::Lua::execute(&program).expect("Should run");
@@ -154,6 +156,8 @@ end
             ByteCode::LoadConstant(3, 1),
             ByteCode::Call(2, 2, 1),
             // end
+            // EOF
+            ByteCode::Return(2, 1, 1),
         ]
     );
     crate::Lua::execute(&program).expect("Should run");
@@ -189,6 +193,8 @@ end
             ByteCode::Not(0, 0),
             // end
             ByteCode::Jmp(-7),
+            // EOF
+            ByteCode::Return(1, 1, 1),
         ]
     );
     crate::Lua::execute(&program).expect("Should run");
@@ -259,6 +265,8 @@ end
             ByteCode::Call(1, 2, 1),
             // end
             ByteCode::Jmp(-20),
+            // EOF
+            ByteCode::Return(1, 1, 1),
         ]
     );
     crate::Lua::execute(&program).expect("Should run");
@@ -293,6 +301,8 @@ until a
             // until a
             ByteCode::Test(0, 0),
             ByteCode::Jmp(-6),
+            // EOF
+            ByteCode::Return(1, 1, 1),
         ]
     );
     crate::Lua::execute(&program).expect("Should run");
@@ -400,6 +410,8 @@ end
             ByteCode::Call(5, 2, 1),
             // end
             ByteCode::ForLoop(1, 4),
+            // EOF
+            ByteCode::Return(1, 1, 1),
         ]
     );
     crate::Lua::execute(&program).expect("Should run");
@@ -479,6 +491,8 @@ end
             //   local a = 'local var'
             ByteCode::LoadConstant(0, 5),
             // end
+            // EOF
+            ByteCode::Return(0, 1, 1),
         ]
     );
     crate::Lua::execute(&program).expect("Should run");

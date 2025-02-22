@@ -84,6 +84,8 @@ print(not print)
             ByteCode::GetGlobal(3, 3),
             ByteCode::Not(3, 3),
             ByteCode::Call(2, 2, 1),
+            // EOF
+            ByteCode::Return(2, 1, 1),
         ]
     );
     crate::Lua::execute(&program).unwrap();
@@ -144,6 +146,8 @@ print(100>>a) -- panic
             ByteCode::LoadInt(4, 100),
             ByteCode::ShiftRight(4, 4, 0),
             ByteCode::Call(3, 2, 1),
+            // EOF
+            ByteCode::Return(3, 1, 1),
         ]
     );
     crate::Lua::execute(&program)
@@ -202,6 +206,8 @@ print('hello' .. a) -- panic
             ByteCode::LoadConstant(2, 4),
             ByteCode::Concat(2, 2, 0),
             ByteCode::Call(1, 2, 1),
+            // EOF
+            ByteCode::Return(1, 1, 1),
         ]
     );
     crate::Lua::execute(&program)

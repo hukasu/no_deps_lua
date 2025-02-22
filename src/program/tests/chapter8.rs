@@ -27,6 +27,8 @@ hello()
         // hello()
         ByteCode::Move(3, 2),
         ByteCode::Call(3, 1, 1),
+        // EOF
+        ByteCode::Return(3, 1, 1),
     ];
     assert!(program.constants.is_empty());
     assert_eq!(&program.byte_codes, expected_bytecodes);
@@ -76,6 +78,8 @@ print(hello)
         ByteCode::GetGlobal(1, 0),
         ByteCode::Move(2, 0),
         ByteCode::Call(1, 2, 1),
+        // EOF
+        ByteCode::Return(1, 1, 1),
     ];
     assert_eq!(program.constants, &["print".into()]);
     assert_eq!(&program.byte_codes, expected_bytecodes);
@@ -124,6 +128,8 @@ print (f1)
         ByteCode::GetGlobal(1, 0),
         ByteCode::Move(2, 0),
         ByteCode::Call(1, 2, 1),
+        // EOF
+        ByteCode::Return(1, 1, 1),
     ];
     assert_eq!(program.constants, &["print".into()]);
     assert_eq!(&program.byte_codes, expected_bytecodes);
@@ -190,6 +196,8 @@ print(t.f)
         ByteCode::GetGlobal(1, 1),
         ByteCode::GetField(2, 0, 0),
         ByteCode::Call(1, 2, 1),
+        // EOF
+        ByteCode::Return(1, 1, 1),
     ];
     assert_eq!(program.constants, &["f".into(), "print".into()]);
     assert_eq!(&program.byte_codes, expected_bytecodes);
@@ -255,6 +263,8 @@ f(1)
         ByteCode::Move(1, 0),
         ByteCode::LoadInt(2, 1),
         ByteCode::Call(1, 2, 1),
+        // EOF
+        ByteCode::Return(1, 1, 1),
     ];
     assert!(program.constants.is_empty());
     assert_eq!(&program.byte_codes, expected_bytecodes);
@@ -316,6 +326,8 @@ print(f(100,200))
         ByteCode::LoadInt(4, 200),
         ByteCode::Call(2, 3, 0),
         ByteCode::Call(1, 0, 1),
+        // EOF
+        ByteCode::Return(1, 1, 1),
     ];
     assert_eq!(program.constants, expected_constants);
     assert_eq!(program.byte_codes, expected_bytecodes);
@@ -397,6 +409,8 @@ print(type(function()end))
         ByteCode::Closure(2, 0),
         ByteCode::Call(1, 2, 0),
         ByteCode::Call(0, 0, 1),
+        // EOF
+        ByteCode::Return(0, 1, 1),
     ];
     assert_eq!(program.constants, expected_constants);
     assert_eq!(program.byte_codes, expected_bytecodes);
@@ -440,6 +454,8 @@ print(f(0))
         ByteCode::LoadInt(2, 0),
         ByteCode::Call(1, 2, 0),
         ByteCode::Call(0, 0, 1),
+        // EOF
+        ByteCode::Return(0, 1, 1),
     ];
     assert_eq!(program.constants, expected_constants);
     assert_eq!(program.byte_codes, expected_bytecodes);
@@ -460,7 +476,7 @@ print(f(0))
         ByteCode::GetGlobal(1, 0),
         ByteCode::AddInteger(2, 0, 1),
         ByteCode::TailCall(1, 2, 0),
-        ByteCode::OneReturn(1),
+        ByteCode::Return(1, 0, 0),
         // end
         ByteCode::ZeroReturn,
     ];

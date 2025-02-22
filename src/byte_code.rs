@@ -322,7 +322,13 @@ pub enum ByteCode {
     TailCall(u8, u8, u8),
     /// `RETURN0`  
     /// Returns from function
-    Return,
+    ///
+    /// `register`: First item on stack to return  
+    /// `count`: Number of items to return, the actual value is subtracting
+    /// it by 2, if zero, return all items on stack  
+    /// `var_args`: If `var_args` > 0, the function is has variadic arguments
+    /// and the number of fixed arguments is `var_args - 1`
+    Return(u8, u8, u8),
     /// `RETURN0`  
     /// Returns from function with 0 out values
     ZeroReturn,
@@ -1071,13 +1077,14 @@ impl ByteCode {
     pub fn call(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::Call(func_index, in_items, out));
         let func_index_usize = usize::from(*func_index);
+        let in_items = usize::from(*in_items);
 
         let func = &vm.get_stack(*func_index)?;
         if let Value::Function(func) = func {
-            Self::run_native_function(vm, func_index_usize, usize::from(*in_items), *func)
+            Self::run_native_function(vm, func_index_usize, in_items, *func)
         } else if let Value::Closure(func) = func {
             let func = func.clone();
-            Self::setup_closure(vm, func_index_usize, func.as_ref())
+            Self::setup_closure(vm, func_index_usize, in_items, func.as_ref())
         } else {
             Err(Error::InvalidFunction((*func).clone()))
         }
@@ -1088,6 +1095,7 @@ impl ByteCode {
     pub fn tail_call(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::TailCall(func_index, args, _));
         let func_index_usize = usize::from(*func_index);
+        let args = usize::from(*args);
 
         let tail = vm
             .stack
@@ -1104,10 +1112,10 @@ impl ByteCode {
 
         let func = &vm.get_stack(*func_index)?;
         if let Value::Function(func) = func {
-            Self::run_native_function(vm, func_index_usize, usize::from(*args), *func)
+            Self::run_native_function(vm, func_index_usize, args, *func)
         } else if let Value::Closure(func) = func {
             let func = func.clone();
-            Self::setup_closure(vm, func_index_usize, func.as_ref())
+            Self::setup_closure(vm, func_index_usize, args, func.as_ref())
         } else {
             Err(Error::InvalidFunction((*func).clone()))
         }
@@ -1344,10 +1352,15 @@ impl ByteCode {
         Ok(())
     }
 
-    fn setup_closure(vm: &mut Lua, func_index: usize, func: &Closure) -> Result<(), Error> {
+    fn setup_closure(
+        vm: &mut Lua,
+        func_index: usize,
+        args: usize,
+        func: &Closure,
+    ) -> Result<(), Error> {
         log::trace!("Calling closure");
 
-        let args = if func.arg_count() == 0 {
+        let args = if args == 0 {
             vm.stack.len() - (vm.get_return_stack() + func_index)
         } else {
             func.arg_count()
