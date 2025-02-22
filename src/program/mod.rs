@@ -1281,7 +1281,7 @@ impl Program {
             make_deconstruct!(_string(TokenType::String(string))) => Ok(self.string(string)),
             make_deconstruct!(_integer(TokenType::Integer(integer))) => Ok(self.integer(*integer)),
             make_deconstruct!(_float(TokenType::Float(float))) => Ok(self.float(*float)),
-            make_deconstruct!(_dots(TokenType::Dots)) => unimplemented!("exp production"),
+            make_deconstruct!(_dots(TokenType::Dots)) => Ok(ExpDesc::VariadicArguments),
             make_deconstruct!(functiondef(TokenType::Functiondef)) => {
                 self.functiondef(functiondef, compile_context)
             }

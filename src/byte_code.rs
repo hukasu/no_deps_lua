@@ -380,6 +380,13 @@ pub enum ByteCode {
     /// `dst`: Stack location to store function reference  
     /// `func_id`: Id of function
     Closure(u8, u8),
+    /// `VARARG`
+    /// Collect variable arguments
+    ///
+    /// `register`: First destination of variable arguments  
+    /// `count`: Count of variable arguments, `0` means use all, other values
+    /// are subtracted by `2`
+    VariadicArguments(u8, u8),
 }
 
 macro_rules! validate_bytecode {
@@ -1078,13 +1085,14 @@ impl ByteCode {
         validate_bytecode!(self, ByteCode::Call(func_index, in_items, out));
         let func_index_usize = usize::from(*func_index);
         let in_items = usize::from(*in_items);
+        let out_params = usize::from(*out);
 
         let func = &vm.get_stack(*func_index)?;
         if let Value::Function(func) = func {
-            Self::run_native_function(vm, func_index_usize, in_items, *func)
+            Self::run_native_function(vm, func_index_usize, in_items, out_params, *func)
         } else if let Value::Closure(func) = func {
             let func = func.clone();
-            Self::setup_closure(vm, func_index_usize, in_items, func.as_ref())
+            Self::setup_closure(vm, func_index_usize, in_items, out_params, func.as_ref())
         } else {
             Err(Error::InvalidFunction((*func).clone()))
         }
@@ -1093,7 +1101,7 @@ impl ByteCode {
     }
 
     pub fn tail_call(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
-        validate_bytecode!(self, ByteCode::TailCall(func_index, args, _));
+        validate_bytecode!(self, ByteCode::TailCall(func_index, args, out_params));
         let func_index_usize = usize::from(*func_index);
         let args = usize::from(*args);
         let out_params = usize::from(*out_params);
@@ -1287,6 +1295,28 @@ impl ByteCode {
         vm.set_stack(*dst, func)
     }
 
+    pub fn variadic_arguments(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+        validate_bytecode!(self, ByteCode::VariadicArguments(register, count));
+
+        let variadics = vm.get_variadic_arguments();
+
+        let start = vm.get_stack_frame();
+        let end = start
+            + if *count == 0 {
+                variadics
+            } else {
+                usize::from(*count)
+            };
+
+        let move_vals = vm.stack[start..end].to_vec();
+
+        vm.stack
+            .truncate(vm.get_stack_frame() + variadics + usize::from(*register));
+        vm.stack.extend(move_vals);
+
+        Ok(())
+    }
+
     fn relational_comparison(
         lhs: &Value,
         rhs: &Value,
@@ -1313,7 +1343,7 @@ impl ByteCode {
         log::trace!("Calling native function");
 
         let args = if args == 0 {
-            vm.stack.len() - func_index - 1
+            vm.stack.len() - (vm.get_stack_frame() + vm.get_variadic_arguments() + func_index) - 1
         } else {
             args - 1
         };
@@ -1336,7 +1366,6 @@ impl ByteCode {
     ) -> Result<(), Error> {
         log::trace!("Calling closure");
 
-        log::trace!("{} {} {}", args, func.variadic_args(), func.arg_count());
         let locals_and_temps_on_function_stack =
             vm.stack.len() - (vm.get_stack_frame() + func_index) - 1;
 
@@ -1354,9 +1383,7 @@ impl ByteCode {
             0
         };
 
-        log::trace!("{} {:#?}", locals_and_temps_on_function_stack, vm.stack);
         vm.prepare_new_function_stack(func_index, args, out_params, var_args);
-        log::trace!("{:#?}", vm.stack);
 
         Ok(())
     }

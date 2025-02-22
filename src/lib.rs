@@ -83,12 +83,10 @@ impl Lua {
     fn drop_stack_frame(&mut self, return_start: usize, returns: usize) {
         let start = self.get_stack_frame() + return_start;
 
-        log::trace!("{:#?}", self.stack);
         let returns = self
             .stack
             .drain(start..(start + returns))
             .collect::<Vec<_>>();
-        log::trace!("{:#?}", returns);
 
         self.pop_stack_frame();
         let Some(func_index) = self.func_indexes.pop() else {
@@ -96,13 +94,12 @@ impl Lua {
         };
 
         self.program_counter.pop();
-
-        self.stack.truncate(self.get_stack_frame() + func_index);
         self.variadic_arguments.pop();
         self.out_params.pop();
 
+        self.stack
+            .truncate(self.get_stack_frame() + self.get_variadic_arguments() + func_index);
         self.stack.extend(returns);
-        log::trace!("{:#?}", self.stack);
     }
 
     fn set_stack(&mut self, dst: u8, value: Value) -> Result<(), Error> {
@@ -144,7 +141,9 @@ impl Lua {
 
     fn push_stack_frame(&mut self, function_location: usize) {
         let last = self.stack_frame.last().copied().unwrap_or(0);
-        self.stack_frame.push(last + function_location + 1);
+        let variadics = self.get_variadic_arguments();
+        self.stack_frame
+            .push(last + variadics + function_location + 1);
     }
 
     fn get_stack_frame(&self) -> usize {
@@ -285,6 +284,9 @@ impl Lua {
                     set_global_global.set_global_global(self, program)?
                 }
                 closure @ ByteCode::Closure(_, _) => closure.closure(self, program)?,
+                variadic_args @ ByteCode::VariadicArguments(_, _) => {
+                    variadic_args.variadic_arguments(self, program)?
+                }
             }
         }
 

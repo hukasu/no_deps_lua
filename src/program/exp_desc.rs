@@ -35,6 +35,7 @@ pub enum ExpDesc<'a> {
     Condition(bool),
     Closure(u8),
     FunctionCall(Box<ExpDesc<'a>>, ExpList<'a>),
+    VariadicArguments,
 }
 
 impl<'a> ExpDesc<'a> {
@@ -64,6 +65,9 @@ impl<'a> ExpDesc<'a> {
             ExpDesc::Closure(_) => self.discharge_closure(dst, program),
             ExpDesc::FunctionCall(_, _) => {
                 self.discharge_function_call(dst, program, compile_context)
+            }
+            ExpDesc::VariadicArguments => {
+                self.discharge_variable_arguments(dst, program, compile_context)
             }
             _ => {
                 unimplemented!(
@@ -1596,6 +1600,8 @@ impl<'a> ExpDesc<'a> {
                 // TODO do proper bytecode
                 let args_len = if let Some(ExpDesc::FunctionCall(_, _)) = args.last() {
                     0
+                } else if let Some(ByteCode::VariadicArguments(_, _)) = program.byte_codes.last() {
+                    0
                 } else {
                     u8::try_from(args.len())? + 1
                 };
@@ -1610,6 +1616,25 @@ impl<'a> ExpDesc<'a> {
             }
             other => unreachable!("FunctionCall can't be discharged in {:?}.", other),
         }
+    }
+
+    fn discharge_variable_arguments(
+        &self,
+        dst: &ExpDesc<'a>,
+        program: &mut Program,
+        _compile_context: &mut CompileContext,
+    ) -> Result<(), Error> {
+        match dst {
+            ExpDesc::Local(dst) => {
+                let dst = u8::try_from(*dst)?;
+                program.byte_codes.push(ByteCode::VariadicArguments(dst, 0));
+            }
+            _ => unimplemented!(
+                "Discharging Variable arguments into {:?} is not yet supported.",
+                dst
+            ),
+        }
+        Ok(())
     }
 
     pub fn get_local_or_discharge_at_location(
@@ -1691,6 +1716,7 @@ impl<'a> ExpDesc<'a> {
             Self::Condition(_) => "condition",
             Self::Closure(_) => "closure",
             Self::FunctionCall(_, _) => "function_call",
+            Self::VariadicArguments => "variadic arguments",
         }
     }
 }

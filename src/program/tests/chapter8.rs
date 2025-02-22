@@ -489,3 +489,65 @@ print(f(0))
     let mut vm = crate::Lua::new();
     vm.run_program(&program).expect("Should work");
 }
+
+#[test]
+fn print() {
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
+
+    let program = Program::parse(
+        r#"
+print(1,2,3)
+function f(...)
+    print(print(...))
+end
+f(100,200,"hello")
+"#,
+    )
+    .unwrap();
+
+    let expected_constants: &[Value] = &["print".into(), "f".into(), "hello".into()];
+    let expected_bytecodes = &[
+        // print(1,2,3)
+        ByteCode::GetGlobal(0, 0),
+        ByteCode::LoadInt(1, 1),
+        ByteCode::LoadInt(2, 2),
+        ByteCode::LoadInt(3, 3),
+        ByteCode::Call(0, 4, 1),
+        // function f(...)
+        ByteCode::Closure(0, 0),
+        ByteCode::SetGlobal(1, 0),
+        // f(100,200,"hello")
+        ByteCode::GetGlobal(0, 1),
+        ByteCode::LoadInt(1, 100),
+        ByteCode::LoadInt(2, 200),
+        ByteCode::LoadConstant(3, 2),
+        ByteCode::Call(0, 4, 1),
+        // EOF
+        ByteCode::Return(0, 1, 1),
+    ];
+    assert_eq!(program.constants, expected_constants);
+    assert_eq!(program.byte_codes, expected_bytecodes);
+    assert_eq!(program.functions.len(), 1);
+
+    let Value::Closure(closure) = &program.functions[0] else {
+        panic!("Closure must be a closure")
+    };
+    let expected_constants: &[Value] = &["print".into()];
+    let expected_bytecodes = &[
+        // function f(...)
+        //     print(print(...))
+        ByteCode::GetGlobal(0, 0),
+        ByteCode::GetGlobal(1, 0),
+        ByteCode::VariadicArguments(2, 0),
+        ByteCode::Call(1, 0, 0),
+        ByteCode::Call(0, 0, 1),
+        // end
+        ByteCode::Return(0, 1, 1),
+    ];
+    assert_eq!(closure.program().constants, expected_constants);
+    assert_eq!(closure.program().byte_codes, expected_bytecodes);
+    assert!(closure.program().functions.is_empty());
+
+    let mut vm = crate::Lua::new();
+    vm.run_program(&program).expect("Should work");
+}
