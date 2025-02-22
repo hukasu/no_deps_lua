@@ -8,4 +8,4 @@
 * Improve concat results
 * Concat bytecode only has 2 values
 * Properly implement Call bytecode
-* Methods to prepare and tear down calls
+* Methods to tear down function stacks

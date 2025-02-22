@@ -56,6 +56,14 @@ impl Lua {
         }
     }
 
+    fn prepare_new_function_stack(&mut self, func_index: usize, args: usize) {
+        self.push_return_stack(func_index);
+        self.func_indexes.push(func_index);
+        self.program_counter.push(0);
+        self.stack
+            .resize(self.get_return_stack() + args, Value::Nil);
+    }
+
     fn get_func_index(&self) -> Option<usize> {
         self.func_indexes.last().copied()
     }

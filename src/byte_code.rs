@@ -1334,9 +1334,7 @@ impl ByteCode {
             args - 1
         };
 
-        vm.push_return_stack(func_index);
-        vm.func_indexes.push(func_index);
-        vm.stack.resize(vm.get_return_stack() + args, Value::Nil);
+        vm.prepare_new_function_stack(func_index, args);
 
         let returns = usize::try_from(func(vm))?;
         let returns = vm
@@ -1346,6 +1344,7 @@ impl ByteCode {
 
         vm.func_indexes.pop();
         vm.pop_return_stack();
+        vm.program_counter.pop();
         vm.stack.truncate(vm.get_return_stack() + func_index);
         vm.stack.extend(returns);
 
@@ -1366,10 +1365,7 @@ impl ByteCode {
             func.arg_count()
         };
 
-        vm.push_return_stack(func_index);
-        vm.func_indexes.push(func_index);
-        vm.program_counter.push(0);
-        vm.stack.resize(vm.get_return_stack() + args, Value::Nil);
+        vm.prepare_new_function_stack(func_index, args);
 
         Ok(())
     }
