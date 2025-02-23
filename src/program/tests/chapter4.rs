@@ -33,6 +33,7 @@ print(t)
     assert_eq!(
         &program.byte_codes,
         &[
+            ByteCode::VariadicArgumentPrepare(0),
             // local key = "key"
             ByteCode::LoadConstant(0, 0),
             // local t = {...}
@@ -107,6 +108,7 @@ t.f(t[1000])
     assert_eq!(
         &program.byte_codes,
         &[
+            ByteCode::VariadicArgumentPrepare(0),
             // local a,b = 100,200
             ByteCode::LoadInt(0, 100),
             ByteCode::LoadInt(1, 200),

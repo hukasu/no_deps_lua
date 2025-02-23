@@ -19,6 +19,7 @@ hello()
     .unwrap();
 
     let expected_bytecodes = &[
+        ByteCode::VariadicArgumentPrepare(0),
         // local a, b = 1, 2
         ByteCode::LoadInt(0, 1),
         ByteCode::LoadInt(1, 2),
@@ -72,6 +73,7 @@ print(hello)
     .unwrap();
 
     let expected_bytecodes = &[
+        ByteCode::VariadicArgumentPrepare(0),
         // local function hello()
         ByteCode::Closure(0, 0),
         // print(hello)
@@ -122,6 +124,7 @@ print (f1)
     .unwrap();
 
     let expected_bytecodes = &[
+        ByteCode::VariadicArgumentPrepare(0),
         // local function f1()
         ByteCode::Closure(0, 0),
         // print (f1)
@@ -187,6 +190,7 @@ print(t.f)
     .unwrap();
 
     let expected_bytecodes = &[
+        ByteCode::VariadicArgumentPrepare(0),
         // local t = {}
         ByteCode::NewTable(0, 0, 0),
         // function t.f() print "hello" end
@@ -241,6 +245,7 @@ f(1)
     .unwrap();
 
     let expected_bytecodes = &[
+        ByteCode::VariadicArgumentPrepare(0),
         // local function f(a, b)
         ByteCode::Closure(0, 0),
         // f(1,2)
@@ -312,6 +317,7 @@ print(f(100,200))
 
     let expected_constants: &[Value] = &["print".into()];
     let expected_bytecodes = &[
+        ByteCode::VariadicArgumentPrepare(0),
         // local function f(a, b)
         ByteCode::Closure(0, 0),
         // print(f(1,2))
@@ -375,6 +381,7 @@ print(type(function()end))
     let expected_constants: &[Value] =
         &["print".into(), "type".into(), 123.123.into(), "123".into()];
     let expected_bytecodes = &[
+        ByteCode::VariadicArgumentPrepare(0),
         // print(type(123))
         ByteCode::GetGlobal(0, 0),
         ByteCode::GetGlobal(1, 1),
@@ -447,6 +454,7 @@ print(f(0))
 
     let expected_constants: &[Value] = &["f".into(), "print".into()];
     let expected_bytecodes = &[
+        ByteCode::VariadicArgumentPrepare(0),
         // function f(n)
         ByteCode::Closure(0, 0),
         ByteCode::SetGlobal(0, 0),
@@ -507,6 +515,7 @@ f(100,200,"hello")
 
     let expected_constants: &[Value] = &["print".into(), "f".into(), "hello".into()];
     let expected_bytecodes = &[
+        ByteCode::VariadicArgumentPrepare(0),
         // print(1,2,3)
         ByteCode::GetGlobal(0, 0),
         ByteCode::LoadInt(1, 1),
@@ -535,6 +544,7 @@ f(100,200,"hello")
     let expected_constants: &[Value] = &["print".into()];
     let expected_bytecodes = &[
         // function f(...)
+        ByteCode::VariadicArgumentPrepare(0),
         //     print(print(...))
         ByteCode::GetGlobal(0, 0),
         ByteCode::GetGlobal(1, 0),

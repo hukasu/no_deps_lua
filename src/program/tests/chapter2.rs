@@ -20,6 +20,7 @@ print(123456.0)
     assert_eq!(
         &program.byte_codes,
         &[
+            ByteCode::VariadicArgumentPrepare(0),
             // print(nil)
             ByteCode::GetGlobal(0, 0),
             ByteCode::LoadNil(1),
@@ -72,6 +73,7 @@ print "I'm local-print!"  -- call local function
     assert_eq!(
         &program.byte_codes,
         &[
+            ByteCode::VariadicArgumentPrepare(0),
             // local a = "hello, local!"
             ByteCode::LoadConstant(0, 0),
             // local b = a
@@ -125,6 +127,7 @@ print(g)
     assert_eq!(
         &program.byte_codes,
         &[
+            ByteCode::VariadicArgumentPrepare(0),
             // local a = 456
             ByteCode::LoadInt(0, 456),
             // a = 123

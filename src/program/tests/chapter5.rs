@@ -36,6 +36,7 @@ print(not print)
     assert_eq!(
         &program.byte_codes,
         &[
+            ByteCode::VariadicArgumentPrepare(0),
             // local i = 100
             ByteCode::LoadInt(0, 100),
             // local f = 3.14
@@ -114,6 +115,7 @@ print(100>>a) -- panic
     assert_eq!(
         &program.byte_codes,
         &[
+            ByteCode::VariadicArgumentPrepare(0),
             // g = 10
             ByteCode::SetGlobalInteger(0, 10),
             // local a,b,c = 1.1, 2.0, 100
@@ -182,6 +184,7 @@ print('hello' .. a) -- panic
     assert_eq!(
         &program.byte_codes,
         &[
+            ByteCode::VariadicArgumentPrepare(0),
             // print('hello, '..'world')
             ByteCode::GetGlobal(0, 0),
             ByteCode::LoadConstant(1, 1),

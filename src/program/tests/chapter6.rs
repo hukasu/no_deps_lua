@@ -29,6 +29,7 @@ print (a) -- should be nil
     assert_eq!(
         &program.byte_codes,
         &[
+            ByteCode::VariadicArgumentPrepare(0),
             // if a then
             ByteCode::GetGlobal(0, 0),
             ByteCode::Test(0, 0),
@@ -100,6 +101,7 @@ end
     assert_eq!(
         &program.byte_codes,
         &[
+            ByteCode::VariadicArgumentPrepare(0),
             // local a,b = 123
             ByteCode::LoadInt(0, 123),
             ByteCode::LoadNil(1),
@@ -180,6 +182,7 @@ end
     assert_eq!(
         &program.byte_codes,
         &[
+            ByteCode::VariadicArgumentPrepare(0),
             // local a = 123
             ByteCode::LoadInt(0, 123),
             // while a do
@@ -233,6 +236,7 @@ end
     assert_eq!(
         &program.byte_codes,
         &[
+            ByteCode::VariadicArgumentPrepare(0),
             // local z = 1
             ByteCode::LoadInt(0, 1),
             // while z do
@@ -289,6 +293,7 @@ until a
     assert_eq!(
         &program.byte_codes,
         &[
+            ByteCode::VariadicArgumentPrepare(0),
             // local a = false
             ByteCode::LoadFalse(0),
             // repeat
@@ -353,6 +358,7 @@ end
     assert_eq!(
         &program.byte_codes,
         &[
+            ByteCode::VariadicArgumentPrepare(0),
             // for i = 1, 3, 1 do
             ByteCode::LoadInt(0, 1),
             ByteCode::LoadInt(1, 3),
@@ -461,6 +467,7 @@ end
     assert_eq!(
         &program.byte_codes,
         &[
+            ByteCode::VariadicArgumentPrepare(0),
             // print("block: 1")
             ByteCode::GetGlobal(0, 0),
             ByteCode::LoadConstant(1, 1),

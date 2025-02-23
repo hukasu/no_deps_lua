@@ -21,6 +21,7 @@ print "hello, again!"
     assert_eq!(
         &program.byte_codes,
         &[
+            ByteCode::VariadicArgumentPrepare(0),
             // print "hello, world!"
             ByteCode::GetGlobal(0, 0),
             ByteCode::LoadConstant(1, 1),

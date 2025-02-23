@@ -42,6 +42,7 @@ end
     assert_eq!(
         &program.byte_codes,
         &[
+            ByteCode::VariadicArgumentPrepare(0),
             // g1 = 1
             ByteCode::SetGlobalInteger(0, 1),
             // g2 = 2
@@ -150,6 +151,7 @@ print( (g3 or g1) and (g2 and g4))
     assert_eq!(
         &program.byte_codes,
         &[
+            ByteCode::VariadicArgumentPrepare(0),
             // g1 = 1
             ByteCode::SetGlobalInteger(0, 1),
             // g2 = 2
@@ -235,6 +237,7 @@ print (a>=b)
         1000i64.into(),
     ];
     let expected_bytecodes = &[
+        ByteCode::VariadicArgumentPrepare(0),
         // local a, b = 123, "hello"
         ByteCode::LoadInt(0, 123),
         ByteCode::LoadConstant(1, 0),

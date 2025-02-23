@@ -387,6 +387,11 @@ pub enum ByteCode {
     /// `count`: Count of variable arguments, `0` means use all, other values
     /// are subtracted by `2`
     VariadicArguments(u8, u8),
+    /// `VARARGPREP`
+    /// Prepares the variadic arguments of the closure.
+    ///
+    /// `fixed`: Number of fixed arguments
+    VariadicArgumentPrepare(u8),
 }
 
 macro_rules! validate_bytecode {

@@ -191,6 +191,13 @@ impl Program {
             ) => {
                 let gotos = compile_context.gotos.len();
                 let labels = compile_context.labels.len();
+                let locals = u8::try_from(compile_context.locals.len())?;
+
+                if compile_context.var_args.unwrap_or(false) {
+                    self.byte_codes.push(ByteCode::VariadicArgumentPrepare(
+                        compile_context.stack_top - locals,
+                    ));
+                }
 
                 self.block_stat(block_stat, compile_context)?;
                 self.block_retstat(block_retstat, compile_context)?;

@@ -287,6 +287,9 @@ impl Lua {
                 variadic_args @ ByteCode::VariadicArguments(_, _) => {
                     variadic_args.variadic_arguments(self, program)?
                 }
+                ByteCode::VariadicArgumentPrepare(_) => {
+                    // Nothing is done here as this functionality is already dealt with
+                }
             }
         }
 

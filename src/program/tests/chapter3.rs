@@ -39,6 +39,7 @@ print "null: \0." -- '\0'
     assert_eq!(
         &program.byte_codes,
         &[
+            ByteCode::VariadicArgumentPrepare(0),
             // print "tab:\thi" -- tab
             ByteCode::GetGlobal(0, 0),
             ByteCode::LoadConstant(1, 1),
@@ -99,6 +100,7 @@ print(long_string_long_string_long_string_long_string_long_string)
     assert_eq!(
         &program.byte_codes,
         &[
+            ByteCode::VariadicArgumentPrepare(0),
             // local s = "hello_world"
             ByteCode::LoadConstant(0, 0),
             // local m = "middle_string_middle_string"
