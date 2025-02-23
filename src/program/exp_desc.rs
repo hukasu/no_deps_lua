@@ -1276,7 +1276,7 @@ impl<'a> ExpDesc<'a> {
                 )?;
                 let table_items = u8::try_from(fields.len())? - array_items;
 
-                let table = u8::try_from(program.byte_codes.len())?;
+                let table = dst;
 
                 program
                     .byte_codes
