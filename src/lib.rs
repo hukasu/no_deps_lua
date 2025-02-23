@@ -7,6 +7,7 @@ mod ext;
 mod lex;
 mod parser;
 mod program;
+mod stack_frame;
 mod stack_str;
 mod std;
 mod table;
@@ -17,25 +18,17 @@ extern crate alloc;
 use core::cmp::Ordering;
 
 use alloc::vec::Vec;
+use stack_frame::FunctionIndex;
 
-use self::{byte_code::ByteCode, value::Value};
-
-pub use {closure::Closure, error::Error, program::Program};
+use self::{byte_code::ByteCode, stack_frame::StackFrame, value::Value};
+pub use self::{closure::Closure, error::Error, program::Program};
 
 #[derive(Debug, Default)]
 pub struct Lua {
-    func_indexes: Vec<usize>,
-    program_counter: Vec<usize>,
     globals: Vec<(Value, Value)>,
     stack: Vec<Value>,
-    /// The location on stack immediately after the function's location.
-    ///
-    /// The main program does not insert it's location in this list.
-    stack_frame: Vec<usize>,
-    /// Number of variadic arguments in each function stack.
-    variadic_arguments: Vec<usize>,
-    /// Number of values that should be moved at the end of a call
-    out_params: Vec<usize>,
+    /// Stack frames
+    stack_frame: Vec<StackFrame>,
 }
 
 impl Lua {
@@ -52,9 +45,9 @@ impl Lua {
     }
 
     fn jump(&mut self, jump: isize) -> Result<(), Error> {
-        let Some(pc) = self.program_counter.last_mut() else {
-            unreachable!("Program counter stack of Vm should never be empty.");
-        };
+        let top_stack = self.get_stack_frame_mut();
+
+        let pc = &mut top_stack.program_counter;
         if let Some(new_pc) = pc.checked_add_signed(jump) {
             *pc = new_pc;
             Ok(())
@@ -67,44 +60,51 @@ impl Lua {
         &mut self,
         func_index: usize,
         args: usize,
-        out_param: usize,
+        out_params: usize,
         variadic_arguments: usize,
     ) {
-        self.push_stack_frame(func_index);
-        self.func_indexes.push(func_index);
+        let top_stack = self.get_stack_frame();
+        let last_stack = top_stack.stack_frame;
+        let last_variadics = top_stack.variadic_arguments;
 
-        self.program_counter.push(0);
+        let new_stack = StackFrame {
+            function_index: FunctionIndex::Closure(func_index),
+            program_counter: 0,
+            stack_frame: last_stack + last_variadics + func_index + 1,
+            variadic_arguments,
+            out_params,
+        };
 
-        self.stack.resize(self.get_stack_frame() + args, Value::Nil);
-        self.variadic_arguments.push(variadic_arguments);
-        self.out_params.push(out_param);
+        self.stack.resize(new_stack.stack_frame + args, Value::Nil);
+
+        self.stack_frame.push(new_stack);
     }
 
     fn drop_stack_frame(&mut self, return_start: usize, returns: usize) {
-        let start = self.get_stack_frame() + return_start;
+        let popped_stack = self.pop_stack_frame();
+
+        let start = popped_stack.stack_frame + return_start;
 
         let returns = self
             .stack
             .drain(start..(start + returns))
             .collect::<Vec<_>>();
 
-        self.pop_stack_frame();
-        let Some(func_index) = self.func_indexes.pop() else {
-            unreachable!("Should always have a function index when dropping a stack frame.");
-        };
-
-        self.program_counter.pop();
-        self.variadic_arguments.pop();
-        self.out_params.pop();
-
-        self.stack
-            .truncate(self.get_stack_frame() + self.get_variadic_arguments() + func_index);
+        if let FunctionIndex::Closure(func_index) = popped_stack.function_index {
+            let top_stack = self.get_stack_frame();
+            self.stack
+                .truncate(top_stack.stack_frame + top_stack.variadic_arguments + func_index);
+        } else {
+            self.stack.clear();
+        }
         self.stack.extend(returns);
     }
 
     fn set_stack(&mut self, dst: u8, value: Value) -> Result<(), Error> {
-        let offset = self.stack_frame.last().copied().unwrap_or(0);
-        let variadics = self.get_variadic_arguments();
+        let stack_frame = self.get_stack_frame();
+
+        let offset = stack_frame.stack_frame;
+        let variadics = stack_frame.variadic_arguments;
         let dst = offset + variadics + usize::from(dst);
         match self.stack.len().cmp(&dst) {
             Ordering::Greater => {
@@ -127,165 +127,195 @@ impl Lua {
     }
 
     fn get_stack(&self, src: u8) -> Result<&Value, Error> {
-        let offset = self.get_stack_frame();
-        let variadics = self.get_variadic_arguments();
+        let stack_frame = self.get_stack_frame();
+
+        let offset = stack_frame.stack_frame;
+        let variadics = stack_frame.variadic_arguments;
         let src = offset + variadics + usize::from(src);
         Ok(&self.stack[src])
     }
 
     fn get_stack_mut(&mut self, src: u8) -> Result<&mut Value, Error> {
-        let offset = self.get_stack_frame();
-        let src = offset + usize::from(src);
+        let stack_frame = self.get_stack_frame();
+
+        let offset = stack_frame.stack_frame;
+        let variadics = stack_frame.variadic_arguments;
+        let src = offset + variadics + usize::from(src);
         Ok(&mut self.stack[src])
     }
 
-    fn push_stack_frame(&mut self, function_location: usize) {
-        let last = self.stack_frame.last().copied().unwrap_or(0);
-        let variadics = self.get_variadic_arguments();
-        self.stack_frame
-            .push(last + variadics + function_location + 1);
-    }
-
-    fn get_stack_frame(&self) -> usize {
-        let last = self.stack_frame.last().copied().unwrap_or(0);
+    fn get_stack_frame(&self) -> &StackFrame {
+        let Some(last) = self.stack_frame.last() else {
+            unreachable!("Stack frames should never be empty.");
+        };
         last
     }
 
-    fn pop_stack_frame(&mut self) -> Option<usize> {
-        self.stack_frame.pop()
+    fn get_stack_frame_mut(&mut self) -> &mut StackFrame {
+        let Some(last) = self.stack_frame.last_mut() else {
+            unreachable!("Stack frames should never be empty.");
+        };
+        last
     }
 
-    fn get_variadic_arguments(&self) -> usize {
-        let Some(variadics) = self.variadic_arguments.last() else {
-            unreachable!("Variadics should never be empty.");
+    fn pop_stack_frame(&mut self) -> StackFrame {
+        let Some(last) = self.stack_frame.pop() else {
+            unreachable!("Stack frames should never be empty.");
         };
-        *variadics
+        last
     }
 
-    fn read_bytecode(&mut self, program: &Program) -> Option<ByteCode> {
-        let Some(pc) = self.program_counter.last_mut() else {
-            unreachable!("Program counter should never be empty.");
-        };
+    fn read_bytecode(&mut self, main_program: &Program) -> Option<ByteCode> {
+        if self.stack_frame.is_empty() {
+            return None;
+        }
+
+        let stack_frame = self.get_stack_frame_mut();
+        let pc = &mut stack_frame.program_counter;
+
         let old = *pc;
         *pc += 1;
 
-        self.get_running_closure()
-            .unwrap_or(program)
-            .read_bytecode(old)
+        self.get_running_closure(main_program).read_bytecode(old)
     }
 
-    fn get_running_closure(&self) -> Option<&Program> {
-        self.stack_frame
-            .last()
-            .map(|return_stack| match &self.stack[return_stack - 1] {
+    fn get_running_closure<'a>(&'a self, main_program: &'a Program) -> &'a Program {
+        let stack_frame = self.get_stack_frame();
+
+        if let FunctionIndex::Closure(_) = stack_frame.function_index {
+            match &self.stack[stack_frame.stack_frame - 1] {
                 Value::Closure(func) => func.program(),
                 other => unreachable!(
                     "Value at {} should be a closure, but was {:?}",
-                    return_stack, other
+                    stack_frame.stack_frame, other
                 ),
-            })
+            }
+        } else {
+            main_program
+        }
     }
 
     pub fn execute(program: &Program) -> Result<(), Error> {
         Self::new().run_program(program)
     }
 
-    fn run_program(&mut self, program: &Program) -> Result<(), Error> {
+    fn run_program(&mut self, main_program: &Program) -> Result<(), Error> {
         log::trace!("Running program");
 
-        self.program_counter.push(0);
-        self.variadic_arguments.push(0);
+        self.stack_frame.push(StackFrame {
+            function_index: FunctionIndex::Main,
+            program_counter: 0,
+            stack_frame: 0,
+            variadic_arguments: 0,
+            out_params: 0,
+        });
 
-        loop {
-            let Some(code) = self.read_bytecode(program) else {
-                break;
-            };
-
+        while let Some(code) = self.read_bytecode(main_program) {
             match code {
                 move_bytecode @ ByteCode::Move(_, _) => {
-                    move_bytecode.move_bytecode(self, program)?
+                    move_bytecode.move_bytecode(self, main_program)?
                 }
-                load_int @ ByteCode::LoadInt(_, _) => load_int.load_int(self, program)?,
-                load_float @ ByteCode::LoadFloat(_, _) => load_float.load_float(self, program)?,
+                load_int @ ByteCode::LoadInt(_, _) => load_int.load_int(self, main_program)?,
+                load_float @ ByteCode::LoadFloat(_, _) => {
+                    load_float.load_float(self, main_program)?
+                }
                 load_constant @ ByteCode::LoadConstant(_, _) => {
-                    load_constant.load_constant(self, program)?
+                    load_constant.load_constant(self, main_program)?
                 }
-                load_false @ ByteCode::LoadFalse(_) => load_false.load_false(self, program)?,
+                load_false @ ByteCode::LoadFalse(_) => load_false.load_false(self, main_program)?,
                 load_false_skip @ ByteCode::LoadFalseSkip(_) => {
-                    load_false_skip.load_false_skip(self, program)?
+                    load_false_skip.load_false_skip(self, main_program)?
                 }
-                load_true @ ByteCode::LoadTrue(_) => load_true.load_true(self, program)?,
-                load_nil @ ByteCode::LoadNil(_) => load_nil.load_nil(self, program)?,
-                get_global @ ByteCode::GetGlobal(_, _) => get_global.get_global(self, program)?,
-                set_global @ ByteCode::SetGlobal(_, _) => set_global.set_global(self, program)?,
-                get_table @ ByteCode::GetTable(_, _, _) => get_table.get_table(self, program)?,
-                get_int @ ByteCode::GetInt(_, _, _) => get_int.get_int(self, program)?,
-                get_field @ ByteCode::GetField(_, _, _) => get_field.get_field(self, program)?,
-                set_table @ ByteCode::SetTable(_, _, _) => set_table.set_table(self, program)?,
-                set_field @ ByteCode::SetField(_, _, _) => set_field.set_field(self, program)?,
-                new_table @ ByteCode::NewTable(_, _, _) => new_table.new_table(self, program)?,
+                load_true @ ByteCode::LoadTrue(_) => load_true.load_true(self, main_program)?,
+                load_nil @ ByteCode::LoadNil(_) => load_nil.load_nil(self, main_program)?,
+                get_global @ ByteCode::GetGlobal(_, _) => {
+                    get_global.get_global(self, main_program)?
+                }
+                set_global @ ByteCode::SetGlobal(_, _) => {
+                    set_global.set_global(self, main_program)?
+                }
+                get_table @ ByteCode::GetTable(_, _, _) => {
+                    get_table.get_table(self, main_program)?
+                }
+                get_int @ ByteCode::GetInt(_, _, _) => get_int.get_int(self, main_program)?,
+                get_field @ ByteCode::GetField(_, _, _) => {
+                    get_field.get_field(self, main_program)?
+                }
+                set_table @ ByteCode::SetTable(_, _, _) => {
+                    set_table.set_table(self, main_program)?
+                }
+                set_field @ ByteCode::SetField(_, _, _) => {
+                    set_field.set_field(self, main_program)?
+                }
+                new_table @ ByteCode::NewTable(_, _, _) => {
+                    new_table.new_table(self, main_program)?
+                }
                 add_integer @ ByteCode::AddInteger(_, _, _) => {
-                    add_integer.add_integer(self, program)?
+                    add_integer.add_integer(self, main_program)?
                 }
                 add_constant @ ByteCode::AddConstant(_, _, _) => {
-                    add_constant.add_constant(self, program)?
+                    add_constant.add_constant(self, main_program)?
                 }
                 mul_constant @ ByteCode::MulConstant(_, _, _) => {
-                    mul_constant.mul_constant(self, program)?
+                    mul_constant.mul_constant(self, main_program)?
                 }
-                add @ ByteCode::Add(_, _, _) => add.add(self, program)?,
-                sub @ ByteCode::Sub(_, _, _) => sub.sub(self, program)?,
-                mul @ ByteCode::Mul(_, _, _) => mul.mul(self, program)?,
+                add @ ByteCode::Add(_, _, _) => add.add(self, main_program)?,
+                sub @ ByteCode::Sub(_, _, _) => sub.sub(self, main_program)?,
+                mul @ ByteCode::Mul(_, _, _) => mul.mul(self, main_program)?,
                 mod_bytecode @ ByteCode::Mod(_, _, _) => {
-                    mod_bytecode.mod_bytecode(self, program)?
+                    mod_bytecode.mod_bytecode(self, main_program)?
                 }
-                pow @ ByteCode::Pow(_, _, _) => pow.pow(self, program)?,
-                div @ ByteCode::Div(_, _, _) => div.div(self, program)?,
-                idiv @ ByteCode::Idiv(_, _, _) => idiv.idiv(self, program)?,
-                bit_and @ ByteCode::BitAnd(_, _, _) => bit_and.bit_and(self, program)?,
-                bit_or @ ByteCode::BitOr(_, _, _) => bit_or.bit_or(self, program)?,
-                bit_xor @ ByteCode::BitXor(_, _, _) => bit_xor.bit_xor(self, program)?,
-                shiftl @ ByteCode::ShiftLeft(_, _, _) => shiftl.shiftl(self, program)?,
-                shiftr @ ByteCode::ShiftRight(_, _, _) => shiftr.shiftr(self, program)?,
-                neg @ ByteCode::Neg(_, _) => neg.neg(self, program)?,
-                bit_not @ ByteCode::BitNot(_, _) => bit_not.bit_not(self, program)?,
-                not @ ByteCode::Not(_, _) => not.not(self, program)?,
-                len @ ByteCode::Len(_, _) => len.len(self, program)?,
-                concat @ ByteCode::Concat(_, _, _) => concat.concat(self, program)?,
-                jmp @ ByteCode::Jmp(_) => jmp.jmp(self, program)?,
-                lt @ ByteCode::LessThan(_, _, _) => lt.less_than(self, program)?,
-                le @ ByteCode::LessEqual(_, _, _) => le.less_equal(self, program)?,
-                eqk @ ByteCode::EqualConstant(_, _, _) => eqk.equal_constant(self, program)?,
-                eqi @ ByteCode::EqualInteger(_, _, _) => eqi.equal_integer(self, program)?,
+                pow @ ByteCode::Pow(_, _, _) => pow.pow(self, main_program)?,
+                div @ ByteCode::Div(_, _, _) => div.div(self, main_program)?,
+                idiv @ ByteCode::Idiv(_, _, _) => idiv.idiv(self, main_program)?,
+                bit_and @ ByteCode::BitAnd(_, _, _) => bit_and.bit_and(self, main_program)?,
+                bit_or @ ByteCode::BitOr(_, _, _) => bit_or.bit_or(self, main_program)?,
+                bit_xor @ ByteCode::BitXor(_, _, _) => bit_xor.bit_xor(self, main_program)?,
+                shiftl @ ByteCode::ShiftLeft(_, _, _) => shiftl.shiftl(self, main_program)?,
+                shiftr @ ByteCode::ShiftRight(_, _, _) => shiftr.shiftr(self, main_program)?,
+                neg @ ByteCode::Neg(_, _) => neg.neg(self, main_program)?,
+                bit_not @ ByteCode::BitNot(_, _) => bit_not.bit_not(self, main_program)?,
+                not @ ByteCode::Not(_, _) => not.not(self, main_program)?,
+                len @ ByteCode::Len(_, _) => len.len(self, main_program)?,
+                concat @ ByteCode::Concat(_, _, _) => concat.concat(self, main_program)?,
+                jmp @ ByteCode::Jmp(_) => jmp.jmp(self, main_program)?,
+                lt @ ByteCode::LessThan(_, _, _) => lt.less_than(self, main_program)?,
+                le @ ByteCode::LessEqual(_, _, _) => le.less_equal(self, main_program)?,
+                eqk @ ByteCode::EqualConstant(_, _, _) => eqk.equal_constant(self, main_program)?,
+                eqi @ ByteCode::EqualInteger(_, _, _) => eqi.equal_integer(self, main_program)?,
                 gti @ ByteCode::GreaterThanInteger(_, _, _) => {
-                    gti.greater_than_integer(self, program)?
+                    gti.greater_than_integer(self, main_program)?
                 }
                 gei @ ByteCode::GreaterEqualInteger(_, _, _) => {
-                    gei.greater_equal_integer(self, program)?
+                    gei.greater_equal_integer(self, main_program)?
                 }
-                test @ ByteCode::Test(_, _) => test.test(self, program)?,
-                call @ ByteCode::Call(_, _, _) => call.call(self, program)?,
-                tail_call @ ByteCode::TailCall(_, _, _) => tail_call.tail_call(self, program)?,
-                ByteCode::Return(_, _, _) => {
-                    log::trace!("return bytecode")
+                test @ ByteCode::Test(_, _) => test.test(self, main_program)?,
+                call @ ByteCode::Call(_, _, _) => call.call(self, main_program)?,
+                tail_call @ ByteCode::TailCall(_, _, _) => {
+                    tail_call.tail_call(self, main_program)?
                 }
-                zero_return @ ByteCode::ZeroReturn => zero_return.zero_return(self, program)?,
-                one_return @ ByteCode::OneReturn(_) => one_return.one_return(self, program)?,
-                forloop @ ByteCode::ForLoop(_, _) => forloop.for_loop(self, program)?,
-                forprep @ ByteCode::ForPrepare(_, _) => forprep.for_prepare(self, program)?,
-                set_list @ ByteCode::SetList(_, _) => set_list.set_list(self, program)?,
+                return_bytecode @ ByteCode::Return(_, _, _) => {
+                    return_bytecode.return_bytecode(self, main_program)?
+                }
+                zero_return @ ByteCode::ZeroReturn => {
+                    zero_return.zero_return(self, main_program)?
+                }
+                one_return @ ByteCode::OneReturn(_) => one_return.one_return(self, main_program)?,
+                forloop @ ByteCode::ForLoop(_, _) => forloop.for_loop(self, main_program)?,
+                forprep @ ByteCode::ForPrepare(_, _) => forprep.for_prepare(self, main_program)?,
+                set_list @ ByteCode::SetList(_, _) => set_list.set_list(self, main_program)?,
                 set_global_constant @ ByteCode::SetGlobalConstant(_, _) => {
-                    set_global_constant.set_global_constant(self, program)?
+                    set_global_constant.set_global_constant(self, main_program)?
                 }
                 set_global_integer @ ByteCode::SetGlobalInteger(_, _) => {
-                    set_global_integer.set_global_integer(self, program)?
+                    set_global_integer.set_global_integer(self, main_program)?
                 }
                 set_global_global @ ByteCode::SetGlobalGlobal(_, _) => {
-                    set_global_global.set_global_global(self, program)?
+                    set_global_global.set_global_global(self, main_program)?
                 }
-                closure @ ByteCode::Closure(_, _) => closure.closure(self, program)?,
+                closure @ ByteCode::Closure(_, _) => closure.closure(self, main_program)?,
                 variadic_args @ ByteCode::VariadicArguments(_, _) => {
-                    variadic_args.variadic_arguments(self, program)?
+                    variadic_args.variadic_arguments(self, main_program)?
                 }
                 ByteCode::VariadicArgumentPrepare(_) => {
                     // Nothing is done here as this functionality is already dealt with

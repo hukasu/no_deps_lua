@@ -1422,7 +1422,6 @@ impl<'a> ExpDesc<'a> {
             ) => {
                 let dst = u8::try_from(*dst)?;
 
-                log::trace!("{:?}", table);
                 let table_loc =
                     table.get_local_or_discharge_at_location(program, dst, compile_context)?;
 
@@ -1493,7 +1492,6 @@ impl<'a> ExpDesc<'a> {
                 },
             ) => {
                 let (_, stack_top) = compile_context.reserve_stack_top();
-                log::trace!("{:?}", stack_top);
                 rhs.discharge(&stack_top, program, compile_context)?;
 
                 stack_top.discharge(lhs, program, compile_context)?;

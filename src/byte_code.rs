@@ -1,6 +1,6 @@
 use core::{cell::RefCell, cmp::Ordering};
 
-use alloc::{format, rc::Rc, vec::Vec};
+use alloc::{format, rc::Rc};
 
 use crate::{
     table::Table,
@@ -426,12 +426,12 @@ impl ByteCode {
         vm.set_stack(*dst, Value::Float(*value as f64))
     }
 
-    pub fn load_constant(&self, vm: &mut Lua, program: &Program) -> Result<(), Error> {
+    pub fn load_constant(&self, vm: &mut Lua, main_program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::LoadConstant(dst, key));
 
         vm.set_stack(
             *dst,
-            vm.get_running_closure().unwrap_or(program).constants[*key as usize].clone(),
+            vm.get_running_closure(main_program).constants[*key as usize].clone(),
         )
     }
 
@@ -460,10 +460,10 @@ impl ByteCode {
         vm.set_stack(*dst, Value::Nil)
     }
 
-    pub fn get_global(&self, vm: &mut Lua, program: &Program) -> Result<(), Error> {
+    pub fn get_global(&self, vm: &mut Lua, main_program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::GetGlobal(dst, name));
 
-        let key = &vm.get_running_closure().unwrap_or(program).constants[*name as usize];
+        let key = &vm.get_running_closure(main_program).constants[*name as usize];
         if let Some(index) = vm.globals.iter().position(|global| global.0.eq(key)) {
             vm.set_stack(*dst, vm.globals[index].1.clone())
         } else {
@@ -471,10 +471,10 @@ impl ByteCode {
         }
     }
 
-    pub fn set_global(&self, vm: &mut Lua, program: &Program) -> Result<(), Error> {
+    pub fn set_global(&self, vm: &mut Lua, main_program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::SetGlobal(name, src));
 
-        let key = vm.get_running_closure().unwrap_or(program).constants[*name as usize].clone();
+        let key = vm.get_running_closure(main_program).constants[*name as usize].clone();
         let value = vm.get_stack(*src)?.clone();
         if let Some(global) = vm.globals.iter_mut().find(|global| global.0.eq(&key)) {
             global.1 = value;
@@ -529,12 +529,12 @@ impl ByteCode {
         }
     }
 
-    pub fn get_field(&self, vm: &mut Lua, program: &Program) -> Result<(), Error> {
+    pub fn get_field(&self, vm: &mut Lua, main_program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::GetField(dst, table, key));
 
         if let Value::Table(table) = vm.get_stack(*table)?.clone() {
             let key = ValueKey::from(
-                vm.get_running_closure().unwrap_or(program).constants[usize::from(*key)].clone(),
+                vm.get_running_closure(main_program).constants[usize::from(*key)].clone(),
             );
             let bin_search = (*table)
                 .borrow()
@@ -578,12 +578,12 @@ impl ByteCode {
         }
     }
 
-    pub fn set_field(&self, vm: &mut Lua, program: &Program) -> Result<(), Error> {
+    pub fn set_field(&self, vm: &mut Lua, main_program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::SetField(table, key, value));
 
         if let Value::Table(table) = vm.get_stack(*table)?.clone() {
             let key = ValueKey::from(
-                vm.get_running_closure().unwrap_or(program).constants[usize::from(*key)].clone(),
+                vm.get_running_closure(main_program).constants[usize::from(*key)].clone(),
             );
             let value = vm.get_stack(*value)?.clone();
 
@@ -639,12 +639,12 @@ impl ByteCode {
         vm.set_stack(*dst, res)
     }
 
-    pub fn add_constant(&self, vm: &mut Lua, program: &Program) -> Result<(), Error> {
+    pub fn add_constant(&self, vm: &mut Lua, main_program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::AddConstant(dst, lhs, constant));
 
         let res = match (
             &vm.get_stack(*lhs)?,
-            &vm.get_running_closure().unwrap_or(program).constants[*constant as usize],
+            &vm.get_running_closure(main_program).constants[*constant as usize],
         ) {
             (Value::Integer(l), Value::Integer(r)) => Value::Integer(l + r),
             (Value::Integer(l), Value::Float(r)) => Value::Float(*l as f64 + r),
@@ -661,12 +661,12 @@ impl ByteCode {
         vm.set_stack(*dst, res)
     }
 
-    pub fn mul_constant(&self, vm: &mut Lua, program: &Program) -> Result<(), Error> {
+    pub fn mul_constant(&self, vm: &mut Lua, main_program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::MulConstant(dst, lhs, constant));
 
         let res = match (
             &vm.get_stack(*lhs)?,
-            &vm.get_running_closure().unwrap_or(program).constants[*constant as usize],
+            &vm.get_running_closure(main_program).constants[*constant as usize],
         ) {
             (Value::Integer(l), Value::Integer(r)) => Value::Integer(l * r),
             (Value::Integer(l), Value::Float(r)) => Value::Float(*l as f64 * r),
@@ -1002,11 +1002,11 @@ impl ByteCode {
         })
     }
 
-    pub fn equal_constant(&self, vm: &mut Lua, program: &Program) -> Result<(), Error> {
+    pub fn equal_constant(&self, vm: &mut Lua, main_program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::EqualConstant(register, constant, test));
 
         let lhs = vm.get_stack(*register)?;
-        let rhs = &vm.get_running_closure().unwrap_or(program).constants[*constant as usize];
+        let rhs = &vm.get_running_closure(main_program).constants[*constant as usize];
 
         Self::relational_comparison(lhs, rhs, |ordering| ordering == Ordering::Equal, *test == 1)
             .and_then(|should_advance_pc| {
@@ -1111,19 +1111,9 @@ impl ByteCode {
         let args = usize::from(*args);
         let out_params = usize::from(*out_params);
 
-        let tail = vm
-            .stack
-            .drain((vm.get_stack_frame() + func_index_usize)..)
-            .collect::<Vec<_>>();
-
-        vm.program_counter.pop();
-        vm.func_indexes.pop();
-
-        vm.pop_stack_frame();
-        vm.stack.truncate(vm.get_stack_frame() + func_index_usize);
-        vm.variadic_arguments.pop();
-
-        vm.stack.extend(tail);
+        let top_stack = vm.get_stack_frame();
+        let tail_start = top_stack.stack_frame + func_index_usize;
+        vm.drop_stack_frame(func_index_usize, vm.stack.len() - tail_start);
 
         let func = &vm.get_stack(*func_index)?;
         if let Value::Function(func) = func {
@@ -1134,6 +1124,14 @@ impl ByteCode {
         } else {
             Err(Error::InvalidFunction((*func).clone()))
         }
+    }
+
+    pub fn return_bytecode(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+        validate_bytecode!(self, ByteCode::Return(_, _, _));
+
+        vm.drop_stack_frame(0, 0);
+
+        Ok(())
     }
 
     pub fn zero_return(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
@@ -1147,7 +1145,6 @@ impl ByteCode {
     pub fn one_return(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::OneReturn(return_loc));
 
-        log::trace!("{:#?}", vm.stack);
         vm.drop_stack_frame(usize::from(*return_loc), 1);
 
         Ok(())
@@ -1238,11 +1235,13 @@ impl ByteCode {
         }
     }
 
-    pub fn set_global_constant(&self, vm: &mut Lua, program: &Program) -> Result<(), Error> {
+    pub fn set_global_constant(&self, vm: &mut Lua, main_program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::SetGlobalConstant(name, src));
 
-        let key = vm.get_running_closure().unwrap_or(program).constants[*name as usize].clone();
-        let value = vm.get_running_closure().unwrap_or(program).constants[*src as usize].clone();
+        let closure = vm.get_running_closure(main_program);
+
+        let key = closure.constants[*name as usize].clone();
+        let value = closure.constants[*src as usize].clone();
         if let Some(global) = vm.globals.iter_mut().find(|global| global.0.eq(&key)) {
             global.1 = value;
             Ok(())
@@ -1254,10 +1253,10 @@ impl ByteCode {
         }
     }
 
-    pub fn set_global_integer(&self, vm: &mut Lua, program: &Program) -> Result<(), Error> {
+    pub fn set_global_integer(&self, vm: &mut Lua, main_program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::SetGlobalInteger(name, value));
 
-        let key = vm.get_running_closure().unwrap_or(program).constants[*name as usize].clone();
+        let key = vm.get_running_closure(main_program).constants[*name as usize].clone();
         let value = (*value).into();
         if let Some(global) = vm.globals.iter_mut().find(|global| global.0.eq(&key)) {
             global.1 = value;
@@ -1270,13 +1269,13 @@ impl ByteCode {
         }
     }
 
-    pub fn set_global_global(&self, vm: &mut Lua, program: &Program) -> Result<(), Error> {
+    pub fn set_global_global(&self, vm: &mut Lua, main_program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::SetGlobalGlobal(dst_name, src_name));
 
-        let dst_key =
-            vm.get_running_closure().unwrap_or(program).constants[*dst_name as usize].clone();
-        let src_key =
-            vm.get_running_closure().unwrap_or(program).constants[*src_name as usize].clone();
+        let closure = vm.get_running_closure(main_program);
+
+        let dst_key = closure.constants[*dst_name as usize].clone();
+        let src_key = closure.constants[*src_name as usize].clone();
         let value = vm
             .globals
             .iter()
@@ -1303,9 +1302,11 @@ impl ByteCode {
     pub fn variadic_arguments(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::VariadicArguments(register, count));
 
-        let variadics = vm.get_variadic_arguments();
+        let top_stack = vm.get_stack_frame();
 
-        let start = vm.get_stack_frame();
+        let variadics = top_stack.variadic_arguments;
+
+        let start = top_stack.stack_frame;
         let end = start
             + if *count == 0 {
                 variadics
@@ -1316,7 +1317,7 @@ impl ByteCode {
         let move_vals = vm.stack[start..end].to_vec();
 
         vm.stack
-            .truncate(vm.get_stack_frame() + variadics + usize::from(*register));
+            .truncate(start + variadics + usize::from(*register));
         vm.stack.extend(move_vals);
 
         Ok(())
@@ -1347,8 +1348,10 @@ impl ByteCode {
     ) -> Result<(), Error> {
         log::trace!("Calling native function");
 
+        let top_stack = vm.get_stack_frame();
+
         let args = if args == 0 {
-            vm.stack.len() - (vm.get_stack_frame() + vm.get_variadic_arguments() + func_index) - 1
+            vm.stack.len() - (top_stack.stack_frame + top_stack.variadic_arguments + func_index) - 1
         } else {
             args - 1
         };
@@ -1371,8 +1374,10 @@ impl ByteCode {
     ) -> Result<(), Error> {
         log::trace!("Calling closure");
 
+        let top_stack = vm.get_stack_frame();
+
         let locals_and_temps_on_function_stack =
-            vm.stack.len() - (vm.get_stack_frame() + func_index) - 1;
+            vm.stack.len() - (top_stack.stack_frame + func_index) - 1;
 
         let args = if args == 0 {
             locals_and_temps_on_function_stack

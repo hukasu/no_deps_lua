@@ -358,8 +358,6 @@ print(f(100,200))
 
     let mut vm = crate::Lua::new();
     vm.run_program(&program).expect("Should work");
-
-    assert!(matches!(vm.stack[0], Value::Closure(_)));
 }
 
 #[test]
