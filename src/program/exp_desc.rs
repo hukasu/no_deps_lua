@@ -1339,8 +1339,6 @@ impl<'a> ExpDesc<'a> {
                 )?;
                 let table_items = u8::try_from(fields.len())? - array_items;
 
-                let table = u8::try_from(program.byte_codes.len())?;
-
                 let (table_loc, _) = compile_context.reserve_stack_top();
                 program
                     .byte_codes
@@ -1364,7 +1362,7 @@ impl<'a> ExpDesc<'a> {
 
                             program
                                 .byte_codes
-                                .push(ByteCode::SetField(table, constant, val_loc));
+                                .push(ByteCode::SetField(table_loc, constant, val_loc));
                         }
                         TableKey::General(key) => {
                             let (key_loc, stack_top) = compile_context.reserve_stack_top();
@@ -1377,7 +1375,7 @@ impl<'a> ExpDesc<'a> {
 
                             program
                                 .byte_codes
-                                .push(ByteCode::SetTable(table, key_loc, val_loc));
+                                .push(ByteCode::SetTable(table_loc, key_loc, val_loc));
                         }
                     }
                 }
@@ -1385,7 +1383,7 @@ impl<'a> ExpDesc<'a> {
                 if array_items > 0 {
                     program
                         .byte_codes
-                        .push(ByteCode::SetList(table, array_items));
+                        .push(ByteCode::SetList(table_loc, array_items));
                 }
 
                 program.byte_codes.push(ByteCode::SetGlobal(dst, table_loc));
