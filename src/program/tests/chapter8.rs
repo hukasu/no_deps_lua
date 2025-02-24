@@ -709,3 +709,90 @@ f3('x', 1,2,3,4)
     let mut vm = crate::Lua::new();
     vm.run_program(&program).expect("Should work");
 }
+
+#[test]
+fn varargs_table() {
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
+
+    let program = Program::parse(
+        r#"
+function foo(a, b, ...)
+    local t = {a, ...}
+    print(t[1], t[2], t[3], t[4])
+    local t = {a, ..., b}
+    print(t[1], t[2], t[3], t[4])
+end
+
+foo(1)
+foo(1,2,100,200,300)
+"#,
+    )
+    .unwrap();
+
+    let expected_constants: &[Value] = &["foo".into()];
+    let expected_bytecodes = &[
+        ByteCode::VariadicArgumentPrepare(0),
+        // function foo(a, b, ...)
+        ByteCode::Closure(0, 0),
+        ByteCode::SetGlobal(0, 0),
+        // foo(1)
+        ByteCode::GetGlobal(0, 0),
+        ByteCode::LoadInt(1, 1),
+        ByteCode::Call(0, 2, 1),
+        // foo(1,2,100,200,300)
+        ByteCode::GetGlobal(0, 0),
+        ByteCode::LoadInt(1, 1),
+        ByteCode::LoadInt(2, 2),
+        ByteCode::LoadInt(3, 100),
+        ByteCode::LoadInt(4, 200),
+        ByteCode::LoadInt(5, 300),
+        ByteCode::Call(0, 6, 1),
+        // EOF
+        ByteCode::Return(0, 1, 1),
+    ];
+    assert_eq!(program.constants, expected_constants);
+    assert_eq!(program.byte_codes, expected_bytecodes);
+    assert_eq!(program.functions.len(), 1);
+
+    let Value::Closure(closure) = &program.functions[0] else {
+        panic!("Closure must be a closure")
+    };
+    let expected_constants: &[Value] = &["print".into()];
+    let expected_bytecodes = &[
+        // function foo(a, b, ...)
+        ByteCode::VariadicArgumentPrepare(2),
+        //     local t = {a, ...}
+        ByteCode::NewTable(2, 0, 1),
+        ByteCode::Move(3, 0),
+        ByteCode::VariadicArguments(4, 0),
+        ByteCode::SetList(2, 0),
+        //     print(t[1], t[2], t[3], t[4])
+        ByteCode::GetGlobal(3, 0),
+        ByteCode::GetInt(4, 2, 1),
+        ByteCode::GetInt(5, 2, 2),
+        ByteCode::GetInt(6, 2, 3),
+        ByteCode::GetInt(7, 2, 4),
+        ByteCode::Call(3, 5, 1),
+        //     local t = {a, ..., b}
+        ByteCode::NewTable(3, 0, 3),
+        ByteCode::Move(4, 0),
+        ByteCode::VariadicArguments(5, 2),
+        ByteCode::Move(6, 1),
+        ByteCode::SetList(3, 3),
+        //     print(t[1], t[2], t[3], t[4])
+        ByteCode::GetGlobal(4, 0),
+        ByteCode::GetInt(5, 3, 1),
+        ByteCode::GetInt(6, 3, 2),
+        ByteCode::GetInt(7, 3, 3),
+        ByteCode::GetInt(8, 3, 4),
+        ByteCode::Call(4, 5, 1),
+        // end
+        ByteCode::Return(4, 1, 3),
+    ];
+    assert_eq!(closure.program().constants, expected_constants);
+    assert_eq!(closure.program().byte_codes, expected_bytecodes);
+    assert!(closure.program().functions.is_empty());
+
+    let mut vm = crate::Lua::new();
+    vm.run_program(&program).expect("Should work");
+}

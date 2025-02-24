@@ -521,7 +521,12 @@ impl ByteCode {
                     Err(_) => Value::Nil,
                 }
             } else {
-                (*table).borrow().array[usize::from(*index) - 1].clone()
+                (*table)
+                    .borrow()
+                    .array
+                    .get(usize::from(*index) - 1)
+                    .cloned()
+                    .unwrap_or(Value::Nil)
             };
             vm.set_stack(*dst, value)
         } else {
@@ -1223,11 +1228,20 @@ impl ByteCode {
     pub fn set_list(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::SetList(table, count));
 
-        let table_items_start = usize::from(*table) + 1;
+        let top_stack = vm.get_stack_frame();
+
+        let table_items_start =
+            top_stack.stack_frame + top_stack.variadic_arguments + usize::from(*table) + 1;
         if let Value::Table(table) = vm.get_stack(*table)?.clone() {
-            let values = vm
-                .stack
-                .drain(table_items_start..(table_items_start + usize::from(*count)));
+            let values = if *count == 0 {
+                let true_count = vm.stack.len() - table_items_start;
+                vm.stack
+                    .drain(table_items_start..(table_items_start + true_count))
+            } else {
+                vm.stack
+                    .drain(table_items_start..(table_items_start + usize::from(*count)))
+            };
+
             table.borrow_mut().array.extend(values);
             Ok(())
         } else {
@@ -1400,7 +1414,7 @@ impl ByteCode {
         } else if func.variadic_args() {
             (
                 func.arg_count(),
-                locals_and_temps_on_function_stack - func.arg_count(),
+                locals_and_temps_on_function_stack.saturating_sub(func.arg_count()),
             )
         } else {
             (func.arg_count(), 0)

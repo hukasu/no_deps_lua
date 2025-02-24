@@ -1268,6 +1268,9 @@ impl<'a> ExpDesc<'a> {
             Self::Local(dst) => {
                 let dst = u8::try_from(*dst)?;
 
+                let last_field_is_variadic =
+                    Some((TableKey::Array, ExpDesc::VariadicArguments)) == fields.last().cloned();
+
                 let array_items = u8::try_from(
                     fields
                         .iter()
@@ -1275,14 +1278,19 @@ impl<'a> ExpDesc<'a> {
                         .count(),
                 )?;
                 let table_items = u8::try_from(fields.len())? - array_items;
+                let adjusted_array_items = if last_field_is_variadic {
+                    array_items - 1
+                } else {
+                    array_items
+                };
 
                 let table = dst;
 
                 program
                     .byte_codes
-                    .push(ByteCode::NewTable(dst, table_items, array_items));
+                    .push(ByteCode::NewTable(dst, table_items, adjusted_array_items));
 
-                for (key, val) in fields {
+                for (i, (key, val)) in fields.iter().enumerate() {
                     match key {
                         TableKey::Array => {
                             let (_, stack_top) = compile_context.reserve_stack_top();
@@ -1316,12 +1324,24 @@ impl<'a> ExpDesc<'a> {
                                 .push(ByteCode::SetTable(table, key_loc, val_loc));
                         }
                     }
+
+                    if i != fields.len() - 1 {
+                        if let Some(ByteCode::VariadicArguments(_, count)) =
+                            program.byte_codes.last_mut()
+                        {
+                            *count = 2;
+                        }
+                    }
                 }
 
-                if array_items > 0 {
-                    program
-                        .byte_codes
-                        .push(ByteCode::SetList(table, array_items));
+                if adjusted_array_items > 0 {
+                    let count = if last_field_is_variadic {
+                        0
+                    } else {
+                        adjusted_array_items
+                    };
+
+                    program.byte_codes.push(ByteCode::SetList(table, count));
                 }
 
                 compile_context.stack_top -= array_items;
@@ -1381,9 +1401,15 @@ impl<'a> ExpDesc<'a> {
                 }
 
                 if array_items > 0 {
-                    program
-                        .byte_codes
-                        .push(ByteCode::SetList(table_loc, array_items));
+                    let count = if let Some((TableKey::Array, ExpDesc::VariadicArguments)) =
+                        fields.last()
+                    {
+                        0
+                    } else {
+                        array_items
+                    };
+
+                    program.byte_codes.push(ByteCode::SetList(table_loc, count));
                 }
 
                 program.byte_codes.push(ByteCode::SetGlobal(dst, table_loc));
