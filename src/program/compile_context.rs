@@ -50,7 +50,7 @@ impl<'a> CompileContext<'a> {
         let name: Value = name.into();
         self.locals
             .iter()
-            .position(|local| local == &name)
+            .rposition(|local| local == &name)
             .map(ExpDesc::Local)
     }
 }
