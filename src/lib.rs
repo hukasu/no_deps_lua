@@ -75,7 +75,10 @@ impl Lua {
             out_params,
         };
 
-        self.stack.resize(new_stack.stack_frame + args, Value::Nil);
+        self.stack.resize(
+            new_stack.stack_frame + args + variadic_arguments,
+            Value::Nil,
+        );
 
         self.stack_frame.push(new_stack);
     }

@@ -1540,9 +1540,19 @@ impl<'a> ExpDesc<'a> {
                 let func_index = u8::try_from(*func_index)?;
                 func.discharge(stack_top, program, compile_context)?;
 
-                for arg in args.iter() {
+                for (i, arg) in args.iter().enumerate() {
                     let (_, stack_top) = compile_context.reserve_stack_top();
                     arg.discharge(&stack_top, program, compile_context)?;
+
+                    if let Some(ByteCode::VariadicArguments(_, count)) =
+                        program.byte_codes.last_mut()
+                    {
+                        if i == args.len() - 1 {
+                            *count = 0;
+                        } else {
+                            *count = 2;
+                        }
+                    }
                 }
 
                 if let Some(ByteCode::Call(_, _, out)) = program.byte_codes.last_mut() {

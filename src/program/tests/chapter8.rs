@@ -559,3 +559,153 @@ f(100,200,"hello")
     let mut vm = crate::Lua::new();
     vm.run_program(&program).expect("Should work");
 }
+
+#[test]
+fn varargs() {
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
+
+    let program = Program::parse(
+        r#"
+function f(x, ...)
+    local a,b,c = ...
+    print(x)
+    print(a)
+    print(b)
+    print(c)
+end
+function f2(x, ...)
+    f(x,...)
+end
+function f3(x, ...)
+    f(...,x)
+end
+
+f('x', 1,2,3)
+f('x', 1,2)
+f2('x', 1,2,3,4)
+f3('x', 1,2,3,4)
+"#,
+    )
+    .unwrap();
+
+    let expected_constants: &[Value] = &["f".into(), "f2".into(), "f3".into(), "x".into()];
+    let expected_bytecodes = &[
+        ByteCode::VariadicArgumentPrepare(0),
+        // function f(x, ...)
+        ByteCode::Closure(0, 0),
+        ByteCode::SetGlobal(0, 0),
+        // function f2(x, ...)
+        ByteCode::Closure(0, 1),
+        ByteCode::SetGlobal(1, 0),
+        // function f3(x, ...)
+        ByteCode::Closure(0, 2),
+        ByteCode::SetGlobal(2, 0),
+        // f('x', 1,2,3)
+        ByteCode::GetGlobal(0, 0),
+        ByteCode::LoadConstant(1, 3),
+        ByteCode::LoadInt(2, 1),
+        ByteCode::LoadInt(3, 2),
+        ByteCode::LoadInt(4, 3),
+        ByteCode::Call(0, 5, 1),
+        // f('x', 1,2)
+        ByteCode::GetGlobal(0, 0),
+        ByteCode::LoadConstant(1, 3),
+        ByteCode::LoadInt(2, 1),
+        ByteCode::LoadInt(3, 2),
+        ByteCode::Call(0, 4, 1),
+        // f2('x', 1,2,3,4)
+        ByteCode::GetGlobal(0, 1),
+        ByteCode::LoadConstant(1, 3),
+        ByteCode::LoadInt(2, 1),
+        ByteCode::LoadInt(3, 2),
+        ByteCode::LoadInt(4, 3),
+        ByteCode::LoadInt(5, 4),
+        ByteCode::Call(0, 6, 1),
+        // f3('x', 1,2,3,4)
+        ByteCode::GetGlobal(0, 2),
+        ByteCode::LoadConstant(1, 3),
+        ByteCode::LoadInt(2, 1),
+        ByteCode::LoadInt(3, 2),
+        ByteCode::LoadInt(4, 3),
+        ByteCode::LoadInt(5, 4),
+        ByteCode::Call(0, 6, 1),
+        // EOF
+        ByteCode::Return(0, 1, 1),
+    ];
+    assert_eq!(program.constants, expected_constants);
+    assert_eq!(program.byte_codes, expected_bytecodes);
+    assert_eq!(program.functions.len(), 3);
+
+    let Value::Closure(closure) = &program.functions[0] else {
+        panic!("Closure must be a closure")
+    };
+    let expected_constants: &[Value] = &["print".into()];
+    let expected_bytecodes = &[
+        // function f(x, ...)
+        ByteCode::VariadicArgumentPrepare(1),
+        //     local a,b,c = ...
+        ByteCode::VariadicArguments(1, 4),
+        //     print(x)
+        ByteCode::GetGlobal(4, 0),
+        ByteCode::Move(5, 0),
+        ByteCode::Call(4, 2, 1),
+        //     print(a)
+        ByteCode::GetGlobal(4, 0),
+        ByteCode::Move(5, 1),
+        ByteCode::Call(4, 2, 1),
+        //     print(b)
+        ByteCode::GetGlobal(4, 0),
+        ByteCode::Move(5, 2),
+        ByteCode::Call(4, 2, 1),
+        //     print(c)
+        ByteCode::GetGlobal(4, 0),
+        ByteCode::Move(5, 3),
+        ByteCode::Call(4, 2, 1),
+        // end
+        ByteCode::Return(4, 1, 2),
+    ];
+    assert_eq!(closure.program().constants, expected_constants);
+    assert_eq!(closure.program().byte_codes, expected_bytecodes);
+    assert!(closure.program().functions.is_empty());
+
+    let Value::Closure(closure) = &program.functions[1] else {
+        panic!("Closure must be a closure")
+    };
+    let expected_constants: &[Value] = &["f".into()];
+    let expected_bytecodes = &[
+        // function f2(x, ...)
+        ByteCode::VariadicArgumentPrepare(1),
+        //     f(x,...)
+        ByteCode::GetGlobal(1, 0),
+        ByteCode::Move(2, 0),
+        ByteCode::VariadicArguments(3, 0),
+        ByteCode::Call(1, 0, 1),
+        // end
+        ByteCode::Return(1, 1, 2),
+    ];
+    assert_eq!(closure.program().constants, expected_constants);
+    assert_eq!(closure.program().byte_codes, expected_bytecodes);
+    assert!(closure.program().functions.is_empty());
+
+    let Value::Closure(closure) = &program.functions[2] else {
+        panic!("Closure must be a closure")
+    };
+    let expected_constants: &[Value] = &["f".into()];
+    let expected_bytecodes = &[
+        // function f3(x, ...)
+        ByteCode::VariadicArgumentPrepare(1),
+        //     f(...,x)
+        ByteCode::GetGlobal(1, 0),
+        ByteCode::VariadicArguments(2, 2),
+        ByteCode::Move(3, 0),
+        ByteCode::Call(1, 3, 1),
+        // end
+        ByteCode::Return(1, 1, 2),
+    ];
+    assert_eq!(closure.program().constants, expected_constants);
+    assert_eq!(closure.program().byte_codes, expected_bytecodes);
+    assert!(closure.program().functions.is_empty());
+
+    let mut vm = crate::Lua::new();
+    vm.run_program(&program).expect("Should work");
+}

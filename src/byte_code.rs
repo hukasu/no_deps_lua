@@ -1,6 +1,6 @@
 use core::{cell::RefCell, cmp::Ordering};
 
-use alloc::{format, rc::Rc};
+use alloc::{format, rc::Rc, vec::Vec};
 
 use crate::{
     table::Table,
@@ -1306,19 +1306,31 @@ impl ByteCode {
 
         let variadics = top_stack.variadic_arguments;
 
-        let start = top_stack.stack_frame;
-        let end = start
-            + if *count == 0 {
-                variadics
-            } else {
-                usize::from(*count)
-            };
+        if *count == 0 {
+            let start = top_stack.stack_frame;
+            let end = start + variadics;
 
-        let move_vals = vm.stack[start..end].to_vec();
+            let move_vals = vm.stack[start..end].to_vec();
 
-        vm.stack
-            .truncate(start + variadics + usize::from(*register));
-        vm.stack.extend(move_vals);
+            vm.stack
+                .truncate(start + variadics + usize::from(*register));
+            vm.stack.extend(move_vals);
+        } else {
+            let true_count = usize::from(count - 1);
+            let start = top_stack.stack_frame;
+            let end = start + true_count.min(variadics);
+
+            let move_vals = vm.stack[start..end].to_vec();
+
+            vm.stack
+                .truncate(start + variadics + usize::from(*register));
+            vm.stack.extend(move_vals);
+
+            if true_count > variadics {
+                let remaining = true_count - variadics;
+                vm.stack.resize(vm.stack.len() + remaining, Value::Nil);
+            }
+        }
 
         Ok(())
     }
@@ -1376,22 +1388,37 @@ impl ByteCode {
 
         let top_stack = vm.get_stack_frame();
 
-        let locals_and_temps_on_function_stack =
-            vm.stack.len() - (top_stack.stack_frame + func_index) - 1;
+        let locals_and_temps_on_function_stack = vm.stack.len()
+            - (top_stack.stack_frame + top_stack.variadic_arguments + func_index)
+            - 1;
 
-        let args = if args == 0 {
-            locals_and_temps_on_function_stack
+        let (args, var_args) = if args == 0 {
+            (
+                locals_and_temps_on_function_stack - top_stack.variadic_arguments,
+                top_stack.variadic_arguments,
+            )
         } else if func.variadic_args() {
-            func.arg_count() + locals_and_temps_on_function_stack
+            (
+                func.arg_count(),
+                locals_and_temps_on_function_stack - func.arg_count(),
+            )
         } else {
-            func.arg_count()
+            (func.arg_count(), 0)
         };
 
-        let var_args = if func.variadic_args() {
-            locals_and_temps_on_function_stack - func.arg_count()
-        } else {
-            0
-        };
+        if args > 0 && var_args > 0 {
+            let variadics = vm
+                .stack
+                .drain((vm.stack.len() - var_args)..)
+                .collect::<Vec<_>>();
+            let fixed = vm
+                .stack
+                .drain((vm.stack.len() - args)..)
+                .collect::<Vec<_>>();
+
+            vm.stack.extend(variadics);
+            vm.stack.extend(fixed);
+        }
 
         vm.prepare_new_function_stack(func_index, args, out_params, var_args);
 

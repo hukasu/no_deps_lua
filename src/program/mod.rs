@@ -106,7 +106,7 @@ impl Program {
         let locals = compile_context.locals.len();
         let cache_var_args = compile_context.var_args.take();
 
-        self.block(block, compile_context)?;
+        self.block(block, compile_context, false)?;
 
         compile_context.var_args = cache_var_args;
         compile_context.stack_top -= u8::try_from(compile_context.locals.len() - locals)
@@ -144,6 +144,26 @@ impl Program {
         Ok(())
     }
 
+    fn fix_up_last_return(
+        &mut self,
+        fixed_arguments: u8,
+        compile_context: &CompileContext,
+    ) -> Result<(), Error> {
+        let Some(ByteCode::ZeroReturn) = self.byte_codes.pop() else {
+            unreachable!("ByteCode at the end of a function body should always be `ZeroReturn`.");
+        };
+
+        let locals = u8::try_from(compile_context.locals.len())?;
+        if let Some(ByteCode::TailCall(_, _, _)) = self.byte_codes.last() {
+            self.byte_codes.push(ByteCode::Return(locals, 0, 0));
+        } else {
+            self.byte_codes
+                .push(ByteCode::Return(locals, 1, fixed_arguments + 1));
+        }
+
+        Ok(())
+    }
+
     // Non-terminals
     fn chunk<'a>(
         &mut self,
@@ -152,7 +172,9 @@ impl Program {
     ) -> Result<(), Error> {
         match chunk.tokens.as_slice() {
             make_deconstruct!(block(TokenType::Block)) => {
-                self.block(block, compile_context)?;
+                self.block(block, compile_context, true)?;
+                self.fix_up_last_return(0, compile_context)?;
+
                 if compile_context.gotos.is_empty() {
                     Ok(())
                 } else {
@@ -183,6 +205,7 @@ impl Program {
         &mut self,
         block: &Token<'a>,
         compile_context: &mut CompileContext<'a>,
+        function_body: bool,
     ) -> Result<(), Error> {
         match block.tokens.as_slice() {
             make_deconstruct!(
@@ -194,9 +217,8 @@ impl Program {
                 let locals = u8::try_from(compile_context.locals.len())?;
 
                 if compile_context.var_args.unwrap_or(false) {
-                    self.byte_codes.push(ByteCode::VariadicArgumentPrepare(
-                        compile_context.stack_top - locals,
-                    ));
+                    self.byte_codes
+                        .push(ByteCode::VariadicArgumentPrepare(locals));
                 }
 
                 self.block_stat(block_stat, compile_context)?;
@@ -235,24 +257,8 @@ impl Program {
 
                 compile_context.labels.truncate(labels);
 
-                match compile_context.var_args {
-                    Some(true) => {
-                        if let Some(ByteCode::TailCall(_, _, _)) = self.byte_codes.last() {
-                            self.byte_codes.push(ByteCode::Return(
-                                u8::try_from(compile_context.locals.len())?,
-                                0,
-                                0,
-                            ));
-                        } else {
-                            self.byte_codes.push(ByteCode::Return(
-                                u8::try_from(compile_context.locals.len())?,
-                                1,
-                                1,
-                            ));
-                        }
-                    }
-                    Some(false) => self.byte_codes.push(ByteCode::ZeroReturn),
-                    _ => (),
+                if function_body {
+                    self.byte_codes.push(ByteCode::ZeroReturn);
                 }
 
                 Ok(())
@@ -378,7 +384,7 @@ impl Program {
                 let locals = compile_context.locals.len();
                 let cache_var_args = compile_context.var_args.take();
 
-                self.block(block, compile_context)?;
+                self.block(block, compile_context, false)?;
 
                 compile_context.var_args = cache_var_args;
                 compile_context.locals.truncate(locals);
@@ -410,7 +416,7 @@ impl Program {
 
                 let cache_var_args = compile_context.var_args.take();
 
-                self.block(block, compile_context)?;
+                self.block(block, compile_context, false)?;
 
                 compile_context.var_args = cache_var_args;
                 compile_context.locals.truncate(locals);
@@ -460,7 +466,7 @@ impl Program {
                 let repeat_start = self.byte_codes.len();
 
                 let cache_var_args = compile_context.var_args.take();
-                self.block(block, compile_context)?;
+                self.block(block, compile_context, false)?;
                 compile_context.var_args = cache_var_args;
 
                 let cond = self.exp(exp, compile_context)?;
@@ -531,7 +537,7 @@ impl Program {
                 self.byte_codes.push(ByteCode::ForPrepare(for_stack, 0));
 
                 let cache_var_args = compile_context.var_args.take();
-                self.block(block, compile_context)?;
+                self.block(block, compile_context, false)?;
                 compile_context.var_args = cache_var_args;
 
                 let end_bytecode = self.byte_codes.len();
@@ -638,13 +644,26 @@ impl Program {
                 stat_attexplist(TokenType::StatAttexplist)
             ) => {
                 let namelist = self.attnamelist(attnamelist)?;
-                let mut explist = self.stat_attexplist(stat_attexplist, compile_context)?;
-
-                explist.resize(namelist.len(), ExpDesc::Nil);
+                let explist = self.stat_attexplist(stat_attexplist, compile_context)?;
 
                 for exp in explist.iter() {
                     let (_, stack_top) = compile_context.reserve_stack_top();
                     exp.discharge(&stack_top, self, compile_context)?;
+                }
+
+                if explist.len() < namelist.len() {
+                    let remaining = u8::try_from(namelist.len() - explist.len())?;
+
+                    if let Some(ByteCode::VariadicArguments(_, count)) = self.byte_codes.last_mut()
+                    {
+                        compile_context.stack_top += remaining;
+                        *count = remaining + 2;
+                    } else {
+                        for _ in 0..remaining {
+                            let (_, stack_top) = compile_context.reserve_stack_top();
+                            { ExpDesc::Nil }.discharge(&stack_top, self, compile_context)?;
+                        }
+                    }
                 }
 
                 // Adding the new names into `locals` to prevent
@@ -683,7 +702,7 @@ impl Program {
                 let locals = compile_context.locals.len();
                 let cache_var_args = compile_context.var_args.take();
 
-                self.block(block, compile_context)?;
+                self.block(block, compile_context, false)?;
 
                 compile_context.var_args = cache_var_args;
                 compile_context.stack_top -= u8::try_from(compile_context.locals.len() - locals)
@@ -1497,7 +1516,14 @@ impl Program {
                 func_compile_context.locals.extend(parlist.names);
                 func_compile_context.stack_top = u8::try_from(parlist_name_count)?;
 
-                func_program.block(block, &mut func_compile_context)?;
+                func_program.block(block, &mut func_compile_context, true)?;
+
+                if parlist.variadic_args {
+                    func_program.fix_up_last_return(
+                        u8::try_from(parlist_name_count)?,
+                        &func_compile_context,
+                    )?;
+                }
 
                 let closure_position = self.push_function(Rc::new(Closure::new(
                     func_program,
