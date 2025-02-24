@@ -1280,7 +1280,7 @@ impl<'a> ExpDesc<'a> {
 
                 program
                     .byte_codes
-                    .push(ByteCode::NewTable(dst, array_items, table_items));
+                    .push(ByteCode::NewTable(dst, table_items, array_items));
 
                 for (key, val) in fields {
                     match key {
@@ -1342,7 +1342,7 @@ impl<'a> ExpDesc<'a> {
                 let (table_loc, _) = compile_context.reserve_stack_top();
                 program
                     .byte_codes
-                    .push(ByteCode::NewTable(table_loc, array_items, table_items));
+                    .push(ByteCode::NewTable(table_loc, table_items, array_items));
 
                 for (key, val) in fields {
                     match key {

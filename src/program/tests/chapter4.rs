@@ -113,7 +113,7 @@ t.f(t[1000])
             ByteCode::LoadInt(0, 100),
             ByteCode::LoadInt(1, 200),
             // t = {...}
-            ByteCode::NewTable(2, 3, 2),
+            ByteCode::NewTable(2, 2, 3),
             // k=300
             ByteCode::LoadInt(3, 300),
             ByteCode::SetField(2, 1, 3),
