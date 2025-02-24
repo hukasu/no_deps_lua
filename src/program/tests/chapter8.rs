@@ -58,6 +58,55 @@ hello()
 }
 
 #[test]
+fn call() {
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
+
+    let program = Program::parse(
+        r#"
+local function hello()
+    print "hello, function!"
+end
+
+hello()
+"#,
+    )
+    .unwrap();
+
+    let expected_bytecodes = &[
+        ByteCode::VariadicArgumentPrepare(0),
+        // local function hello()
+        ByteCode::Closure(0, 0),
+        // hello()
+        ByteCode::Move(1, 0),
+        ByteCode::Call(1, 1, 1),
+        // EOF
+        ByteCode::Return(1, 1, 1),
+    ];
+    assert!(program.constants.is_empty());
+    assert_eq!(&program.byte_codes, expected_bytecodes);
+    assert_eq!(program.functions.len(), 1);
+
+    let Value::Closure(func) = &program.functions[0] else {
+        unreachable!("function must be a `Value::Closure`");
+    };
+    let expected_constants: &[Value] = &["print".into(), "hello, function!".into()];
+    let expected_bytecodes = &[
+        // local function hello()
+        // print "hello, function!"
+        ByteCode::GetGlobal(0, 0),
+        ByteCode::LoadConstant(1, 1),
+        ByteCode::Call(0, 2, 1),
+        // end
+        ByteCode::ZeroReturn,
+    ];
+    assert_eq!(func.program().constants, expected_constants);
+    assert_eq!(func.program().byte_codes, expected_bytecodes);
+    assert!(func.program().functions.is_empty());
+
+    crate::Lua::execute(&program).expect("Should run");
+}
+
+#[test]
 fn func1() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
 
