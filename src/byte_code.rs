@@ -3,6 +3,7 @@ use core::{cell::RefCell, cmp::Ordering};
 use alloc::{format, rc::Rc, vec::Vec};
 
 use crate::{
+    stack_frame::FunctionIndex,
     table::Table,
     value::{Value, ValueKey},
     Closure, Lua, Program,
@@ -325,7 +326,7 @@ pub enum ByteCode {
     ///
     /// `register`: First item on stack to return  
     /// `count`: Number of items to return, the actual value is subtracting
-    /// it by 2, if zero, return all items on stack  
+    /// it by 1, if zero, return all items on stack  
     /// `var_args`: If `var_args` > 0, the function is has variadic arguments
     /// and the number of fixed arguments is `var_args - 1`
     Return(u8, u8, u8),
@@ -1118,23 +1119,26 @@ impl ByteCode {
 
         let top_stack = vm.get_stack_frame();
         let tail_start = top_stack.stack_frame + func_index_usize;
+        let FunctionIndex::Closure(prev_func_index) = top_stack.function_index else {
+            unreachable!("Tailcall should never be called on main.");
+        };
         vm.drop_stack_frame(func_index_usize, vm.stack.len() - tail_start);
 
-        let func = &vm.get_stack(*func_index)?;
+        let func = &vm.get_stack(u8::try_from(prev_func_index)?)?;
         if let Value::Function(func) = func {
-            Self::run_native_function(vm, func_index_usize, args, out_params, *func)
+            Self::run_native_function(vm, prev_func_index, args, out_params, *func)
         } else if let Value::Closure(func) = func {
             let func = func.clone();
-            Self::setup_closure(vm, func_index_usize, args, out_params, func.as_ref())
+            Self::setup_closure(vm, prev_func_index, args, out_params, func.as_ref())
         } else {
             Err(Error::InvalidFunction((*func).clone()))
         }
     }
 
     pub fn return_bytecode(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
-        validate_bytecode!(self, ByteCode::Return(_, _, _));
+        validate_bytecode!(self, ByteCode::Return(return_start, count, _));
 
-        vm.drop_stack_frame(0, 0);
+        vm.drop_stack_frame(usize::from(*return_start), usize::from(count - 1));
 
         Ok(())
     }

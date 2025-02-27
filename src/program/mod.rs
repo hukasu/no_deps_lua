@@ -337,11 +337,68 @@ impl Program {
                 let varlist = self.varlist(varlist, compile_context)?;
                 let mut explist = self.explist(explist, compile_context)?;
 
-                explist.resize(varlist.len(), ExpDesc::Nil);
+                let last_call = if explist
+                    .last()
+                    .filter(|last| matches!(last, ExpDesc::FunctionCall(_, _)))
+                    .is_some()
+                {
+                    explist.pop()
+                } else {
+                    None
+                };
 
                 for (var, exp) in varlist.iter().zip(explist.iter()) {
                     exp.discharge(var, self, compile_context)?;
                 }
+
+                if explist.len() < varlist.len() {
+                    if let Some(last_call) = last_call {
+                        for var in varlist[explist.len()..].iter() {
+                            match var {
+                                ExpDesc::Name(name) => {
+                                    self.push_constant(*name)?;
+                                }
+                                ExpDesc::TableAccess {
+                                    table: _,
+                                    key: _,
+                                    record: _,
+                                } => (),
+                                other => {
+                                    unreachable!(
+                                        "Variable is always a Name or TableAccess, but was {:?}.",
+                                        other
+                                    )
+                                }
+                            }
+                        }
+
+                        let remaining = varlist.len() - explist.len();
+                        let (return_start, stack_top) = compile_context.reserve_stack_top();
+                        last_call.discharge(&stack_top, self, compile_context)?;
+
+                        if let Some(ByteCode::Call(_, _, out)) = self.byte_codes.last_mut() {
+                            *out = u8::try_from(remaining)? + 1;
+                        } else {
+                            unreachable!("Last bytecode was not Call.");
+                        }
+
+                        let return_start = usize::from(return_start);
+
+                        for (return_loc, var) in (return_start..(return_start + remaining))
+                            .rev()
+                            .zip(varlist[explist.len()..].iter().rev())
+                        {
+                            { ExpDesc::Local(return_loc) }.discharge(var, self, compile_context)?;
+                        }
+
+                        compile_context.stack_top -= 1;
+                    } else {
+                        for var in &varlist[explist.len()..] {
+                            { ExpDesc::Nil }.discharge(var, self, compile_context)?;
+                        }
+                    }
+                }
+                explist.resize(varlist.len(), ExpDesc::Nil);
 
                 Ok(())
             }
@@ -886,13 +943,12 @@ impl Program {
                             last.discharge(&stack_top, self, compile_context)?;
 
                             if let ExpDesc::FunctionCall(_, _) = last {
-                                let Some(ByteCode::Call(func_index, _, c)) = self.byte_codes.pop()
+                                let Some(ByteCode::Call(func_index, b, _)) = self.byte_codes.pop()
                                 else {
                                     unreachable!("Last should always be a function call");
                                 };
 
-                                self.byte_codes
-                                    .push(ByteCode::TailCall(func_index, c + 1, 0));
+                                self.byte_codes.push(ByteCode::TailCall(func_index, b, 0));
                                 self.byte_codes.push(ByteCode::Return(stack_loc, 0, 0))
                             } else {
                                 self.byte_codes.push(ByteCode::OneReturn(stack_loc))
@@ -901,12 +957,18 @@ impl Program {
                         compile_context.stack_top -= 1;
                     }
                     _ => {
+                        let return_start = compile_context.stack_top;
                         for exp in explist.iter() {
                             let (_, stack_top) = compile_context.reserve_stack_top();
                             exp.discharge(&stack_top, self, compile_context)?;
                         }
                         compile_context.stack_top -= u8::try_from(explist.len())?;
-                        unimplemented!("Variadic return")
+
+                        self.byte_codes.push(ByteCode::Return(
+                            return_start,
+                            u8::try_from(explist.len())? + 1,
+                            0,
+                        ));
                     }
                 }
 

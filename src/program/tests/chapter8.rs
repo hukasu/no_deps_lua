@@ -845,3 +845,101 @@ foo(1,2,100,200,300)
     let mut vm = crate::Lua::new();
     vm.run_program(&program).expect("Should work");
 }
+
+#[test]
+fn multret() {
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
+
+    let program = Program::parse(
+        r#"
+function f1(a, b)
+    return a+b, a-b
+end
+function f2(a, b)
+    return f1(a+b, a-b) -- return MULTRET
+end
+
+x,y = f2(f2(3, 10)) -- MULTRET arguments
+print(x)
+print(y)
+"#,
+    )
+    .unwrap();
+
+    let expected_bytecodes = &[
+        ByteCode::VariadicArgumentPrepare(0),
+        // function f1(a, b)
+        ByteCode::Closure(0, 0),
+        ByteCode::SetGlobal(0, 0),
+        // function f2(a, b)
+        ByteCode::Closure(0, 1),
+        ByteCode::SetGlobal(1, 0),
+        // x,y = f2(f2(3, 10)) -- MULTRET arguments
+        ByteCode::GetGlobal(0, 1),
+        ByteCode::GetGlobal(1, 1),
+        ByteCode::LoadInt(2, 3),
+        ByteCode::LoadInt(3, 10),
+        ByteCode::Call(1, 3, 0),
+        ByteCode::Call(0, 0, 3),
+        ByteCode::SetGlobal(3, 1),
+        ByteCode::SetGlobal(2, 0),
+        // print(x)
+        ByteCode::GetGlobal(0, 4),
+        ByteCode::GetGlobal(1, 2),
+        ByteCode::Call(0, 2, 1),
+        // print(y)
+        ByteCode::GetGlobal(0, 4),
+        ByteCode::GetGlobal(1, 3),
+        ByteCode::Call(0, 2, 1),
+        // EOF
+        ByteCode::Return(0, 1, 1),
+    ];
+    assert_eq!(
+        program.constants,
+        &[
+            "f1".into(),
+            "f2".into(),
+            "x".into(),
+            "y".into(),
+            "print".into()
+        ]
+    );
+    assert_eq!(&program.byte_codes, expected_bytecodes);
+    assert_eq!(program.functions.len(), 2);
+
+    let Value::Closure(func) = &program.functions[0] else {
+        unreachable!("function must be a `Value::Closure`");
+    };
+    let expected_bytecodes = &[
+        // function f1(a, b)
+        //     return a+b, a-b
+        ByteCode::Add(2, 0, 1),
+        ByteCode::Sub(3, 0, 1),
+        ByteCode::Return(2, 3, 0),
+        // end
+        ByteCode::ZeroReturn,
+    ];
+    assert!(func.program().constants.is_empty());
+    assert_eq!(func.program().byte_codes, expected_bytecodes);
+    assert!(func.program().functions.is_empty());
+
+    let Value::Closure(func) = &program.functions[1] else {
+        unreachable!("function must be a `Value::Closure`");
+    };
+    let expected_bytecodes = &[
+        // function f2(a, b)
+        //     return f1(a+b, a-b) -- return MULTRET
+        ByteCode::GetGlobal(2, 0),
+        ByteCode::Add(3, 0, 1),
+        ByteCode::Sub(4, 0, 1),
+        ByteCode::TailCall(2, 3, 0),
+        ByteCode::Return(2, 0, 0),
+        // end
+        ByteCode::ZeroReturn,
+    ];
+    assert_eq!(func.program().constants, &["f1".into()]);
+    assert_eq!(func.program().byte_codes, expected_bytecodes);
+    assert!(func.program().functions.is_empty());
+
+    crate::Lua::execute(&program).expect("Should run");
+}

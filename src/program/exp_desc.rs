@@ -1114,6 +1114,17 @@ impl<'a> ExpDesc<'a> {
 
                 Ok(())
             }
+            Self::Name(name) => {
+                let dst = match compile_context.find_name(name) {
+                    Some(local) => local,
+                    None => {
+                        let global = program.push_constant(*name)?;
+                        Self::Global(usize::from(global))
+                    }
+                };
+
+                self.discharge(&dst, program, compile_context)
+            }
             Self::TableAccess {
                 table,
                 key,
@@ -1645,6 +1656,28 @@ impl<'a> ExpDesc<'a> {
                 compile_context.stack_top -= u8::try_from(args.len())?;
 
                 Ok(())
+            }
+            ExpDesc::Global(global) => {
+                let (local_loc, stack_top) = compile_context.reserve_stack_top();
+                self.discharge(&stack_top, program, compile_context)?;
+
+                program
+                    .byte_codes
+                    .push(ByteCode::SetGlobal(u8::try_from(*global)?, local_loc));
+                compile_context.stack_top -= 1;
+
+                Ok(())
+            }
+            ExpDesc::Name(name) => {
+                let name = match compile_context.find_name(name) {
+                    Some(local) => local,
+                    None => {
+                        let global = program.push_constant(*name)?;
+                        ExpDesc::Global(usize::from(global))
+                    }
+                };
+                log::trace!("{:?}", name);
+                self.discharge(&name, program, compile_context)
             }
             other => unreachable!("FunctionCall can't be discharged in {:?}.", other),
         }
