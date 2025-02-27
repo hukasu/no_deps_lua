@@ -627,56 +627,68 @@ impl Program {
                 funcbody(TokenType::Funcbody)
             ) => {
                 let function_name = self.funcname(funcname)?;
-                if function_name.method.is_some() {
-                    unimplemented!("Methods are unimplemented");
-                }
+                let funcbody =
+                    self.funcbody(funcbody, function_name.has_method, compile_context)?;
 
-                let funcbody = self.funcbody(funcbody, compile_context)?;
+                let [head @ .., tail] = function_name.names.as_slice() else {
+                    unreachable!("Function name should never be empty.");
+                };
 
-                if function_name.names.len() == 1 {
-                    let (_, funcbody_stack) = compile_context.reserve_stack_top();
-                    let constant = self.push_constant(function_name.names[0])?;
+                let mut stacks_used = 0;
 
-                    funcbody.discharge(&funcbody_stack, self, compile_context)?;
-                    funcbody_stack.discharge(
-                        &ExpDesc::Global(usize::from(constant)),
-                        self,
-                        compile_context,
-                    )?;
-
-                    compile_context.stack_top -= 1;
+                let final_dst = if head.is_empty() {
+                    // This is the case where the function is defined as
+                    // function f() ... end
+                    let constant = self.push_constant(*tail)?;
+                    ExpDesc::Global(usize::from(constant))
                 } else {
-                    let mut stacks_used = 0;
+                    let (stack_loc, stack_top) = compile_context.reserve_stack_top();
+                    let mut used_stack_top = false;
 
-                    let previous =
-                        if let Some(local) = compile_context.find_name(function_name.names[0]) {
-                            local
+                    let mut table_loc =
+                        if let Some(ExpDesc::Local(local)) = compile_context.find_name(head[0]) {
+                            u8::try_from(local)?
                         } else {
-                            stacks_used += 1;
-                            compile_context.reserve_stack_top().1
+                            used_stack_top = true;
+                            let constant = self.push_constant(head[0])?;
+                            self.byte_codes
+                                .push(ByteCode::GetGlobal(stack_loc, constant));
+                            stack_loc
                         };
 
-                    for (i, name) in function_name.names.iter().enumerate() {
-                        if i + 1 == function_name.names.len() {
-                            let (_, funcbody_stack) = compile_context.reserve_stack_top();
-                            stacks_used += 1;
-
-                            funcbody.discharge(&funcbody_stack, self, compile_context)?;
-
-                            funcbody_stack.discharge(
-                                &ExpDesc::TableAccess {
-                                    table: Box::new(previous.clone()),
-                                    key: Box::new(self.name(name)),
-                                    record: true,
-                                },
-                                self,
-                                compile_context,
-                            )?;
+                    for table_key in &head[1..] {
+                        ExpDesc::TableAccess {
+                            table: Box::new(ExpDesc::Local(usize::from(table_loc))),
+                            key: Box::new(self.name(table_key)),
+                            record: true,
                         }
+                        .discharge(&stack_top, self, compile_context)?;
+
+                        used_stack_top = true;
+                        table_loc = stack_loc;
                     }
 
-                    compile_context.stack_top -= stacks_used;
-                }
+                    if used_stack_top {
+                        stacks_used += 1;
+                    } else {
+                        compile_context.stack_top -= 1;
+                    }
+
+                    ExpDesc::TableAccess {
+                        table: Box::new(ExpDesc::Local(usize::from(table_loc))),
+                        key: Box::new(self.name(tail)),
+                        record: true,
+                    }
+                };
+
+                let (_, funcbody_stack) = compile_context.reserve_stack_top();
+                stacks_used += 1;
+
+                funcbody.discharge(&funcbody_stack, self, compile_context)?;
+
+                funcbody_stack.discharge(&final_dst, self, compile_context)?;
+
+                compile_context.stack_top -= stacks_used;
 
                 Ok(())
             }
@@ -688,7 +700,7 @@ impl Program {
             ) => {
                 compile_context.locals.push((*name).into());
 
-                let funcbody = self.funcbody(funcbody, compile_context)?;
+                let funcbody = self.funcbody(funcbody, false, compile_context)?;
 
                 let (_, function_body) = compile_context.reserve_stack_top();
                 funcbody.discharge(&function_body, self, compile_context)?;
@@ -1128,8 +1140,8 @@ impl Program {
         match funcname_end.tokens.as_slice() {
             [] => Ok(()),
             make_deconstruct!(_colon(TokenType::Colon), _name(TokenType::Name(name))) => {
-                func_namelist.method.replace(name);
-
+                func_namelist.names.push(name);
+                func_namelist.has_method = true;
                 Ok(())
             }
             _ => {
@@ -1454,11 +1466,17 @@ impl Program {
                 Ok(ExpDesc::FunctionCall(Box::new(prefix), args))
             }
             make_deconstruct!(
-                _prefixexp(TokenType::Prefixexp),
+                prefixexp(TokenType::Prefixexp),
                 _colon(TokenType::Colon),
-                _name(TokenType::Name(_)),
-                _args(TokenType::Args)
-            ) => unimplemented!("functioncall production"),
+                _name(TokenType::Name(name)),
+                args(TokenType::Args)
+            ) => {
+                let prefix = self.prefixexp(prefixexp, compile_context)?;
+                let name = self.name(name);
+                let args = self.args(args, compile_context)?;
+
+                Ok(ExpDesc::MethodCall(Box::new(prefix), Box::new(name), args))
+            }
             _ => {
                 unreachable!(
                     "Functioncall did not match any of the productions. Had {:#?}.",
@@ -1541,7 +1559,7 @@ impl Program {
             make_deconstruct!(
                 _function(TokenType::Function),
                 funcbody(TokenType::Funcbody)
-            ) => self.funcbody(funcbody, compile_context),
+            ) => self.funcbody(funcbody, false, compile_context),
             _ => {
                 unreachable!(
                     "Functiondef did not match any of the productions. Had {:#?}.",
@@ -1558,6 +1576,7 @@ impl Program {
     fn funcbody<'a>(
         &mut self,
         funcbody: &Token<'a>,
+        needs_self: bool,
         _compile_context: &mut CompileContext<'a>,
     ) -> Result<ExpDesc<'a>, Error> {
         match funcbody.tokens.as_slice() {
@@ -1575,8 +1594,12 @@ impl Program {
                 let mut func_compile_context =
                     CompileContext::default().with_var_args(parlist.variadic_args);
 
+                if needs_self {
+                    func_compile_context.locals.push("self".into());
+                }
                 func_compile_context.locals.extend(parlist.names);
-                func_compile_context.stack_top = u8::try_from(parlist_name_count)?;
+                func_compile_context.stack_top =
+                    u8::try_from(parlist_name_count)? + (needs_self as u8);
 
                 func_program.block(block, &mut func_compile_context, true)?;
 
@@ -1589,7 +1612,7 @@ impl Program {
 
                 let closure_position = self.push_function(Rc::new(Closure::new(
                     func_program,
-                    parlist_name_count,
+                    parlist_name_count + (needs_self as usize),
                     parlist.variadic_args,
                 )))?;
 

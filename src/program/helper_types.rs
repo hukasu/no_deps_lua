@@ -45,7 +45,7 @@ pub struct ParList {
 #[derive(Debug, Default)]
 pub struct FunctionNameList<'a> {
     pub names: Vec<&'a str>,
-    pub method: Option<&'a str>,
+    pub has_method: bool,
 }
 
 #[must_use = "Contains a key to index into a table"]

@@ -943,3 +943,114 @@ print(y)
 
     crate::Lua::execute(&program).expect("Should run");
 }
+
+#[test]
+fn self_keyword() {
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
+
+    let program = Program::parse(
+        r#"
+local t = {11,12,13, ['methods']={7, 8, 9}}
+function t.methods.foo(a,b)
+    print(a+b)
+end
+function t.methods:bar(a,b)
+    print(self[1]+self[2]+a+b)
+end
+
+t.methods.foo(100, 200)
+t.methods:bar(100, 200)
+t.methods.bar(t, 100, 200)
+"#,
+    )
+    .unwrap();
+
+    let expected_bytecodes = &[
+        ByteCode::VariadicArgumentPrepare(0),
+        // local t = {11,12,13, ['methods']={7, 8, 9}}
+        ByteCode::NewTable(0, 1, 3),
+        ByteCode::LoadInt(1, 11),
+        ByteCode::LoadInt(2, 12),
+        ByteCode::LoadInt(3, 13),
+        ByteCode::NewTable(4, 0, 3),
+        ByteCode::LoadInt(5, 7),
+        ByteCode::LoadInt(6, 8),
+        ByteCode::LoadInt(7, 9),
+        ByteCode::SetList(4, 3),
+        ByteCode::SetField(0, 0, 4),
+        ByteCode::SetList(0, 3),
+        // function t.methods.foo(a,b)
+        ByteCode::GetField(1, 0, 0),
+        ByteCode::Closure(2, 0),
+        ByteCode::SetField(1, 1, 2),
+        // function t.methods:bar(a,b)
+        ByteCode::GetField(1, 0, 0),
+        ByteCode::Closure(2, 1),
+        ByteCode::SetField(1, 2, 2),
+        // t.methods.foo(100, 200)
+        ByteCode::GetField(1, 0, 0),
+        ByteCode::GetField(1, 1, 1),
+        ByteCode::LoadInt(2, 100),
+        ByteCode::LoadInt(3, 200),
+        ByteCode::Call(1, 3, 1),
+        // t.methods:bar(100, 200)
+        ByteCode::GetField(1, 0, 0),
+        ByteCode::TableSelf(1, 1, 2),
+        ByteCode::LoadInt(3, 100),
+        ByteCode::LoadInt(4, 200),
+        ByteCode::Call(1, 4, 1),
+        // t.methods.bar(t, 100, 200)
+        ByteCode::GetField(1, 0, 0),
+        ByteCode::GetField(1, 1, 2),
+        ByteCode::Move(2, 0),
+        ByteCode::LoadInt(3, 100),
+        ByteCode::LoadInt(4, 200),
+        ByteCode::Call(1, 4, 1),
+        // EOF
+        ByteCode::Return(1, 1, 1),
+    ];
+    assert_eq!(
+        program.constants,
+        &["methods".into(), "foo".into(), "bar".into(),]
+    );
+    assert_eq!(&program.byte_codes, expected_bytecodes);
+    assert_eq!(program.functions.len(), 2);
+
+    let Value::Closure(func) = &program.functions[0] else {
+        unreachable!("function must be a `Value::Closure`");
+    };
+    let expected_bytecodes = &[
+        // function t.methods.foo(a,b)
+        //     print(a+b)
+        ByteCode::GetGlobal(2, 0),
+        ByteCode::Add(3, 0, 1),
+        ByteCode::Call(2, 2, 1),
+        // end
+        ByteCode::ZeroReturn,
+    ];
+    assert_eq!(func.program().constants, &["print".into()]);
+    assert_eq!(func.program().byte_codes, expected_bytecodes);
+    assert!(func.program().functions.is_empty());
+
+    let Value::Closure(func) = &program.functions[1] else {
+        unreachable!("function must be a `Value::Closure`");
+    };
+    let expected_bytecodes = &[
+        // function t.methods:bar(a,b)
+        //     print(self[1]+self[2]+a+b)
+        ByteCode::GetGlobal(3, 0),
+        ByteCode::GetInt(4, 0, 1),
+        ByteCode::GetInt(5, 0, 2),
+        ByteCode::Add(4, 4, 5),
+        ByteCode::Add(4, 4, 1),
+        ByteCode::Add(4, 4, 2),
+        ByteCode::Call(3, 2, 1),
+        // end
+        ByteCode::ZeroReturn,
+    ];
+    assert_eq!(func.program().constants, &["print".into()]);
+    assert_eq!(func.program().byte_codes, expected_bytecodes);
+    assert!(func.program().functions.is_empty());
+
+    crate::Lua::execute(&program).expect("Should run");
+}

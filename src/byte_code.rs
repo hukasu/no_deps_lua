@@ -116,6 +116,13 @@ pub enum ByteCode {
     /// `array_len`: Amount of items to allocate on the list  
     /// `table_len`: Amount of items to allocate for the map
     NewTable(u8, u8, u8),
+    /// `SELF`  
+    /// Get a method and pass self as the first argument  
+    ///
+    /// `dst`: Destination of the closure  
+    /// `table`: Location of the table on the `stack`     
+    /// `key`: Location of the key on `constants`  
+    TableSelf(u8, u8, u8),
     /// `ADDI`  
     /// Performs arithmetic addition with an integer.
     ///
@@ -626,6 +633,30 @@ impl ByteCode {
                 usize::from(*table_initial_size),
             )))),
         )
+    }
+
+    pub fn table_self(&self, vm: &mut Lua, main_program: &Program) -> Result<(), Error> {
+        validate_bytecode!(self, ByteCode::TableSelf(dst, table, key));
+
+        if let Value::Table(table) = vm.get_stack(*table).cloned()? {
+            vm.set_stack(dst + 1, Value::Table(table.clone()))?;
+
+            let key = ValueKey::from(
+                vm.get_running_closure(main_program).constants[usize::from(*key)].clone(),
+            );
+            let bin_search = (*table)
+                .borrow()
+                .table
+                .binary_search_by_key(&&key, |a| &a.0);
+
+            let value = match bin_search {
+                Ok(i) => (*table).borrow().table[i].1.clone(),
+                Err(_) => Value::Nil,
+            };
+            vm.set_stack(*dst, value)
+        } else {
+            Err(Error::ExpectedTable)
+        }
     }
 
     pub fn add_integer(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {

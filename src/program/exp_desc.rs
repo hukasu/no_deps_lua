@@ -35,6 +35,7 @@ pub enum ExpDesc<'a> {
     Condition(bool),
     Closure(u8),
     FunctionCall(Box<ExpDesc<'a>>, ExpList<'a>),
+    MethodCall(Box<ExpDesc<'a>>, Box<ExpDesc<'a>>, ExpList<'a>),
     VariadicArguments,
 }
 
@@ -65,6 +66,9 @@ impl<'a> ExpDesc<'a> {
             ExpDesc::Closure(_) => self.discharge_closure(dst, program),
             ExpDesc::FunctionCall(_, _) => {
                 self.discharge_function_call(dst, program, compile_context)
+            }
+            ExpDesc::MethodCall(_, _, _) => {
+                self.discharge_method_call(dst, program, compile_context)
             }
             ExpDesc::VariadicArguments => {
                 self.discharge_variable_arguments(dst, program, compile_context)
@@ -1321,19 +1325,32 @@ impl<'a> ExpDesc<'a> {
                                 .byte_codes
                                 .push(ByteCode::SetField(table, constant, val_loc));
                         }
-                        TableKey::General(key) => {
-                            let (key_loc, stack_top) = compile_context.reserve_stack_top();
-                            key.discharge(&stack_top, program, compile_context)?;
+                        TableKey::General(key) => match key.as_ref() {
+                            Self::String(key) => {
+                                let constant = program.push_constant(*key)?;
 
-                            let (val_loc, stack_top) = compile_context.reserve_stack_top();
-                            val.discharge(&stack_top, program, compile_context)?;
+                                let (val_loc, stack_top) = compile_context.reserve_stack_top();
+                                val.discharge(&stack_top, program, compile_context)?;
+                                compile_context.stack_top -= 1;
 
-                            compile_context.stack_top -= 2;
+                                program
+                                    .byte_codes
+                                    .push(ByteCode::SetField(table, constant, val_loc));
+                            }
+                            key => {
+                                let (key_loc, stack_top) = compile_context.reserve_stack_top();
+                                key.discharge(&stack_top, program, compile_context)?;
 
-                            program
-                                .byte_codes
-                                .push(ByteCode::SetTable(table, key_loc, val_loc));
-                        }
+                                let (val_loc, stack_top) = compile_context.reserve_stack_top();
+                                val.discharge(&stack_top, program, compile_context)?;
+
+                                compile_context.stack_top -= 2;
+
+                                program
+                                    .byte_codes
+                                    .push(ByteCode::SetTable(table, key_loc, val_loc));
+                            }
+                        },
                     }
 
                     if i != fields.len() - 1 {
@@ -1497,12 +1514,28 @@ impl<'a> ExpDesc<'a> {
                     key,
                     record: true,
                 },
-                Self::Local(dst),
+                local @ Self::Local(dst),
             ) => {
                 let dst = u8::try_from(*dst)?;
 
-                let table_loc =
-                    table.get_local_or_discharge_at_location(program, dst, compile_context)?;
+                let table_loc = match table.as_ref() {
+                    ExpDesc::Local(local) => u8::try_from(*local)?,
+                    ExpDesc::Name(_) => {
+                        table.get_local_or_discharge_at_location(program, dst, compile_context)?
+                    }
+                    table @ ExpDesc::TableAccess {
+                        table: _,
+                        key: _,
+                        record: _,
+                    } => {
+                        table.discharge(local, program, compile_context)?;
+                        dst
+                    }
+                    other => unreachable!(
+                        "Table can only be located on Local or Name, but was {:?}.",
+                        other
+                    ),
+                };
 
                 match key.as_ref() {
                     ExpDesc::Name(name) => {
@@ -1683,6 +1716,50 @@ impl<'a> ExpDesc<'a> {
         }
     }
 
+    fn discharge_method_call(
+        &self,
+        dst: &ExpDesc<'a>,
+        program: &mut Program,
+        compile_context: &mut CompileContext,
+    ) -> Result<(), Error> {
+        let ExpDesc::MethodCall(prefix, name, args) = self else {
+            unreachable!("discharge_method_call should never be called with anything other than ExpDesc::MethodCall, but was {:?}.", self);
+        };
+
+        let ExpDesc::Local(dst) = dst else {
+            unreachable!(
+                "Method call can only be discharged into Local, but was {:?}.",
+                dst
+            );
+        };
+        let dst_u8 = u8::try_from(*dst)?;
+
+        prefix.discharge(&ExpDesc::Local(*dst), program, compile_context)?;
+
+        let ExpDesc::Name(name) = name.as_ref() else {
+            unreachable!("Method name should always be Name, but was {:?}.", name);
+        };
+        let constant = program.push_constant(*name)?;
+        program
+            .byte_codes
+            .push(ByteCode::TableSelf(dst_u8, dst_u8, constant));
+        // TableSelf uses 2 locations on the stack
+        compile_context.stack_top += 1;
+
+        for arg in args.iter() {
+            let (_, stack_top) = compile_context.reserve_stack_top();
+            arg.discharge(&stack_top, program, compile_context)?;
+        }
+
+        program
+            .byte_codes
+            .push(ByteCode::Call(dst_u8, u8::try_from(args.len() + 2)?, 1));
+
+        compile_context.stack_top -= u8::try_from(args.len() + 1)?;
+
+        Ok(())
+    }
+
     fn discharge_variable_arguments(
         &self,
         dst: &ExpDesc<'a>,
@@ -1781,6 +1858,7 @@ impl<'a> ExpDesc<'a> {
             Self::Condition(_) => "condition",
             Self::Closure(_) => "closure",
             Self::FunctionCall(_, _) => "function_call",
+            Self::MethodCall(_, _, _) => "method_call",
             Self::VariadicArguments => "variadic arguments",
         }
     }

@@ -253,6 +253,9 @@ impl Lua {
                 new_table @ ByteCode::NewTable(_, _, _) => {
                     new_table.new_table(self, main_program)?
                 }
+                table_self @ ByteCode::TableSelf(_, _, _) => {
+                    table_self.table_self(self, main_program)?
+                }
                 add_integer @ ByteCode::AddInteger(_, _, _) => {
                     add_integer.add_integer(self, main_program)?
                 }
