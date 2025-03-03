@@ -652,7 +652,7 @@ impl Program {
                             used_stack_top = true;
                             let constant = self.push_constant(head[0])?;
                             self.byte_codes
-                                .push(ByteCode::GetGlobal(stack_loc, constant));
+                                .push(ByteCode::GetUpTable(stack_loc, 0, constant));
                             stack_loc
                         };
 

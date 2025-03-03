@@ -59,41 +59,43 @@ pub enum ByteCode {
     ///
     /// `dst`: Location on the stack to place nil  
     LoadNil(u8),
-    /// `GETTABUP`?  
-    /// Gets a value from `globals` and place it on stack
+    /// `GETTABUP`  
+    /// Gets a upvalue and place it on stack
     ///
     /// `dst`: Location on stack to place the global  
+    /// `upvalue`: UpTable to collect the field from  
     /// `name`: Location on `constants` where the name of the
     /// global resides
-    GetGlobal(u8, u8),
-    /// `SETTABUP`?  
-    /// Sets a value a global with a value from the stack
-    ///
-    /// `name`: Location on `constants` where the name of the
-    /// global resides  
-    /// `src`: Location of the value on stack to set the global
-    SetGlobal(u8, u8),
-    /// `GETTABLE`?  
+    GetUpTable(u8, u8, u8),
+    /// `GETTABLE`  
     /// Loads a table field to the stack using a stack value
     ///
     /// `dst`: Location on the stack to store the table's value  
     /// `table`: Location of the table on the stack  
     /// `src`: Location of the name on the stack  
     GetTable(u8, u8, u8),
-    /// `GETI`?  
+    /// `GETI`  
     /// Loads a value from the table into the stack using integer index
     ///
     /// `dst`: Location on the stack to store the table's value  
     /// `table`: Location of the table on the stack  
     /// `index`: Index of the item to load
     GetInt(u8, u8, u8),
-    /// `GETFIELD`?  
+    /// `GETFIELD`  
     /// Loads a table field to the stack using a name
     ///
     /// `dst`: Location on the stack to store the table's value  
     /// `table`: Location of the table on the stack  
     /// `key`: Location of the name on `constants`  
     GetField(u8, u8, u8),
+    /// `SETTABUP`  
+    /// Sets a value a global with a value from the stack
+    ///
+    /// `upvalue`: UpTable to store the value at  
+    /// `name`: Location on `constants` where the name of the
+    /// global resides  
+    /// `src`: Location of the value on stack to set the global
+    SetUpTable(u8, u8, u8),
     /// `SETTABLE`?  
     /// Sets a table field to a value using a value
     ///
@@ -468,30 +470,14 @@ impl ByteCode {
         vm.set_stack(*dst, Value::Nil)
     }
 
-    pub fn get_global(&self, vm: &mut Lua, main_program: &Program) -> Result<(), Error> {
-        validate_bytecode!(self, ByteCode::GetGlobal(dst, name));
+    pub fn get_up_table(&self, vm: &mut Lua, main_program: &Program) -> Result<(), Error> {
+        validate_bytecode!(self, ByteCode::GetUpTable(dst, _, name));
 
         let key = &vm.get_running_closure(main_program).constants[*name as usize];
         if let Some(index) = vm.globals.iter().position(|global| global.0.eq(key)) {
             vm.set_stack(*dst, vm.globals[index].1.clone())
         } else {
             vm.set_stack(*dst, Value::Nil)
-        }
-    }
-
-    pub fn set_global(&self, vm: &mut Lua, main_program: &Program) -> Result<(), Error> {
-        validate_bytecode!(self, ByteCode::SetGlobal(name, src));
-
-        let key = vm.get_running_closure(main_program).constants[*name as usize].clone();
-        let value = vm.get_stack(*src)?.clone();
-        if let Some(global) = vm.globals.iter_mut().find(|global| global.0.eq(&key)) {
-            global.1 = value;
-            Ok(())
-        } else if matches!(key, Value::String(_) | Value::ShortString(_)) {
-            vm.globals.push((key.clone(), value));
-            Ok(())
-        } else {
-            Err(Error::ExpectedName)
         }
     }
 
@@ -561,6 +547,22 @@ impl ByteCode {
             vm.set_stack(*dst, value)
         } else {
             Err(Error::ExpectedTable)
+        }
+    }
+
+    pub fn set_up_table(&self, vm: &mut Lua, main_program: &Program) -> Result<(), Error> {
+        validate_bytecode!(self, ByteCode::SetUpTable(_, name, src));
+
+        let key = vm.get_running_closure(main_program).constants[*name as usize].clone();
+        let value = vm.get_stack(*src)?.clone();
+        if let Some(global) = vm.globals.iter_mut().find(|global| global.0.eq(&key)) {
+            global.1 = value;
+            Ok(())
+        } else if matches!(key, Value::String(_) | Value::ShortString(_)) {
+            vm.globals.push((key.clone(), value));
+            Ok(())
+        } else {
+            Err(Error::ExpectedName)
         }
     }
 

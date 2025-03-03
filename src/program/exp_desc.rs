@@ -334,7 +334,9 @@ impl<'a> ExpDesc<'a> {
                     Some(_) => unreachable!("Local will always be a `Local`."),
                     None => {
                         let constant = program.push_constant(*name)?;
-                        program.byte_codes.push(ByteCode::GetGlobal(dst, constant));
+                        program
+                            .byte_codes
+                            .push(ByteCode::GetUpTable(dst, 0, constant));
                     }
                 }
 
@@ -1114,7 +1116,7 @@ impl<'a> ExpDesc<'a> {
                 let src = u8::try_from(*src)?;
                 let key = u8::try_from(*key)?;
 
-                program.byte_codes.push(ByteCode::SetGlobal(key, src));
+                program.byte_codes.push(ByteCode::SetUpTable(0, key, src));
 
                 Ok(())
             }
@@ -1232,7 +1234,7 @@ impl<'a> ExpDesc<'a> {
                 let key = u8::try_from(*key)?;
                 let dst = u8::try_from(*dst)?;
 
-                program.byte_codes.push(ByteCode::GetGlobal(dst, key));
+                program.byte_codes.push(ByteCode::GetUpTable(dst, 0, key));
 
                 Ok(())
             }
@@ -1440,7 +1442,9 @@ impl<'a> ExpDesc<'a> {
                     program.byte_codes.push(ByteCode::SetList(table_loc, count));
                 }
 
-                program.byte_codes.push(ByteCode::SetGlobal(dst, table_loc));
+                program
+                    .byte_codes
+                    .push(ByteCode::SetUpTable(0, dst, table_loc));
 
                 compile_context.stack_top -= array_items + 1;
 
@@ -1696,7 +1700,7 @@ impl<'a> ExpDesc<'a> {
 
                 program
                     .byte_codes
-                    .push(ByteCode::SetGlobal(u8::try_from(*global)?, local_loc));
+                    .push(ByteCode::SetUpTable(0, u8::try_from(*global)?, local_loc));
                 compile_context.stack_top -= 1;
 
                 Ok(())
