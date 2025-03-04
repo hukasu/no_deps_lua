@@ -31,28 +31,28 @@ print (a) -- should be nil
         &[
             ByteCode::VariadicArgumentPrepare(0),
             // if a then
-            ByteCode::GetGlobal(0, 0),
+            ByteCode::GetUpTable(0, 0, 0),
             ByteCode::Test(0, 0),
             ByteCode::Jmp(3),
             // print "skip this"
-            ByteCode::GetGlobal(0, 1),
+            ByteCode::GetUpTable(0, 0, 1),
             ByteCode::LoadConstant(1, 2),
             ByteCode::Call(0, 2, 1),
             // end
             // if print then
-            ByteCode::GetGlobal(0, 1),
+            ByteCode::GetUpTable(0, 0, 1),
             ByteCode::Test(0, 0),
             ByteCode::Jmp(4),
             // local a = "I am true"
             ByteCode::LoadConstant(0, 3),
             // print(a)
-            ByteCode::GetGlobal(1, 1),
+            ByteCode::GetUpTable(1, 0, 1),
             ByteCode::Move(2, 0),
             ByteCode::Call(1, 2, 1),
             // end
             // print (a) -- should be nil
-            ByteCode::GetGlobal(0, 1),
-            ByteCode::GetGlobal(1, 0),
+            ByteCode::GetUpTable(0, 0, 1),
+            ByteCode::GetUpTable(1, 0, 0),
             ByteCode::Call(0, 2, 1),
             // EOF
             ByteCode::Return(0, 1, 1),
@@ -104,21 +104,21 @@ end
             ByteCode::VariadicArgumentPrepare(0),
             // local a,b = 123
             ByteCode::LoadInt(0, 123),
-            ByteCode::LoadNil(1),
+            ByteCode::LoadNil(1, 0),
             // if b then
             ByteCode::Test(1, 0),
             ByteCode::Jmp(4),
             //   print "not here"
-            ByteCode::GetGlobal(2, 0),
+            ByteCode::GetUpTable(2, 0, 0),
             ByteCode::LoadConstant(3, 1),
             ByteCode::Call(2, 2, 1),
             ByteCode::Jmp(16),
             // elseif g then
-            ByteCode::GetGlobal(2, 2),
+            ByteCode::GetUpTable(2, 0, 2),
             ByteCode::Test(2, 0),
             ByteCode::Jmp(4),
             //   print "not here"
-            ByteCode::GetGlobal(2, 0),
+            ByteCode::GetUpTable(2, 0, 0),
             ByteCode::LoadConstant(3, 1),
             ByteCode::Call(2, 2, 1),
             ByteCode::Jmp(9),
@@ -126,13 +126,13 @@ end
             ByteCode::Test(0, 0),
             ByteCode::Jmp(4),
             //   print "yes, here"
-            ByteCode::GetGlobal(2, 0),
+            ByteCode::GetUpTable(2, 0, 0),
             ByteCode::LoadConstant(3, 3),
             ByteCode::Call(2, 2, 1),
             ByteCode::Jmp(3),
             // else
             //   print "not here"
-            ByteCode::GetGlobal(2, 0),
+            ByteCode::GetUpTable(2, 0, 0),
             ByteCode::LoadConstant(3, 1),
             ByteCode::Call(2, 2, 1),
             // end
@@ -140,13 +140,13 @@ end
             ByteCode::Test(1, 0),
             ByteCode::Jmp(4),
             //   print "not here"
-            ByteCode::GetGlobal(2, 0),
+            ByteCode::GetUpTable(2, 0, 0),
             ByteCode::LoadConstant(3, 1),
             ByteCode::Call(2, 2, 1),
             ByteCode::Jmp(3),
             // else
             //   print "yes, here"
-            ByteCode::GetGlobal(2, 0),
+            ByteCode::GetUpTable(2, 0, 0),
             ByteCode::LoadConstant(3, 3),
             ByteCode::Call(2, 2, 1),
             // end
@@ -154,7 +154,7 @@ end
             ByteCode::Test(1, 0),
             ByteCode::Jmp(3),
             //   print "yes, here"
-            ByteCode::GetGlobal(2, 0),
+            ByteCode::GetUpTable(2, 0, 0),
             ByteCode::LoadConstant(3, 1),
             ByteCode::Call(2, 2, 1),
             // end
@@ -189,7 +189,7 @@ end
             ByteCode::Test(0, 0),
             ByteCode::Jmp(5),
             //   print(a)
-            ByteCode::GetGlobal(1, 0),
+            ByteCode::GetUpTable(1, 0, 0),
             ByteCode::Move(2, 0),
             ByteCode::Call(1, 2, 1),
             //   a = not a
@@ -246,25 +246,25 @@ end
             ByteCode::Test(0, 0),
             ByteCode::Jmp(8),
             //     print "break inner"
-            ByteCode::GetGlobal(1, 0),
+            ByteCode::GetUpTable(1, 0, 0),
             ByteCode::LoadConstant(2, 1),
             ByteCode::Call(1, 2, 1),
             //     break
             ByteCode::Jmp(4),
             //     print "unreachable inner"
-            ByteCode::GetGlobal(1, 0),
+            ByteCode::GetUpTable(1, 0, 0),
             ByteCode::LoadConstant(2, 2),
             ByteCode::Call(1, 2, 1),
             //   end
             ByteCode::Jmp(-10),
             //   print "break outer"
-            ByteCode::GetGlobal(1, 0),
+            ByteCode::GetUpTable(1, 0, 0),
             ByteCode::LoadConstant(2, 3),
             ByteCode::Call(1, 2, 1),
             //   break
             ByteCode::Jmp(4),
             //   print "unreachable outer"
-            ByteCode::GetGlobal(1, 0),
+            ByteCode::GetUpTable(1, 0, 0),
             ByteCode::LoadConstant(2, 4),
             ByteCode::Call(1, 2, 1),
             // end
@@ -298,7 +298,7 @@ until a
             ByteCode::LoadFalse(0),
             // repeat
             //   print(a)
-            ByteCode::GetGlobal(1, 0),
+            ByteCode::GetUpTable(1, 0, 0),
             ByteCode::Move(2, 0),
             ByteCode::Call(1, 2, 1),
             //   a = not a
@@ -365,7 +365,7 @@ end
             ByteCode::LoadInt(2, 1),
             ByteCode::ForPrepare(0, 3),
             //     print(i)
-            ByteCode::GetGlobal(4, 0),
+            ByteCode::GetUpTable(4, 0, 0),
             ByteCode::Move(5, 3),
             ByteCode::Call(4, 2, 1),
             // end
@@ -376,7 +376,7 @@ end
             ByteCode::LoadInt(2, -1),
             ByteCode::ForPrepare(0, 3),
             //     print(i)
-            ByteCode::GetGlobal(4, 0),
+            ByteCode::GetUpTable(4, 0, 0),
             ByteCode::Move(5, 3),
             ByteCode::Call(4, 2, 1),
             // end
@@ -387,7 +387,7 @@ end
             ByteCode::LoadInt(2, 1),
             ByteCode::ForPrepare(0, 3),
             //     print(i)
-            ByteCode::GetGlobal(4, 0),
+            ByteCode::GetUpTable(4, 0, 0),
             ByteCode::Move(5, 3),
             ByteCode::Call(4, 2, 1),
             // end
@@ -398,7 +398,7 @@ end
             ByteCode::LoadInt(2, 1),
             ByteCode::ForPrepare(0, 3),
             //     print(i)
-            ByteCode::GetGlobal(4, 0),
+            ByteCode::GetUpTable(4, 0, 0),
             ByteCode::Move(5, 3),
             ByteCode::Call(4, 2, 1),
             // end
@@ -411,7 +411,7 @@ end
             ByteCode::LoadInt(3, -1),
             ByteCode::ForPrepare(1, 3),
             //     print (i)
-            ByteCode::GetGlobal(5, 0),
+            ByteCode::GetUpTable(5, 0, 0),
             ByteCode::Move(6, 4),
             ByteCode::Call(5, 2, 1),
             // end
@@ -469,27 +469,27 @@ end
         &[
             ByteCode::VariadicArgumentPrepare(0),
             // print("block: 1")
-            ByteCode::GetGlobal(0, 0),
+            ByteCode::GetUpTable(0, 0, 0),
             ByteCode::LoadConstant(1, 1),
             ByteCode::Call(0, 2, 1),
             // goto label2
             ByteCode::Jmp(4),
             // print("block: 3")
-            ByteCode::GetGlobal(0, 0),
+            ByteCode::GetUpTable(0, 0, 0),
             ByteCode::LoadConstant(1, 2),
             ByteCode::Call(0, 2, 1),
             // goto label4
             ByteCode::Jmp(4),
             // do
             //   print("block: 2")
-            ByteCode::GetGlobal(0, 0),
+            ByteCode::GetUpTable(0, 0, 0),
             ByteCode::LoadConstant(1, 3),
             ByteCode::Call(0, 2, 1),
             //   goto label3 -- goto outer block
             ByteCode::Jmp(-8),
             // end
             // print("block: 4")
-            ByteCode::GetGlobal(0, 0),
+            ByteCode::GetUpTable(0, 0, 0),
             ByteCode::LoadConstant(1, 4),
             ByteCode::Call(0, 2, 1),
             // do

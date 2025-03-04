@@ -187,7 +187,7 @@ mod tests {
 #[derive(Debug, PartialEq, Eq)]
 /// A wrapper around value so that it can be ordered on a [`Vec`] and
 /// be searched using `binary_search`
-pub struct ValueKey(Value);
+pub struct ValueKey(pub Value);
 
 impl ValueKey {
     fn ord_priority(&self) -> usize {

@@ -29,6 +29,7 @@ pub enum Error {
     ForZeroStep,
     StackOverflow,
     InvalidJump,
+    UpvalueDoesNotExist,
 }
 
 impl Display for Error {
@@ -62,6 +63,7 @@ impl Display for Error {
             Self::ForZeroStep => write!(f, "For loop had a step of zero."),
             Self::StackOverflow => write!(f, "Vm's stack has overflown."),
             Self::InvalidJump => write!(f, "Vm's program counter became invalid."),
+            Self::UpvalueDoesNotExist => write!(f, "Upvalue does not exist."),
         }
     }
 }

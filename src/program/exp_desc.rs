@@ -1,6 +1,9 @@
 use alloc::boxed::Box;
 
-use crate::ext::{FloatExt, Unescape};
+use crate::{
+    ext::{FloatExt, Unescape},
+    value::Value,
+};
 
 use super::{
     binops::Binop,
@@ -54,6 +57,15 @@ impl<'a> ExpDesc<'a> {
             ExpDesc::String(_) => self.discharge_string(dst, program, compile_context),
             ExpDesc::Name(_) => self.discharge_name(dst, program, compile_context),
             ExpDesc::Unop(_, _) => self.discharge_unop(dst, program, compile_context),
+            ExpDesc::Binop(Binop::Add, _, _) => {
+                self.discharge_binop_add(dst, program, compile_context)
+            }
+            ExpDesc::Binop(Binop::Sub, _, _) => {
+                self.discharge_binop_sub(dst, program, compile_context)
+            }
+            ExpDesc::Binop(Binop::Concat, _, _) => {
+                self.discharge_binop_concat(dst, program, compile_context)
+            }
             ExpDesc::Binop(_, _, _) => self.discharge_binop(dst, program, compile_context),
             ExpDesc::Local(_) => self.discharge_local(dst, program, compile_context),
             ExpDesc::Global(_) => self.discharge_global(dst, program, compile_context),
@@ -61,8 +73,13 @@ impl<'a> ExpDesc<'a> {
             ExpDesc::TableAccess {
                 table: _,
                 key: _,
-                record: _,
-            } => self.discharge_table_access(dst, program, compile_context),
+                record: false,
+            } => self.discharge_general_table_access(dst, program, compile_context),
+            ExpDesc::TableAccess {
+                table: _,
+                key: _,
+                record: true,
+            } => self.discharge_record_table_access(dst, program, compile_context),
             ExpDesc::Closure(_) => self.discharge_closure(dst, program),
             ExpDesc::FunctionCall(_, _) => {
                 self.discharge_function_call(dst, program, compile_context)
@@ -91,20 +108,13 @@ impl<'a> ExpDesc<'a> {
         match dst {
             Self::Local(dst) => {
                 let dst = u8::try_from(*dst)?;
-                program.byte_codes.push(ByteCode::LoadNil(dst));
-            }
-            Self::Global(key) => {
-                let key = u8::try_from(*key)?;
-                let constant = program.push_constant(())?;
+                program.byte_codes.push(ByteCode::LoadNil(dst, 0));
 
-                program
-                    .byte_codes
-                    .push(ByteCode::SetGlobalConstant(key, constant));
+                Ok(())
             }
+            Self::Global(key) => Self::push_value_to_global(program, *key, ()),
             other => unreachable!("Nil can't be discharged in {:?}.", other),
         }
-
-        Ok(())
     }
 
     fn discharge_boolean(&self, dst: &ExpDesc<'a>, program: &mut Program) -> Result<(), Error> {
@@ -121,19 +131,12 @@ impl<'a> ExpDesc<'a> {
                 } else {
                     program.byte_codes.push(ByteCode::LoadFalse(dst));
                 }
-            }
-            Self::Global(key) => {
-                let key = u8::try_from(*key)?;
-                let constant = program.push_constant(*boolean)?;
 
-                program
-                    .byte_codes
-                    .push(ByteCode::SetGlobalConstant(key, constant));
+                Ok(())
             }
+            Self::Global(key) => Self::push_value_to_global(program, *key, *boolean),
             other => unreachable!("Boolean can't be discharged in {:?}.", other),
         }
-
-        Ok(())
     }
 
     fn discharge_integer(
@@ -147,14 +150,34 @@ impl<'a> ExpDesc<'a> {
         };
 
         match dst {
-            Self::Name(name) => {
-                let name = match compile_context.find_name(name) {
-                    Some(local) => local,
-                    None => ExpDesc::Global(usize::from(program.push_constant(*name)?)),
-                };
+            Self::Name(name) => match compile_context.find_name(name) {
+                Some(local) => self.discharge(&local, program, compile_context),
+                None => {
+                    let key = program.push_constant(*name)?;
 
-                self.discharge(&name, program, compile_context)
-            }
+                    if name.len() > 32 {
+                        let dst = compile_context.stack_top;
+                        let key_loc = compile_context.stack_top + 1;
+
+                        let int_constant = program.push_constant(*integer)?;
+
+                        program.byte_codes.push(ByteCode::GetUpValue(dst, 0));
+                        program
+                            .byte_codes
+                            .push(ByteCode::LoadConstant(key_loc, key));
+                        program.byte_codes.push(ByteCode::SetTableConstant(
+                            dst,
+                            key_loc,
+                            int_constant,
+                        ));
+
+                        Ok(())
+                    } else {
+                        let global = ExpDesc::Global(usize::from(key));
+                        self.discharge(&global, program, compile_context)
+                    }
+                }
+            },
             Self::Local(dst) => {
                 let dst = u8::try_from(*dst)?;
 
@@ -169,40 +192,40 @@ impl<'a> ExpDesc<'a> {
 
                 Ok(())
             }
-            Self::Global(key) => {
-                let key = u8::try_from(*key)?;
-
-                let code = if let Ok(i) = i16::try_from(*integer) {
-                    ByteCode::SetGlobalInteger(key, i)
-                } else {
-                    let constant = program.push_constant(*integer)?;
-                    ByteCode::SetGlobalConstant(key, constant)
-                };
-
-                program.byte_codes.push(code);
-
-                Ok(())
-            }
+            Self::Global(key) => Self::push_value_to_global(program, *key, *integer),
             Self::TableAccess {
                 table,
                 key,
                 record: true,
             } => {
-                let (table_loc, stack_top) = compile_context.reserve_stack_top();
-                table.discharge(&stack_top, program, compile_context)?;
+                let table_loc = match table.as_ref() {
+                    ExpDesc::Local(local) => *local,
+                    name_exp @ ExpDesc::Name(name) => {
+                        match compile_context.find_name(name) {
+                            Some(ExpDesc::Local(local)) => local,
+                            Some(other) => {
+                                unreachable!("CompileContext::find_name only returns ExpDesc::Local, was {:?}.", other)
+                            }
+                            None => {
+                                let (stack_loc, stack_top) = compile_context.reserve_stack_top();
+                                name_exp.discharge(&stack_top, program, compile_context)?;
+                                compile_context.stack_top -= 1;
 
-                let (integer_loc, stack_top) = compile_context.reserve_stack_top();
-                self.discharge(&stack_top, program, compile_context)?;
-
-                compile_context.stack_top -= 2;
+                                usize::from(stack_loc)
+                            }
+                        }
+                    }
+                    other => unimplemented!("Only Local or Name for now, was {:?}.", other),
+                };
 
                 match key.as_ref() {
                     ExpDesc::Name(name) => {
-                        let constant = program.push_constant(*name)?;
-                        program.byte_codes.push(ByteCode::SetField(
-                            table_loc,
-                            constant,
-                            integer_loc,
+                        let key_constant = program.push_constant(*name)?;
+                        let int_constant = program.push_constant(*integer)?;
+                        program.byte_codes.push(ByteCode::SetFieldConstant(
+                            u8::try_from(table_loc)?,
+                            key_constant,
+                            int_constant,
                         ));
 
                         Ok(())
@@ -237,16 +260,7 @@ impl<'a> ExpDesc<'a> {
                     }
                 }
             }
-            Self::Global(key) => {
-                let key = u8::try_from(*key)?;
-                let constant = program.push_constant(*float)?;
-
-                program
-                    .byte_codes
-                    .push(ByteCode::SetGlobalConstant(key, constant));
-
-                Ok(())
-            }
+            Self::Global(key) => Self::push_value_to_global(program, *key, *float),
             other => unreachable!("Float can't be discharged in {:?}.", other),
         }
     }
@@ -282,13 +296,65 @@ impl<'a> ExpDesc<'a> {
                 Ok(())
             }
             Self::Global(key) => {
-                let key = u8::try_from(*key)?;
                 let string = string.unescape()?;
-                let constant = program.push_constant(string.as_str())?;
+                Self::push_value_to_global(program, *key, string.as_str())
+            }
+            Self::TableAccess {
+                table,
+                key,
+                record: false,
+            } => {
+                let table = match table.as_ref() {
+                    ExpDesc::Local(table) => table,
+                    other => unimplemented!("Can't discharge string to {:?}.", other),
+                };
 
-                program
-                    .byte_codes
-                    .push(ByteCode::SetGlobalConstant(key, constant));
+                let key_stack = match key.as_ref() {
+                    ExpDesc::Name(name) => {
+                        if let Some(ExpDesc::Local(local)) = compile_context.find_name(name) {
+                            local
+                        } else {
+                            unimplemented!("only local");
+                        }
+                    }
+                    other => {
+                        unimplemented!("only name for now, was {:?}", other);
+                    }
+                };
+                let string = string.unescape()?;
+                let string_constant = program.push_constant(string.as_str())?;
+
+                program.byte_codes.push(ByteCode::SetTableConstant(
+                    u8::try_from(*table)?,
+                    u8::try_from(key_stack)?,
+                    string_constant,
+                ));
+
+                Ok(())
+            }
+            Self::TableAccess {
+                table,
+                key,
+                record: true,
+            } => {
+                let ExpDesc::Name(key) = key.as_ref() else {
+                    unreachable!("Table Record should always have Name key.");
+                };
+
+                let table = match table.as_ref() {
+                    ExpDesc::Local(table) => table,
+                    other => unimplemented!("Can't discharge string to {:?}.", other),
+                };
+
+                let key_constant = program.push_constant(*key)?;
+                let string = string.unescape()?;
+                let string_constant = program.push_constant(string.as_str())?;
+
+                program.byte_codes.push(ByteCode::SetFieldConstant(
+                    u8::try_from(*table)?,
+                    key_constant,
+                    string_constant,
+                ));
 
                 Ok(())
             }
@@ -334,28 +400,64 @@ impl<'a> ExpDesc<'a> {
                     Some(_) => unreachable!("Local will always be a `Local`."),
                     None => {
                         let constant = program.push_constant(*name)?;
-                        program
-                            .byte_codes
-                            .push(ByteCode::GetUpTable(dst, 0, constant));
+                        if name.len() > 32 {
+                            let name_loc = dst + 1;
+
+                            program.byte_codes.push(ByteCode::GetUpValue(dst, 0));
+                            program
+                                .byte_codes
+                                .push(ByteCode::LoadConstant(name_loc, constant));
+                            program
+                                .byte_codes
+                                .push(ByteCode::GetTable(dst, dst, name_loc));
+                        } else {
+                            program
+                                .byte_codes
+                                .push(ByteCode::GetUpTable(dst, 0, constant));
+                        }
                     }
                 }
 
                 Ok(())
             }
-            table @ Self::TableAccess {
-                table: _,
-                key: _,
+            table_exp @ Self::TableAccess {
+                table,
+                key,
                 record: _,
-            } => {
-                let (_, stack_top) = compile_context.reserve_stack_top();
-                self.discharge(&stack_top, program, compile_context)?;
+            } => match compile_context.find_name(name) {
+                Some(local @ ExpDesc::Local(_)) => {
+                    local.discharge(table_exp, program, compile_context)?;
+                    Ok(())
+                }
+                Some(other) => unreachable!(
+                    "CompileContenxt::find_name only returns Local, but was {:?}.",
+                    other
+                ),
+                None => {
+                    let (table_loc, stack_top) = compile_context.reserve_stack_top();
+                    table.discharge(&stack_top, program, compile_context)?;
 
-                stack_top.discharge(table, program, compile_context)?;
+                    match key.as_ref() {
+                        ExpDesc::Name(key) => {
+                            let key = program.push_constant(*key)?;
 
-                compile_context.stack_top -= 1;
+                            let (name_loc, name_stack_top) = compile_context.reserve_stack_top();
+                            self.discharge(&name_stack_top, program, compile_context)?;
 
-                Ok(())
-            }
+                            program
+                                .byte_codes
+                                .push(ByteCode::SetField(table_loc, key, name_loc));
+
+                            compile_context.stack_top -= 2;
+                        }
+                        other => {
+                            unreachable!("Only Name keys are supported, but was {:?}.", other);
+                        }
+                    }
+
+                    Ok(())
+                }
+            },
             cond @ Self::Condition(_) => {
                 let (name_loc, stack_top) = compile_context.reserve_stack_top();
                 let var_loc =
@@ -436,6 +538,167 @@ impl<'a> ExpDesc<'a> {
         }
     }
 
+    fn discharge_binop_add(
+        &self,
+        dst: &ExpDesc<'a>,
+        program: &mut Program,
+        compile_context: &mut CompileContext,
+    ) -> Result<(), Error> {
+        let ExpDesc::Binop(Binop::Add, lhs, rhs) = self else {
+            unreachable!("Should always be BinopAdd, but was {:?}.", self)
+        };
+
+        match dst {
+            Self::Local(dst) => {
+                let dst = u8::try_from(*dst)?;
+
+                if rhs.is_i8_integer() {
+                    let ExpDesc::Integer(integer) = rhs.as_ref() else {
+                        unreachable!("Exp should be Integer, but was {:?}.", rhs);
+                    };
+                    let Ok(integer) = i8::try_from(*integer) else {
+                        unreachable!("Integer should fit into i8, but was {}.", integer);
+                    };
+
+                    Self::discharge_binop_integer(
+                        ByteCode::AddInteger,
+                        lhs,
+                        integer,
+                        dst,
+                        program,
+                        compile_context,
+                    )
+                } else if lhs.is_i8_integer() {
+                    let ExpDesc::Integer(integer) = lhs.as_ref() else {
+                        unreachable!("Exp should be Integer, but was {:?}.", rhs);
+                    };
+                    let Ok(integer) = i8::try_from(*integer) else {
+                        unreachable!("Integer should fit into i8, but was {}.", integer);
+                    };
+
+                    Self::discharge_binop_integer(
+                        ByteCode::AddInteger,
+                        rhs,
+                        integer,
+                        dst,
+                        program,
+                        compile_context,
+                    )
+                } else {
+                    Self::discharge_generic_binop(
+                        ByteCode::Add,
+                        lhs,
+                        rhs,
+                        dst,
+                        program,
+                        compile_context,
+                    )
+                }
+            }
+            other => unreachable!("Can only discharge BinopAdd to local, but was {:?}.", other),
+        }
+    }
+
+    fn discharge_binop_sub(
+        &self,
+        dst: &ExpDesc<'a>,
+        program: &mut Program,
+        compile_context: &mut CompileContext,
+    ) -> Result<(), Error> {
+        let ExpDesc::Binop(Binop::Sub, lhs, rhs) = self else {
+            unreachable!("Should always be BinopSub, but was {:?}.", self)
+        };
+
+        match dst {
+            Self::Local(dst) => {
+                let dst = u8::try_from(*dst)?;
+
+                if rhs.is_i8_integer() {
+                    let ExpDesc::Integer(integer) = rhs.as_ref() else {
+                        unreachable!("Exp should be Integer, but was {:?}.", rhs);
+                    };
+                    let Ok(integer) = i8::try_from(*integer) else {
+                        unreachable!("Integer should fit into i8, but was {}.", integer);
+                    };
+
+                    Self::discharge_binop_integer(
+                        ByteCode::AddInteger,
+                        lhs,
+                        -integer,
+                        dst,
+                        program,
+                        compile_context,
+                    )
+                } else if lhs.is_i8_integer() {
+                    let ExpDesc::Integer(integer) = lhs.as_ref() else {
+                        unreachable!("Exp should be Integer, but was {:?}.", rhs);
+                    };
+                    let Ok(integer) = i8::try_from(*integer) else {
+                        unreachable!("Integer should fit into i8, but was {}.", integer);
+                    };
+
+                    Self::discharge_binop_integer(
+                        ByteCode::AddInteger,
+                        rhs,
+                        -integer,
+                        dst,
+                        program,
+                        compile_context,
+                    )
+                } else {
+                    Self::discharge_generic_binop(
+                        ByteCode::Sub,
+                        lhs,
+                        rhs,
+                        dst,
+                        program,
+                        compile_context,
+                    )
+                }
+            }
+            other => unreachable!("Can only discharge BinopSub to local, but was {:?}.", other),
+        }
+    }
+
+    fn discharge_binop_concat(
+        &self,
+        dst: &ExpDesc<'a>,
+        program: &mut Program,
+        compile_context: &mut CompileContext,
+    ) -> Result<(), Error> {
+        let ExpDesc::Binop(Binop::Concat, lhs, rhs) = &self else {
+            unreachable!("Should never be anything other than Binop");
+        };
+
+        match dst {
+            local_exp @ ExpDesc::Local(local) => {
+                let dst = u8::try_from(*local)?;
+
+                lhs.discharge(local_exp, program, compile_context)?;
+
+                let (_, stack_top) = compile_context.reserve_stack_top();
+                rhs.discharge(&stack_top, program, compile_context)?;
+
+                if let Some(ByteCode::Concat(start, count)) = program.byte_codes.last_mut() {
+                    *start = dst;
+                    *count += 1;
+                } else {
+                    program.byte_codes.push(ByteCode::Concat(dst, 2));
+                }
+
+                compile_context.stack_top -= 1;
+
+                Ok(())
+            }
+            other => {
+                unreachable!(
+                    "Can only discharge BinopConcat to Local, but was {:?}.",
+                    other
+                )
+            }
+        }
+    }
+
     fn discharge_binop(
         &self,
         dst: &ExpDesc<'a>,
@@ -445,65 +708,6 @@ impl<'a> ExpDesc<'a> {
         let ExpDesc::Binop(_, _, _) = &self else {
             unreachable!("Should never be anything other than Binop");
         };
-
-        fn discharge_binop(
-            bytecode: fn(u8, u8, u8) -> ByteCode,
-            lhs: &ExpDesc,
-            rhs: &ExpDesc,
-            dst: u8,
-            program: &mut Program,
-            compile_context: &mut CompileContext,
-        ) -> Result<(), Error> {
-            let (lhs_loc, used_dst) = if let name @ ExpDesc::Name(_) = lhs {
-                let local =
-                    name.get_local_or_discharge_at_location(program, dst, compile_context)?;
-                (local, local == dst)
-            } else {
-                lhs.discharge(&ExpDesc::Local(usize::from(dst)), program, compile_context)?;
-                (dst, true)
-            };
-
-            let (rhs_loc, stack_top) = if used_dst {
-                compile_context.reserve_stack_top()
-            } else {
-                (dst, ExpDesc::Local(usize::from(dst)))
-            };
-
-            let rhs_loc = if let name @ ExpDesc::Name(_) = rhs {
-                name.get_local_or_discharge_at_location(program, rhs_loc, compile_context)?
-            } else {
-                rhs.discharge(&stack_top, program, compile_context)?;
-                rhs_loc
-            };
-
-            if used_dst {
-                compile_context.stack_top -= 1;
-            }
-
-            program.byte_codes.push(bytecode(dst, lhs_loc, rhs_loc));
-
-            Ok(())
-        }
-
-        fn discharge_binop_integer(
-            bytecode: fn(u8, u8, i8) -> ByteCode,
-            lhs: &ExpDesc,
-            integer: i8,
-            dst: u8,
-            program: &mut Program,
-            compile_context: &mut CompileContext,
-        ) -> Result<(), Error> {
-            let lhs_loc = if let name @ ExpDesc::Name(_) = lhs {
-                name.get_local_or_discharge_at_location(program, dst, compile_context)?
-            } else {
-                lhs.discharge(&ExpDesc::Local(usize::from(dst)), program, compile_context)?;
-                dst
-            };
-
-            program.byte_codes.push(bytecode(dst, lhs_loc, integer));
-
-            Ok(())
-        }
 
         fn discharge_binop_constant(
             bytecode: fn(u8, u8, u8) -> ByteCode,
@@ -571,29 +775,6 @@ impl<'a> ExpDesc<'a> {
         }
 
         match (self, dst) {
-            (Self::Binop(Binop::Add, lhs, rhs), Self::Local(dst)) => {
-                let dst = u8::try_from(*dst)?;
-
-                if rhs.is_i8_integer() {
-                    let ExpDesc::Integer(integer) = rhs.as_ref() else {
-                        unreachable!("Exp should be Integer, but was {:?}.", rhs);
-                    };
-                    let Ok(integer) = i8::try_from(*integer) else {
-                        unreachable!("Integer should fit into i8, but was {}.", integer);
-                    };
-
-                    discharge_binop_integer(
-                        ByteCode::AddInteger,
-                        lhs,
-                        integer,
-                        dst,
-                        program,
-                        compile_context,
-                    )
-                } else {
-                    discharge_binop(ByteCode::Add, lhs, rhs, dst, program, compile_context)
-                }
-            }
             (Self::Binop(Binop::And, lhs, rhs), local @ Self::Local(dst)) => {
                 let dst = u8::try_from(*dst)?;
 
@@ -975,11 +1156,10 @@ impl<'a> ExpDesc<'a> {
                         Binop::BitAnd => ByteCode::BitAnd,
                         Binop::BitOr => ByteCode::BitOr,
                         Binop::BitXor => ByteCode::BitXor,
-                        Binop::Concat => ByteCode::Concat,
                         other => unreachable!("Match guard garantees this is an arithmetic binary operator, but was {:?}.", other),
                     };
 
-                discharge_binop(bytecode, lhs, rhs, dst, program, compile_context)
+                Self::discharge_generic_binop(bytecode, lhs, rhs, dst, program, compile_context)
             }
             (Self::Binop(binop, lhs, rhs), Self::Local(dst))
                 if binop.relational_binary_operator() =>
@@ -995,7 +1175,7 @@ impl<'a> ExpDesc<'a> {
                         other => unreachable!("Match guard garantees this is an relational binary operator, but was {:?}.", other),
                     };
 
-                discharge_binop(bytecode, lhs, rhs, dst, program, compile_context)
+                Self::discharge_generic_binop(bytecode, lhs, rhs, dst, program, compile_context)
             }
             (Self::Binop(binop, lhs, rhs), Self::Condition(cond)) => {
                 match binop {
@@ -1134,6 +1314,42 @@ impl<'a> ExpDesc<'a> {
             Self::TableAccess {
                 table,
                 key,
+                record: false,
+            } => {
+                let mut used_stack = 0;
+
+                let table_loc = match table.as_ref() {
+                    ExpDesc::Local(local) => u8::try_from(*local)?,
+                    name @ ExpDesc::Name(_) => {
+                        let (table_loc, stack_top) = compile_context.reserve_stack_top();
+                        name.discharge(&stack_top, program, compile_context)?;
+                        used_stack += 1;
+
+                        table_loc
+                    }
+                    other => unreachable!("Can't discharge to {:?}.", other),
+                };
+
+                match key.as_ref() {
+                    ExpDesc::String(key) => {
+                        let constant = program.push_constant(*key)?;
+
+                        program.byte_codes.push(ByteCode::SetField(
+                            table_loc,
+                            constant,
+                            u8::try_from(*src)?,
+                        ));
+                    }
+                    other => unimplemented!("Only String keys, but was {:?}.", other),
+                }
+
+                compile_context.stack_top -= used_stack;
+
+                Ok(())
+            }
+            Self::TableAccess {
+                table,
+                key,
                 record: true,
             } if table.is_name() => {
                 let (table_loc, _) = compile_context.reserve_stack_top();
@@ -1242,9 +1458,16 @@ impl<'a> ExpDesc<'a> {
                 let src_key = u8::try_from(*key)?;
                 let dst_key = u8::try_from(*dst_key)?;
 
+                let (stack_loc, _) = compile_context.reserve_stack_top();
+
                 program
                     .byte_codes
-                    .push(ByteCode::SetGlobalGlobal(dst_key, src_key));
+                    .push(ByteCode::GetUpTable(stack_loc, 0, src_key));
+                program
+                    .byte_codes
+                    .push(ByteCode::SetUpTable(0, dst_key, stack_loc));
+
+                compile_context.stack_top -= 1;
 
                 Ok(())
             }
@@ -1275,13 +1498,24 @@ impl<'a> ExpDesc<'a> {
         };
 
         match dst {
-            Self::Name(name) => {
-                let dest = match compile_context.find_name(name) {
-                    Some(local) => local,
-                    None => ExpDesc::Global(usize::from(program.push_constant(*name)?)),
-                };
-                self.discharge(&dest, program, compile_context)
-            }
+            Self::Name(name) => match compile_context.find_name(name) {
+                Some(local) => self.discharge(&local, program, compile_context),
+                None => {
+                    let (_, stack_top) = compile_context.reserve_stack_top();
+                    let constant = program.push_constant(*name)?;
+
+                    self.discharge(&stack_top, program, compile_context)?;
+                    stack_top.discharge(
+                        &ExpDesc::Global(usize::from(constant)),
+                        program,
+                        compile_context,
+                    )?;
+
+                    compile_context.stack_top -= 1;
+
+                    Ok(())
+                }
+            },
             Self::Local(dst) => {
                 let dst = u8::try_from(*dst)?;
 
@@ -1314,45 +1548,27 @@ impl<'a> ExpDesc<'a> {
                             val.discharge(&stack_top, program, compile_context)?;
                         }
                         TableKey::Record(key) => {
-                            let ExpDesc::Name(name) = key.as_ref() else {
-                                unreachable!("`TableRecordField`'s key should always be a `Name`.");
-                            };
-                            let constant = program.push_constant(*name)?;
-
-                            let (val_loc, stack_top) = compile_context.reserve_stack_top();
-                            val.discharge(&stack_top, program, compile_context)?;
-                            compile_context.stack_top -= 1;
-
-                            program
-                                .byte_codes
-                                .push(ByteCode::SetField(table, constant, val_loc));
+                            val.discharge(
+                                &ExpDesc::TableAccess {
+                                    table: Box::new(ExpDesc::Local(usize::from(table))),
+                                    key: key.clone(),
+                                    record: true,
+                                },
+                                program,
+                                compile_context,
+                            )?;
                         }
-                        TableKey::General(key) => match key.as_ref() {
-                            Self::String(key) => {
-                                let constant = program.push_constant(*key)?;
-
-                                let (val_loc, stack_top) = compile_context.reserve_stack_top();
-                                val.discharge(&stack_top, program, compile_context)?;
-                                compile_context.stack_top -= 1;
-
-                                program
-                                    .byte_codes
-                                    .push(ByteCode::SetField(table, constant, val_loc));
-                            }
-                            key => {
-                                let (key_loc, stack_top) = compile_context.reserve_stack_top();
-                                key.discharge(&stack_top, program, compile_context)?;
-
-                                let (val_loc, stack_top) = compile_context.reserve_stack_top();
-                                val.discharge(&stack_top, program, compile_context)?;
-
-                                compile_context.stack_top -= 2;
-
-                                program
-                                    .byte_codes
-                                    .push(ByteCode::SetTable(table, key_loc, val_loc));
-                            }
-                        },
+                        TableKey::General(key) => {
+                            val.discharge(
+                                &ExpDesc::TableAccess {
+                                    table: Box::new(ExpDesc::Local(usize::from(table))),
+                                    key: key.clone(),
+                                    record: false,
+                                },
+                                program,
+                                compile_context,
+                            )?;
+                        }
                     }
 
                     if i != fields.len() - 1 {
@@ -1371,82 +1587,24 @@ impl<'a> ExpDesc<'a> {
                         adjusted_array_items
                     };
 
-                    program.byte_codes.push(ByteCode::SetList(table, count));
+                    program.byte_codes.push(ByteCode::SetList(table, count, 0));
                 }
 
                 compile_context.stack_top -= array_items;
 
                 Ok(())
             }
-            Self::Global(dst) => {
-                let dst = u8::try_from(*dst)?;
+            table_exp @ ExpDesc::TableAccess {
+                table: _,
+                key: _,
+                record: _,
+            } => {
+                let (_, stack_top) = compile_context.reserve_stack_top();
+                self.discharge(&stack_top, program, compile_context)?;
 
-                let array_items = u8::try_from(
-                    fields
-                        .iter()
-                        .filter(|(key, _)| matches!(key, TableKey::Array))
-                        .count(),
-                )?;
-                let table_items = u8::try_from(fields.len())? - array_items;
+                stack_top.discharge(table_exp, program, compile_context)?;
 
-                let (table_loc, _) = compile_context.reserve_stack_top();
-                program
-                    .byte_codes
-                    .push(ByteCode::NewTable(table_loc, table_items, array_items));
-
-                for (key, val) in fields {
-                    match key {
-                        TableKey::Array => {
-                            let (_, stack_top) = compile_context.reserve_stack_top();
-                            val.discharge(&stack_top, program, compile_context)?;
-                        }
-                        TableKey::Record(key) => {
-                            let ExpDesc::Name(name) = key.as_ref() else {
-                                unreachable!("`TableRecordField`'s key should always be a `Name`.");
-                            };
-                            let constant = program.push_constant(*name)?;
-
-                            let (val_loc, stack_top) = compile_context.reserve_stack_top();
-                            val.discharge(&stack_top, program, compile_context)?;
-                            compile_context.stack_top -= 1;
-
-                            program
-                                .byte_codes
-                                .push(ByteCode::SetField(table_loc, constant, val_loc));
-                        }
-                        TableKey::General(key) => {
-                            let (key_loc, stack_top) = compile_context.reserve_stack_top();
-                            key.discharge(&stack_top, program, compile_context)?;
-
-                            let (val_loc, stack_top) = compile_context.reserve_stack_top();
-                            val.discharge(&stack_top, program, compile_context)?;
-
-                            compile_context.stack_top -= 2;
-
-                            program
-                                .byte_codes
-                                .push(ByteCode::SetTable(table_loc, key_loc, val_loc));
-                        }
-                    }
-                }
-
-                if array_items > 0 {
-                    let count = if let Some((TableKey::Array, ExpDesc::VariadicArguments)) =
-                        fields.last()
-                    {
-                        0
-                    } else {
-                        array_items
-                    };
-
-                    program.byte_codes.push(ByteCode::SetList(table_loc, count));
-                }
-
-                program
-                    .byte_codes
-                    .push(ByteCode::SetUpTable(0, dst, table_loc));
-
-                compile_context.stack_top -= array_items + 1;
+                compile_context.stack_top -= 1;
 
                 Ok(())
             }
@@ -1454,30 +1612,23 @@ impl<'a> ExpDesc<'a> {
         }
     }
 
-    fn discharge_table_access(
+    fn discharge_general_table_access(
         &self,
         dst: &ExpDesc<'a>,
         program: &mut Program,
         compile_context: &mut CompileContext,
     ) -> Result<(), Error> {
         let ExpDesc::TableAccess {
-            table: _,
-            key: _,
-            record: _,
+            table,
+            key,
+            record: false,
         } = &self
         else {
-            unreachable!("Should never be anything other than TableAccess");
+            unreachable!("Should never be anything other than general TableAccess");
         };
 
-        match (self, dst) {
-            (
-                Self::TableAccess {
-                    table,
-                    key,
-                    record: false,
-                },
-                Self::Local(dst),
-            ) => {
+        match dst {
+            Self::Local(dst) => {
                 let dst = u8::try_from(*dst)?;
 
                 let table_loc =
@@ -1489,6 +1640,15 @@ impl<'a> ExpDesc<'a> {
                             program
                                 .byte_codes
                                 .push(ByteCode::GetInt(dst, table_loc, index));
+                        } else if let Ok(index) = i16::try_from(*integer) {
+                            program
+                                .byte_codes
+                                .push(ByteCode::LoadInt(compile_context.stack_top, index));
+                            program.byte_codes.push(ByteCode::GetTable(
+                                dst,
+                                table_loc,
+                                compile_context.stack_top,
+                            ));
                         } else {
                             let constant = program.push_constant(*integer)?;
                             program
@@ -1512,14 +1672,41 @@ impl<'a> ExpDesc<'a> {
 
                 Ok(())
             }
-            (
-                Self::TableAccess {
-                    table,
-                    key,
-                    record: true,
-                },
-                local @ Self::Local(dst),
-            ) => {
+            lhs @ Self::TableAccess {
+                table: _,
+                key: _,
+                record: _,
+            } => {
+                let (_, stack_top) = compile_context.reserve_stack_top();
+                self.discharge(&stack_top, program, compile_context)?;
+
+                stack_top.discharge(lhs, program, compile_context)?;
+                compile_context.stack_top -= 1;
+
+                Ok(())
+            }
+
+            other => unreachable!("General TableAccess can't be discharged in {:?}.", other),
+        }
+    }
+
+    fn discharge_record_table_access(
+        &self,
+        dst: &ExpDesc<'a>,
+        program: &mut Program,
+        compile_context: &mut CompileContext,
+    ) -> Result<(), Error> {
+        let ExpDesc::TableAccess {
+            table,
+            key,
+            record: true,
+        } = &self
+        else {
+            unreachable!("Should never be anything other than record TableAccess");
+        };
+
+        match dst {
+            local @ Self::Local(dst) => {
                 let dst = u8::try_from(*dst)?;
 
                 let table_loc = match table.as_ref() {
@@ -1553,27 +1740,41 @@ impl<'a> ExpDesc<'a> {
                     other => Err(Error::TableRecordAccess(other.static_type_name())),
                 }
             }
-            (
-                rhs @ Self::TableAccess {
-                    table: _,
-                    key: _,
-                    record: _,
-                },
-                lhs @ Self::TableAccess {
-                    table: _,
-                    key: _,
-                    record: _,
-                },
-            ) => {
-                let (_, stack_top) = compile_context.reserve_stack_top();
-                rhs.discharge(&stack_top, program, compile_context)?;
+            Self::TableAccess {
+                table: dst_table,
+                key: dst_key,
+                record: _,
+            } => {
+                let (table_loc, stack_top) = compile_context.reserve_stack_top();
+                dst_table.discharge(&stack_top, program, compile_context)?;
 
-                stack_top.discharge(lhs, program, compile_context)?;
-                compile_context.stack_top -= 1;
+                match dst_key.as_ref() {
+                    ExpDesc::Name(name) => {
+                        let key = program.push_constant(*name)?;
 
+                        let (src_loc, src_stack_top) = compile_context.reserve_stack_top();
+                        self.discharge(&src_stack_top, program, compile_context)?;
+
+                        program
+                            .byte_codes
+                            .push(ByteCode::SetField(table_loc, key, src_loc));
+
+                        compile_context.stack_top -= 2;
+                    }
+                    ExpDesc::TableAccess {
+                        table: _,
+                        key: _,
+                        record: _,
+                    } => {
+                        todo!();
+                    }
+                    other => unreachable!(
+                        "Table key should always be Name or TableAccess, but was {:?}.",
+                        other
+                    ),
+                }
                 Ok(())
             }
-
             other => unreachable!("TableAccess can't be discharged in {:?}.", other),
         }
     }
@@ -1713,7 +1914,6 @@ impl<'a> ExpDesc<'a> {
                         ExpDesc::Global(usize::from(global))
                     }
                 };
-                log::trace!("{:?}", name);
                 self.discharge(&name, program, compile_context)
             }
             other => unreachable!("FunctionCall can't be discharged in {:?}.", other),
@@ -1780,6 +1980,79 @@ impl<'a> ExpDesc<'a> {
                 dst
             ),
         }
+        Ok(())
+    }
+
+    fn discharge_generic_binop(
+        bytecode: fn(u8, u8, u8) -> ByteCode,
+        lhs: &ExpDesc,
+        rhs: &ExpDesc,
+        dst: u8,
+        program: &mut Program,
+        compile_context: &mut CompileContext,
+    ) -> Result<(), Error> {
+        let (lhs_loc, used_dst) = if let name @ ExpDesc::Name(_) = lhs {
+            let local = name.get_local_or_discharge_at_location(program, dst, compile_context)?;
+            (local, local == dst)
+        } else {
+            lhs.discharge(&ExpDesc::Local(usize::from(dst)), program, compile_context)?;
+            (dst, true)
+        };
+
+        let (rhs_loc, stack_top) = if used_dst {
+            compile_context.reserve_stack_top()
+        } else {
+            (dst, ExpDesc::Local(usize::from(dst)))
+        };
+
+        let rhs_loc = if let name @ ExpDesc::Name(_) = rhs {
+            name.get_local_or_discharge_at_location(program, rhs_loc, compile_context)?
+        } else {
+            rhs.discharge(&stack_top, program, compile_context)?;
+            rhs_loc
+        };
+
+        if used_dst {
+            compile_context.stack_top -= 1;
+        }
+
+        program.byte_codes.push(bytecode(dst, lhs_loc, rhs_loc));
+
+        Ok(())
+    }
+
+    fn discharge_binop_integer(
+        bytecode: fn(u8, u8, i8) -> ByteCode,
+        lhs: &ExpDesc,
+        integer: i8,
+        dst: u8,
+        program: &mut Program,
+        compile_context: &mut CompileContext,
+    ) -> Result<(), Error> {
+        let lhs_loc = if let name @ ExpDesc::Name(_) = lhs {
+            name.get_local_or_discharge_at_location(program, dst, compile_context)?
+        } else {
+            lhs.discharge(&ExpDesc::Local(usize::from(dst)), program, compile_context)?;
+            dst
+        };
+
+        program.byte_codes.push(bytecode(dst, lhs_loc, integer));
+
+        Ok(())
+    }
+
+    fn push_value_to_global(
+        program: &mut Program,
+        key: usize,
+        value: impl Into<Value>,
+    ) -> Result<(), Error> {
+        let key = u8::try_from(key)?;
+        let constant = program.push_constant(value)?;
+
+        program
+            .byte_codes
+            .push(ByteCode::SetUpTableConstant(0, key, constant));
+
         Ok(())
     }
 

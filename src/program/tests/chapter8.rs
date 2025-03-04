@@ -44,7 +44,7 @@ hello()
         //     local a = 4
         ByteCode::LoadInt(0, 4),
         //     print (a)
-        ByteCode::GetGlobal(1, 0),
+        ByteCode::GetUpTable(1, 0, 0),
         ByteCode::Move(2, 0),
         ByteCode::Call(1, 2, 1),
         // end
@@ -93,7 +93,7 @@ hello()
     let expected_bytecodes = &[
         // local function hello()
         // print "hello, function!"
-        ByteCode::GetGlobal(0, 0),
+        ByteCode::GetUpTable(0, 0, 0),
         ByteCode::LoadConstant(1, 1),
         ByteCode::Call(0, 2, 1),
         // end
@@ -126,7 +126,7 @@ print(hello)
         // local function hello()
         ByteCode::Closure(0, 0),
         // print(hello)
-        ByteCode::GetGlobal(1, 0),
+        ByteCode::GetUpTable(1, 0, 0),
         ByteCode::Move(2, 0),
         ByteCode::Call(1, 2, 1),
         // EOF
@@ -143,7 +143,7 @@ print(hello)
     let expected_bytecodes = &[
         // local function hello()
         //     print "hello, function!"
-        ByteCode::GetGlobal(0, 0),
+        ByteCode::GetUpTable(0, 0, 0),
         ByteCode::LoadConstant(1, 1),
         ByteCode::Call(0, 2, 1),
         // end
@@ -177,7 +177,7 @@ print (f1)
         // local function f1()
         ByteCode::Closure(0, 0),
         // print (f1)
-        ByteCode::GetGlobal(1, 0),
+        ByteCode::GetUpTable(1, 0, 0),
         ByteCode::Move(2, 0),
         ByteCode::Call(1, 2, 1),
         // EOF
@@ -195,7 +195,7 @@ print (f1)
         //     local f2 = function() print "internal" end
         ByteCode::Closure(0, 0),
         //     print (f2)
-        ByteCode::GetGlobal(1, 0),
+        ByteCode::GetUpTable(1, 0, 0),
         ByteCode::Move(2, 0),
         ByteCode::Call(1, 2, 1),
         // end
@@ -212,7 +212,7 @@ print (f1)
     let expected_bytecodes = &[
         // local f2 = function()
         //      print "internal"
-        ByteCode::GetGlobal(0, 0),
+        ByteCode::GetUpTable(0, 0, 0),
         ByteCode::LoadConstant(1, 1),
         ByteCode::Call(0, 2, 1),
         // end
@@ -246,7 +246,7 @@ print(t.f)
         ByteCode::Closure(1, 0),
         ByteCode::SetField(0, 0, 1),
         // print(t.f)
-        ByteCode::GetGlobal(1, 1),
+        ByteCode::GetUpTable(1, 0, 1),
         ByteCode::GetField(2, 0, 0),
         ByteCode::Call(1, 2, 1),
         // EOF
@@ -262,7 +262,7 @@ print(t.f)
     let expected_bytecodes = &[
         // function t.f()
         //      print "hello"
-        ByteCode::GetGlobal(0, 0),
+        ByteCode::GetUpTable(0, 0, 0),
         ByteCode::LoadConstant(1, 1),
         ByteCode::Call(0, 2, 1),
         // end
@@ -331,7 +331,7 @@ f(1)
     let expected_bytecodes = &[
         // local function f(a, b)
         // print(a+b)
-        ByteCode::GetGlobal(2, 0),
+        ByteCode::GetUpTable(2, 0, 0),
         ByteCode::Add(3, 0, 1),
         ByteCode::Call(2, 2, 1),
         // end
@@ -370,14 +370,14 @@ print(f(100,200))
         // local function f(a, b)
         ByteCode::Closure(0, 0),
         // print(f(1,2))
-        ByteCode::GetGlobal(1, 0),
+        ByteCode::GetUpTable(1, 0, 0),
         ByteCode::Move(2, 0),
         ByteCode::LoadInt(3, 1),
         ByteCode::LoadInt(4, 2),
         ByteCode::Call(2, 3, 0),
         ByteCode::Call(1, 0, 1),
         // print(f(100,200))
-        ByteCode::GetGlobal(1, 0),
+        ByteCode::GetUpTable(1, 0, 0),
         ByteCode::Move(2, 0),
         ByteCode::LoadInt(3, 100),
         ByteCode::LoadInt(4, 200),
@@ -430,38 +430,38 @@ print(type(function()end))
     let expected_bytecodes = &[
         ByteCode::VariadicArgumentPrepare(0),
         // print(type(123))
-        ByteCode::GetGlobal(0, 0),
-        ByteCode::GetGlobal(1, 1),
+        ByteCode::GetUpTable(0, 0, 0),
+        ByteCode::GetUpTable(1, 0, 1),
         ByteCode::LoadInt(2, 123),
         ByteCode::Call(1, 2, 0),
         ByteCode::Call(0, 0, 1),
         // print(type(123.123))
-        ByteCode::GetGlobal(0, 0),
-        ByteCode::GetGlobal(1, 1),
+        ByteCode::GetUpTable(0, 0, 0),
+        ByteCode::GetUpTable(1, 0, 1),
         ByteCode::LoadConstant(2, 2),
         ByteCode::Call(1, 2, 0),
         ByteCode::Call(0, 0, 1),
         // print(type("123"))
-        ByteCode::GetGlobal(0, 0),
-        ByteCode::GetGlobal(1, 1),
+        ByteCode::GetUpTable(0, 0, 0),
+        ByteCode::GetUpTable(1, 0, 1),
         ByteCode::LoadConstant(2, 3),
         ByteCode::Call(1, 2, 0),
         ByteCode::Call(0, 0, 1),
         // print(type({}))
-        ByteCode::GetGlobal(0, 0),
-        ByteCode::GetGlobal(1, 1),
+        ByteCode::GetUpTable(0, 0, 0),
+        ByteCode::GetUpTable(1, 0, 1),
         ByteCode::NewTable(2, 0, 0),
         ByteCode::Call(1, 2, 0),
         ByteCode::Call(0, 0, 1),
         // print(type(print))
-        ByteCode::GetGlobal(0, 0),
-        ByteCode::GetGlobal(1, 1),
-        ByteCode::GetGlobal(2, 0),
+        ByteCode::GetUpTable(0, 0, 0),
+        ByteCode::GetUpTable(1, 0, 1),
+        ByteCode::GetUpTable(2, 0, 0),
         ByteCode::Call(1, 2, 0),
         ByteCode::Call(0, 0, 1),
         // print(type(function()end))
-        ByteCode::GetGlobal(0, 0),
-        ByteCode::GetGlobal(1, 1),
+        ByteCode::GetUpTable(0, 0, 0),
+        ByteCode::GetUpTable(1, 0, 1),
         ByteCode::Closure(2, 0),
         ByteCode::Call(1, 2, 0),
         ByteCode::Call(0, 0, 1),
@@ -504,10 +504,10 @@ print(f(0))
         ByteCode::VariadicArgumentPrepare(0),
         // function f(n)
         ByteCode::Closure(0, 0),
-        ByteCode::SetGlobal(0, 0),
+        ByteCode::SetUpTable(0, 0, 0),
         // print(f(0))
-        ByteCode::GetGlobal(0, 1),
-        ByteCode::GetGlobal(1, 0),
+        ByteCode::GetUpTable(0, 0, 1),
+        ByteCode::GetUpTable(1, 0, 0),
         ByteCode::LoadInt(2, 0),
         ByteCode::Call(1, 2, 0),
         ByteCode::Call(0, 0, 1),
@@ -530,7 +530,7 @@ print(f(0))
         ByteCode::Jmp(1),
         ByteCode::OneReturn(0),
         //     return f(n+1)
-        ByteCode::GetGlobal(1, 0),
+        ByteCode::GetUpTable(1, 0, 0),
         ByteCode::AddInteger(2, 0, 1),
         ByteCode::TailCall(1, 2, 0),
         ByteCode::Return(1, 0, 0),
@@ -564,16 +564,16 @@ f(100,200,"hello")
     let expected_bytecodes = &[
         ByteCode::VariadicArgumentPrepare(0),
         // print(1,2,3)
-        ByteCode::GetGlobal(0, 0),
+        ByteCode::GetUpTable(0, 0, 0),
         ByteCode::LoadInt(1, 1),
         ByteCode::LoadInt(2, 2),
         ByteCode::LoadInt(3, 3),
         ByteCode::Call(0, 4, 1),
         // function f(...)
         ByteCode::Closure(0, 0),
-        ByteCode::SetGlobal(1, 0),
+        ByteCode::SetUpTable(0, 1, 0),
         // f(100,200,"hello")
-        ByteCode::GetGlobal(0, 1),
+        ByteCode::GetUpTable(0, 0, 1),
         ByteCode::LoadInt(1, 100),
         ByteCode::LoadInt(2, 200),
         ByteCode::LoadConstant(3, 2),
@@ -593,8 +593,8 @@ f(100,200,"hello")
         // function f(...)
         ByteCode::VariadicArgumentPrepare(0),
         //     print(print(...))
-        ByteCode::GetGlobal(0, 0),
-        ByteCode::GetGlobal(1, 0),
+        ByteCode::GetUpTable(0, 0, 0),
+        ByteCode::GetUpTable(1, 0, 0),
         ByteCode::VariadicArguments(2, 0),
         ByteCode::Call(1, 0, 0),
         ByteCode::Call(0, 0, 1),
@@ -642,28 +642,28 @@ f3('x', 1,2,3,4)
         ByteCode::VariadicArgumentPrepare(0),
         // function f(x, ...)
         ByteCode::Closure(0, 0),
-        ByteCode::SetGlobal(0, 0),
+        ByteCode::SetUpTable(0, 0, 0),
         // function f2(x, ...)
         ByteCode::Closure(0, 1),
-        ByteCode::SetGlobal(1, 0),
+        ByteCode::SetUpTable(0, 1, 0),
         // function f3(x, ...)
         ByteCode::Closure(0, 2),
-        ByteCode::SetGlobal(2, 0),
+        ByteCode::SetUpTable(0, 2, 0),
         // f('x', 1,2,3)
-        ByteCode::GetGlobal(0, 0),
+        ByteCode::GetUpTable(0, 0, 0),
         ByteCode::LoadConstant(1, 3),
         ByteCode::LoadInt(2, 1),
         ByteCode::LoadInt(3, 2),
         ByteCode::LoadInt(4, 3),
         ByteCode::Call(0, 5, 1),
         // f('x', 1,2)
-        ByteCode::GetGlobal(0, 0),
+        ByteCode::GetUpTable(0, 0, 0),
         ByteCode::LoadConstant(1, 3),
         ByteCode::LoadInt(2, 1),
         ByteCode::LoadInt(3, 2),
         ByteCode::Call(0, 4, 1),
         // f2('x', 1,2,3,4)
-        ByteCode::GetGlobal(0, 1),
+        ByteCode::GetUpTable(0, 0, 1),
         ByteCode::LoadConstant(1, 3),
         ByteCode::LoadInt(2, 1),
         ByteCode::LoadInt(3, 2),
@@ -671,7 +671,7 @@ f3('x', 1,2,3,4)
         ByteCode::LoadInt(5, 4),
         ByteCode::Call(0, 6, 1),
         // f3('x', 1,2,3,4)
-        ByteCode::GetGlobal(0, 2),
+        ByteCode::GetUpTable(0, 0, 2),
         ByteCode::LoadConstant(1, 3),
         ByteCode::LoadInt(2, 1),
         ByteCode::LoadInt(3, 2),
@@ -695,19 +695,19 @@ f3('x', 1,2,3,4)
         //     local a,b,c = ...
         ByteCode::VariadicArguments(1, 4),
         //     print(x)
-        ByteCode::GetGlobal(4, 0),
+        ByteCode::GetUpTable(4, 0, 0),
         ByteCode::Move(5, 0),
         ByteCode::Call(4, 2, 1),
         //     print(a)
-        ByteCode::GetGlobal(4, 0),
+        ByteCode::GetUpTable(4, 0, 0),
         ByteCode::Move(5, 1),
         ByteCode::Call(4, 2, 1),
         //     print(b)
-        ByteCode::GetGlobal(4, 0),
+        ByteCode::GetUpTable(4, 0, 0),
         ByteCode::Move(5, 2),
         ByteCode::Call(4, 2, 1),
         //     print(c)
-        ByteCode::GetGlobal(4, 0),
+        ByteCode::GetUpTable(4, 0, 0),
         ByteCode::Move(5, 3),
         ByteCode::Call(4, 2, 1),
         // end
@@ -725,7 +725,7 @@ f3('x', 1,2,3,4)
         // function f2(x, ...)
         ByteCode::VariadicArgumentPrepare(1),
         //     f(x,...)
-        ByteCode::GetGlobal(1, 0),
+        ByteCode::GetUpTable(1, 0, 0),
         ByteCode::Move(2, 0),
         ByteCode::VariadicArguments(3, 0),
         ByteCode::Call(1, 0, 1),
@@ -744,7 +744,7 @@ f3('x', 1,2,3,4)
         // function f3(x, ...)
         ByteCode::VariadicArgumentPrepare(1),
         //     f(...,x)
-        ByteCode::GetGlobal(1, 0),
+        ByteCode::GetUpTable(1, 0, 0),
         ByteCode::VariadicArguments(2, 2),
         ByteCode::Move(3, 0),
         ByteCode::Call(1, 3, 1),
@@ -783,13 +783,13 @@ foo(1,2,100,200,300)
         ByteCode::VariadicArgumentPrepare(0),
         // function foo(a, b, ...)
         ByteCode::Closure(0, 0),
-        ByteCode::SetGlobal(0, 0),
+        ByteCode::SetUpTable(0, 0, 0),
         // foo(1)
-        ByteCode::GetGlobal(0, 0),
+        ByteCode::GetUpTable(0, 0, 0),
         ByteCode::LoadInt(1, 1),
         ByteCode::Call(0, 2, 1),
         // foo(1,2,100,200,300)
-        ByteCode::GetGlobal(0, 0),
+        ByteCode::GetUpTable(0, 0, 0),
         ByteCode::LoadInt(1, 1),
         ByteCode::LoadInt(2, 2),
         ByteCode::LoadInt(3, 100),
@@ -814,9 +814,9 @@ foo(1,2,100,200,300)
         ByteCode::NewTable(2, 0, 1),
         ByteCode::Move(3, 0),
         ByteCode::VariadicArguments(4, 0),
-        ByteCode::SetList(2, 0),
+        ByteCode::SetList(2, 0, 0),
         //     print(t[1], t[2], t[3], t[4])
-        ByteCode::GetGlobal(3, 0),
+        ByteCode::GetUpTable(3, 0, 0),
         ByteCode::GetInt(4, 2, 1),
         ByteCode::GetInt(5, 2, 2),
         ByteCode::GetInt(6, 2, 3),
@@ -827,9 +827,9 @@ foo(1,2,100,200,300)
         ByteCode::Move(4, 0),
         ByteCode::VariadicArguments(5, 2),
         ByteCode::Move(6, 1),
-        ByteCode::SetList(3, 3),
+        ByteCode::SetList(3, 3, 0),
         //     print(t[1], t[2], t[3], t[4])
-        ByteCode::GetGlobal(4, 0),
+        ByteCode::GetUpTable(4, 0, 0),
         ByteCode::GetInt(5, 3, 1),
         ByteCode::GetInt(6, 3, 2),
         ByteCode::GetInt(7, 3, 3),
@@ -870,26 +870,26 @@ print(y)
         ByteCode::VariadicArgumentPrepare(0),
         // function f1(a, b)
         ByteCode::Closure(0, 0),
-        ByteCode::SetGlobal(0, 0),
+        ByteCode::SetUpTable(0, 0, 0),
         // function f2(a, b)
         ByteCode::Closure(0, 1),
-        ByteCode::SetGlobal(1, 0),
+        ByteCode::SetUpTable(0, 1, 0),
         // x,y = f2(f2(3, 10)) -- MULTRET arguments
-        ByteCode::GetGlobal(0, 1),
-        ByteCode::GetGlobal(1, 1),
+        ByteCode::GetUpTable(0, 0, 1),
+        ByteCode::GetUpTable(1, 0, 1),
         ByteCode::LoadInt(2, 3),
         ByteCode::LoadInt(3, 10),
         ByteCode::Call(1, 3, 0),
         ByteCode::Call(0, 0, 3),
-        ByteCode::SetGlobal(3, 1),
-        ByteCode::SetGlobal(2, 0),
+        ByteCode::SetUpTable(0, 3, 1),
+        ByteCode::SetUpTable(0, 2, 0),
         // print(x)
-        ByteCode::GetGlobal(0, 4),
-        ByteCode::GetGlobal(1, 2),
+        ByteCode::GetUpTable(0, 0, 4),
+        ByteCode::GetUpTable(1, 0, 2),
         ByteCode::Call(0, 2, 1),
         // print(y)
-        ByteCode::GetGlobal(0, 4),
-        ByteCode::GetGlobal(1, 3),
+        ByteCode::GetUpTable(0, 0, 4),
+        ByteCode::GetUpTable(1, 0, 3),
         ByteCode::Call(0, 2, 1),
         // EOF
         ByteCode::Return(0, 1, 1),
@@ -929,7 +929,7 @@ print(y)
     let expected_bytecodes = &[
         // function f2(a, b)
         //     return f1(a+b, a-b) -- return MULTRET
-        ByteCode::GetGlobal(2, 0),
+        ByteCode::GetUpTable(2, 0, 0),
         ByteCode::Add(3, 0, 1),
         ByteCode::Sub(4, 0, 1),
         ByteCode::TailCall(2, 3, 0),
@@ -976,9 +976,9 @@ t.methods.bar(t, 100, 200)
         ByteCode::LoadInt(5, 7),
         ByteCode::LoadInt(6, 8),
         ByteCode::LoadInt(7, 9),
-        ByteCode::SetList(4, 3),
+        ByteCode::SetList(4, 3, 0),
         ByteCode::SetField(0, 0, 4),
-        ByteCode::SetList(0, 3),
+        ByteCode::SetList(0, 3, 0),
         // function t.methods.foo(a,b)
         ByteCode::GetField(1, 0, 0),
         ByteCode::Closure(2, 0),
@@ -1022,7 +1022,7 @@ t.methods.bar(t, 100, 200)
     let expected_bytecodes = &[
         // function t.methods.foo(a,b)
         //     print(a+b)
-        ByteCode::GetGlobal(2, 0),
+        ByteCode::GetUpTable(2, 0, 0),
         ByteCode::Add(3, 0, 1),
         ByteCode::Call(2, 2, 1),
         // end
@@ -1038,7 +1038,7 @@ t.methods.bar(t, 100, 200)
     let expected_bytecodes = &[
         // function t.methods:bar(a,b)
         //     print(self[1]+self[2]+a+b)
-        ByteCode::GetGlobal(3, 0),
+        ByteCode::GetUpTable(3, 0, 0),
         ByteCode::GetInt(4, 0, 1),
         ByteCode::GetInt(5, 0, 2),
         ByteCode::Add(4, 4, 5),

@@ -15,17 +15,19 @@ mod value;
 
 extern crate alloc;
 
-use core::cmp::Ordering;
+use core::{cell::RefCell, cmp::Ordering};
 
-use alloc::vec::Vec;
+use alloc::{rc::Rc, vec::Vec};
 use stack_frame::FunctionIndex;
+use table::Table;
+use value::ValueKey;
 
 use self::{byte_code::ByteCode, stack_frame::StackFrame, value::Value};
 pub use self::{closure::Closure, error::Error, program::Program};
 
 #[derive(Debug, Default)]
 pub struct Lua {
-    globals: Vec<(Value, Value)>,
+    upvalues: Vec<(Value, Value)>,
     stack: Vec<Value>,
     /// Stack frames
     stack_frame: Vec<StackFrame>,
@@ -33,13 +35,16 @@ pub struct Lua {
 
 impl Lua {
     fn new() -> Self {
-        let globals = Vec::from([
-            ("print".into(), Value::Function(std::lib_print)),
-            ("type".into(), Value::Function(std::lib_type)),
+        let mut table = Table::new(0, 2);
+        table.table.extend([
+            (ValueKey("print".into()), Value::Function(std::lib_print)),
+            (ValueKey("type".into()), Value::Function(std::lib_type)),
         ]);
 
+        let upvalues = Vec::from([("_ENV".into(), Value::Table(Rc::new(RefCell::new(table))))]);
+
         Self {
-            globals,
+            upvalues,
             ..Default::default()
         }
     }
@@ -303,6 +308,10 @@ impl Lua {
             unreachable!("Stack frames should never be empty.");
         };
         last
+    }
+
+    fn get_up_table(&self, uptable: usize) -> Option<&Value> {
+        self.upvalues.get(uptable).map(|(_, value)| value)
     }
 
     fn read_bytecode(&mut self, main_program: &Program) -> Option<ByteCode> {

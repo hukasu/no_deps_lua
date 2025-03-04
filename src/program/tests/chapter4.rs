@@ -43,30 +43,26 @@ print(t)
             ByteCode::LoadInt(3, 200),
             ByteCode::LoadInt(4, 300),
             // x="hello", y="world";
-            ByteCode::LoadConstant(5, 2),
-            ByteCode::SetField(1, 1, 5),
-            ByteCode::LoadConstant(5, 4),
-            ByteCode::SetField(1, 3, 5),
+            ByteCode::SetFieldConstant(1, 1, 2),
+            ByteCode::SetFieldConstant(1, 3, 4),
             // [key]="val";
-            ByteCode::Move(5, 0),
-            ByteCode::LoadConstant(6, 5),
-            ByteCode::SetTable(1, 5, 6),
+            ByteCode::SetTableConstant(1, 0, 5),
             // {...}
-            ByteCode::SetList(1, 3),
+            ByteCode::SetList(1, 3, 0),
             // print(t[1])
-            ByteCode::GetGlobal(2, 6),
+            ByteCode::GetUpTable(2, 0, 6),
             ByteCode::GetInt(3, 1, 1),
             ByteCode::Call(2, 2, 1),
             // print(t['x'])
-            ByteCode::GetGlobal(2, 6),
+            ByteCode::GetUpTable(2, 0, 6),
             ByteCode::GetField(3, 1, 1),
             ByteCode::Call(2, 2, 1),
             // print(t.key)
-            ByteCode::GetGlobal(2, 6),
+            ByteCode::GetUpTable(2, 0, 6),
             ByteCode::GetField(3, 1, 0),
             ByteCode::Call(2, 2, 1),
             // print(t)
-            ByteCode::GetGlobal(2, 6),
+            ByteCode::GetUpTable(2, 0, 6),
             ByteCode::Move(3, 1),
             ByteCode::Call(2, 2, 1),
             // EOF
@@ -98,11 +94,12 @@ t.f(t[1000])
         &[
             "t".into(),
             "k".into(),
+            300i64.into(),
             "z".into(),
+            400i64.into(),
             "x".into(),
-            "print".into(),
             "f".into(),
-            1000i64.into()
+            "print".into(),
         ]
     );
     assert_eq!(
@@ -115,54 +112,52 @@ t.f(t[1000])
             // t = {...}
             ByteCode::NewTable(2, 2, 3),
             // k=300
-            ByteCode::LoadInt(3, 300),
-            ByteCode::SetField(2, 1, 3),
+            ByteCode::SetFieldConstant(2, 1, 2),
             // z=a
-            ByteCode::Move(3, 0),
-            ByteCode::SetField(2, 2, 3),
+            ByteCode::SetField(2, 3, 0),
             // 10,20,30
             ByteCode::LoadInt(3, 10),
             ByteCode::LoadInt(4, 20),
             ByteCode::LoadInt(5, 30),
-            ByteCode::SetList(2, 3),
+            ByteCode::SetList(2, 3, 0),
             // t = {...}
-            ByteCode::SetGlobal(0, 2),
+            ByteCode::SetUpTable(0, 0, 2),
             // t.k = 400 -- set
-            ByteCode::GetGlobal(2, 0),
-            ByteCode::LoadInt(3, 400),
-            ByteCode::SetField(2, 1, 3),
+            ByteCode::GetUpTable(2, 0, 0),
+            ByteCode::SetFieldConstant(2, 1, 4),
             // t.x = t.z -- new
-            ByteCode::GetGlobal(2, 0),
-            ByteCode::GetField(2, 2, 2),
-            ByteCode::GetGlobal(3, 0),
-            ByteCode::SetField(3, 3, 2),
+            ByteCode::GetUpTable(2, 0, 0),
+            ByteCode::GetUpTable(3, 0, 0),
+            ByteCode::GetField(3, 3, 3),
+            ByteCode::SetField(2, 5, 3),
             // t.f = print -- new
-            ByteCode::GetGlobal(2, 4),
-            ByteCode::GetGlobal(3, 0),
-            ByteCode::SetField(3, 5, 2),
+            ByteCode::GetUpTable(2, 0, 0),
+            ByteCode::GetUpTable(3, 0, 7),
+            ByteCode::SetField(2, 6, 3),
             // t.f(t.k)
-            ByteCode::GetGlobal(2, 0),
-            ByteCode::GetField(2, 2, 5),
-            ByteCode::GetGlobal(3, 0),
+            ByteCode::GetUpTable(2, 0, 0),
+            ByteCode::GetField(2, 2, 6),
+            ByteCode::GetUpTable(3, 0, 0),
             ByteCode::GetField(3, 3, 1),
             ByteCode::Call(2, 2, 1),
             // t.f(t.x)
-            ByteCode::GetGlobal(2, 0),
-            ByteCode::GetField(2, 2, 5),
-            ByteCode::GetGlobal(3, 0),
-            ByteCode::GetField(3, 3, 3),
+            ByteCode::GetUpTable(2, 0, 0),
+            ByteCode::GetField(2, 2, 6),
+            ByteCode::GetUpTable(3, 0, 0),
+            ByteCode::GetField(3, 3, 5),
             ByteCode::Call(2, 2, 1),
             // t.f(t[2])
-            ByteCode::GetGlobal(2, 0),
-            ByteCode::GetField(2, 2, 5),
-            ByteCode::GetGlobal(3, 0),
+            ByteCode::GetUpTable(2, 0, 0),
+            ByteCode::GetField(2, 2, 6),
+            ByteCode::GetUpTable(3, 0, 0),
             ByteCode::GetInt(3, 3, 2),
             ByteCode::Call(2, 2, 1),
             // t.f(t[1000])
-            ByteCode::GetGlobal(2, 0),
-            ByteCode::GetField(2, 2, 5),
-            ByteCode::GetGlobal(3, 0),
-            ByteCode::GetField(3, 3, 6),
+            ByteCode::GetUpTable(2, 0, 0),
+            ByteCode::GetField(2, 2, 6),
+            ByteCode::GetUpTable(3, 0, 0),
+            ByteCode::LoadInt(4, 1000),
+            ByteCode::GetTable(3, 3, 4),
             ByteCode::Call(2, 2, 1),
             // EOF
             ByteCode::Return(2, 1, 1),

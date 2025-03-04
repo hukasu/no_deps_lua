@@ -1,6 +1,10 @@
-use core::{cell::RefCell, cmp::Ordering};
+use core::{cell::RefCell, cmp::Ordering, ops::Deref};
 
-use alloc::{format, rc::Rc, vec::Vec};
+use alloc::{
+    rc::Rc,
+    string::{String, ToString},
+    vec::Vec,
+};
 
 use crate::{
     stack_frame::FunctionIndex,
@@ -58,7 +62,14 @@ pub enum ByteCode {
     /// Loads a `nil` into the stack
     ///
     /// `dst`: Location on the stack to place nil  
-    LoadNil(u8),
+    /// `extra`: Extra number of `nil`s to load
+    LoadNil(u8, u8),
+    /// `GETUPVAL`  
+    /// Gets a upvalue and place it on stack
+    ///
+    /// `dst`: Location on stack to place the global  
+    /// `uptable`: UpTable to collect the field from
+    GetUpValue(u8, u8),
     /// `GETTABUP`  
     /// Gets a upvalue and place it on stack
     ///
@@ -96,7 +107,14 @@ pub enum ByteCode {
     /// global resides  
     /// `src`: Location of the value on stack to set the global
     SetUpTable(u8, u8, u8),
-    /// `SETTABLE`?  
+    /// `SETTABUPk`  
+    /// Sets a value a global with a value from the stack
+    ///
+    /// `upvalue`: UpTable to store the value at  
+    /// `key`: Id of constant key  
+    /// `value`: Id of constant value
+    SetUpTableConstant(u8, u8, u8),
+    /// `SETTABLE`  
     /// Sets a table field to a value using a value
     ///
     /// `table`: Location of the table on the stack  
@@ -104,13 +122,28 @@ pub enum ByteCode {
     /// as key  
     /// `value`: Location of the value on the stack
     SetTable(u8, u8, u8),
-    /// `SETFIELD`?  
+    /// `SETTABLEk`  
+    /// Sets a table field to a value using a value
+    ///
+    /// `table`: Location of the table on the stack  
+    /// `key`: Location on the stack of the value that will be used
+    /// as key  
+    /// `constant`: Id of `constant`
+    SetTableConstant(u8, u8, u8),
+    /// `SETFIELD`  
     /// Sets a table field to a value using a name
     ///
     /// `table`: Location of the table on the stack  
     /// `key`: Location of the name on `constants`  
     /// `value`: Location of the value on the stack
     SetField(u8, u8, u8),
+    /// `SETFIELDk`  
+    /// Sets a table field to a value using a name
+    ///
+    /// `table`: Location of the table on the stack  
+    /// `key`: Location of the name on `constants`  
+    /// `constant`: Id of `constant`
+    SetFieldConstant(u8, u8, u8),
     /// `NEWTABLE`  
     /// Creates a new table value
     ///
@@ -257,10 +290,10 @@ pub enum ByteCode {
     /// `CONCAT`  
     /// Performs concatenation.
     ///
-    /// `dst`: Location on stack to store result of operation  
-    /// `lhs`: Location on stack of left-hand operand  
-    /// `rhs`: Location on stack of right-hand operand
-    Concat(u8, u8, u8),
+    /// `first`: Location on stack of first string, the result is
+    /// stored here  
+    /// `string_count`: Number of strings to concat
+    Concat(u8, u8),
     /// `JMP`  
     /// Performs jump.
     ///
@@ -363,27 +396,9 @@ pub enum ByteCode {
     /// Stores multiple values from the stack into the table
     ///
     /// `table`: Location of the table on the stack  
-    /// `array_len`: Number of items on the stack to store
-    SetList(u8, u8),
-    /// Sets a value from a global with a constant value
-    ///
-    /// `name`: Location on `constants` where the name of the
-    /// global resides  
-    /// `src`: Location of the value on `constants` to set the global
-    SetGlobalConstant(u8, u8),
-    /// Sets a value from a global with a integer
-    ///
-    /// `name`: Location on `constants` where the name of the
-    /// global resides  
-    /// `value`: Integer to store on global
-    SetGlobalInteger(u8, i16),
-    /// Sets a value of a global with a value from another global
-    ///
-    /// `dst_name`: Location on `constants` where the name of the
-    /// destination global resides  
-    /// `src_name`: Location on `constants` where the name of the
-    /// source global resides
-    SetGlobalGlobal(u8, u8),
+    /// `array_len`: Number of items on the stack to store  
+    /// `c`: ?
+    SetList(u8, u8, u8),
     /// `CLOSURE`
     /// Puts reference to a local function into the stack
     ///
@@ -465,20 +480,41 @@ impl ByteCode {
     }
 
     pub fn load_nil(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
-        validate_bytecode!(self, ByteCode::LoadNil(dst));
+        validate_bytecode!(self, ByteCode::LoadNil(dst, extras));
 
-        vm.set_stack(*dst, Value::Nil)
+        // If `extra` is 0, runs once
+        for dst in *dst..=(dst + extras) {
+            vm.set_stack(dst, Value::Nil)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn get_up_value(&self, vm: &mut Lua, _main_program: &Program) -> Result<(), Error> {
+        validate_bytecode!(self, ByteCode::GetUpValue(dst, uptable));
+
+        let upvalue = vm
+            .get_up_table(usize::from(*uptable))
+            .cloned()
+            .ok_or(Error::UpvalueDoesNotExist)?;
+
+        vm.set_stack(*dst, upvalue)
     }
 
     pub fn get_up_table(&self, vm: &mut Lua, main_program: &Program) -> Result<(), Error> {
-        validate_bytecode!(self, ByteCode::GetUpTable(dst, _, name));
+        validate_bytecode!(self, ByteCode::GetUpTable(dst, uptable, name));
+
+        let Value::Table(uptable) = vm
+            .get_up_table(usize::from(*uptable))
+            .ok_or(Error::UpvalueDoesNotExist)?
+        else {
+            return Err(Error::ExpectedTable);
+        };
 
         let key = &vm.get_running_closure(main_program).constants[*name as usize];
-        if let Some(index) = vm.globals.iter().position(|global| global.0.eq(key)) {
-            vm.set_stack(*dst, vm.globals[index].1.clone())
-        } else {
-            vm.set_stack(*dst, Value::Nil)
-        }
+        let value = uptable.deref().borrow().get(ValueKey(key.clone())).clone();
+
+        vm.set_stack(*dst, value)
     }
 
     pub fn get_table(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
@@ -551,18 +587,29 @@ impl ByteCode {
     }
 
     pub fn set_up_table(&self, vm: &mut Lua, main_program: &Program) -> Result<(), Error> {
-        validate_bytecode!(self, ByteCode::SetUpTable(_, name, src));
+        validate_bytecode!(self, ByteCode::SetUpTable(uptable, name, src));
 
         let key = vm.get_running_closure(main_program).constants[*name as usize].clone();
         let value = vm.get_stack(*src)?.clone();
-        if let Some(global) = vm.globals.iter_mut().find(|global| global.0.eq(&key)) {
-            global.1 = value;
-            Ok(())
-        } else if matches!(key, Value::String(_) | Value::ShortString(_)) {
-            vm.globals.push((key.clone(), value));
-            Ok(())
-        } else {
-            Err(Error::ExpectedName)
+
+        match vm.get_up_table(usize::from(*uptable)) {
+            Some(Value::Table(uptable)) => uptable.borrow_mut().set(ValueKey(key), value),
+            Some(_) => Err(Error::ExpectedTable),
+            None => Err(Error::UpvalueDoesNotExist),
+        }
+    }
+
+    pub fn set_up_table_constant(&self, vm: &mut Lua, main_program: &Program) -> Result<(), Error> {
+        validate_bytecode!(self, ByteCode::SetUpTableConstant(uptable, name, constant));
+
+        let running_program = vm.get_running_closure(main_program);
+        let key = running_program.constants[*name as usize].clone();
+        let value = running_program.constants[usize::from(*constant)].clone();
+
+        match vm.get_up_table(usize::from(*uptable)) {
+            Some(Value::Table(uptable)) => uptable.borrow_mut().set(ValueKey(key), value),
+            Some(_) => Err(Error::ExpectedTable),
+            None => Err(Error::UpvalueDoesNotExist),
         }
     }
 
@@ -593,6 +640,33 @@ impl ByteCode {
         }
     }
 
+    pub fn set_table_constant(&self, vm: &mut Lua, program: &Program) -> Result<(), Error> {
+        validate_bytecode!(self, ByteCode::SetTableConstant(table, key, constant));
+
+        if let Value::Table(table) = vm.get_stack(*table)?.clone() {
+            let key = ValueKey::from(vm.get_stack(*key)?.clone());
+            let value = program.constants[usize::from(*constant)].clone();
+
+            let binary_search = (*table)
+                .borrow()
+                .table
+                .binary_search_by_key(&&key, |a| &a.0);
+            match binary_search {
+                Ok(i) => {
+                    let mut table_borrow = table.borrow_mut();
+                    let Some(table_value) = table_borrow.table.get_mut(i) else {
+                        unreachable!("Already tested existence of table value");
+                    };
+                    table_value.1 = value;
+                }
+                Err(i) => table.borrow_mut().table.insert(i, (key, value)),
+            }
+            Ok(())
+        } else {
+            Err(Error::ExpectedTable)
+        }
+    }
+
     pub fn set_field(&self, vm: &mut Lua, main_program: &Program) -> Result<(), Error> {
         validate_bytecode!(self, ByteCode::SetField(table, key, value));
 
@@ -601,6 +675,36 @@ impl ByteCode {
                 vm.get_running_closure(main_program).constants[usize::from(*key)].clone(),
             );
             let value = vm.get_stack(*value)?.clone();
+
+            let binary_search = (*table)
+                .borrow()
+                .table
+                .binary_search_by_key(&&key, |a| &a.0);
+            match binary_search {
+                Ok(i) => {
+                    let mut table_borrow = table.borrow_mut();
+                    let Some(table_value) = table_borrow.table.get_mut(i) else {
+                        unreachable!("Already tested existence of table value");
+                    };
+                    table_value.1 = value;
+                }
+                Err(i) => table.borrow_mut().table.insert(i, (key, value)),
+            }
+            Ok(())
+        } else {
+            Err(Error::ExpectedTable)
+        }
+    }
+
+    pub fn set_field_constant(&self, vm: &mut Lua, main_program: &Program) -> Result<(), Error> {
+        validate_bytecode!(self, ByteCode::SetFieldConstant(table, key, constant));
+
+        if let Value::Table(table) = vm.get_stack(*table)?.clone() {
+            let key = ValueKey::from(
+                vm.get_running_closure(main_program).constants[usize::from(*key)].clone(),
+            );
+            let value =
+                vm.get_running_closure(main_program).constants[usize::from(*constant)].clone();
 
             let binary_search = (*table)
                 .borrow()
@@ -981,23 +1085,26 @@ impl ByteCode {
     }
 
     pub fn concat(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
-        validate_bytecode!(self, ByteCode::Concat(dst, lhs, rhs));
+        validate_bytecode!(self, ByteCode::Concat(first, count));
 
-        let value = match (&vm.get_stack(*lhs)?, &vm.get_stack(*rhs)?) {
-            (Value::Nil, _) => return Err(Error::NilConcat),
-            (Value::Boolean(_), _) => return Err(Error::BoolConcat),
-            (Value::Table(_), _) => return Err(Error::TableConcat),
-            (Value::Function(_), _) => return Err(Error::FunctionConcat),
-            (_, Value::Nil) => return Err(Error::NilConcat),
-            (_, Value::Boolean(_)) => return Err(Error::BoolConcat),
-            (_, Value::Table(_)) => return Err(Error::TableConcat),
-            (_, Value::Function(_)) => return Err(Error::FunctionConcat),
-            (Value::Float(lhs), Value::Float(rhs)) => format!("{:?}{:?}", lhs, rhs).as_str().into(),
-            (Value::Float(lhs), rhs) => format!("{:?}{}", lhs, rhs).as_str().into(),
-            (lhs, Value::Float(rhs)) => format!("{}{:?}", lhs, rhs).as_str().into(),
-            (lhs, rhs) => format!("{}{}", lhs, rhs).as_str().into(),
-        };
-        vm.set_stack(*dst, value)
+        let mut strings = Vec::with_capacity(usize::from(*count));
+
+        for src in *first..(first + count) {
+            match &vm.get_stack(src)? {
+                Value::Nil => return Err(Error::NilConcat),
+                Value::Boolean(_) => return Err(Error::BoolConcat),
+                Value::Table(_) => return Err(Error::TableConcat),
+                Value::Function(_) => return Err(Error::FunctionConcat),
+                Value::Closure(_) => return Err(Error::FunctionConcat),
+                Value::Integer(lhs) => strings.push(lhs.to_string()),
+                Value::Float(lhs) => strings.push(lhs.to_string()),
+                Value::ShortString(lhs) => strings.push(lhs.to_string()),
+                Value::String(lhs) => strings.push(lhs.to_string()),
+            };
+        }
+
+        let concatenated = strings.into_iter().collect::<String>();
+        vm.set_stack(*first, concatenated.as_str().into())
     }
 
     pub fn jmp(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
@@ -1263,7 +1370,7 @@ impl ByteCode {
     }
 
     pub fn set_list(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
-        validate_bytecode!(self, ByteCode::SetList(table, count));
+        validate_bytecode!(self, ByteCode::SetList(table, count, _c));
 
         let top_stack = vm.get_stack_frame();
 
@@ -1283,63 +1390,6 @@ impl ByteCode {
             Ok(())
         } else {
             Err(Error::ExpectedTable)
-        }
-    }
-
-    pub fn set_global_constant(&self, vm: &mut Lua, main_program: &Program) -> Result<(), Error> {
-        validate_bytecode!(self, ByteCode::SetGlobalConstant(name, src));
-
-        let closure = vm.get_running_closure(main_program);
-
-        let key = closure.constants[*name as usize].clone();
-        let value = closure.constants[*src as usize].clone();
-        if let Some(global) = vm.globals.iter_mut().find(|global| global.0.eq(&key)) {
-            global.1 = value;
-            Ok(())
-        } else if matches!(key, Value::String(_) | Value::ShortString(_)) {
-            vm.globals.push((key.clone(), value));
-            Ok(())
-        } else {
-            Err(Error::ExpectedName)
-        }
-    }
-
-    pub fn set_global_integer(&self, vm: &mut Lua, main_program: &Program) -> Result<(), Error> {
-        validate_bytecode!(self, ByteCode::SetGlobalInteger(name, value));
-
-        let key = vm.get_running_closure(main_program).constants[*name as usize].clone();
-        let value = (*value).into();
-        if let Some(global) = vm.globals.iter_mut().find(|global| global.0.eq(&key)) {
-            global.1 = value;
-            Ok(())
-        } else if matches!(key, Value::String(_) | Value::ShortString(_)) {
-            vm.globals.push((key.clone(), value));
-            Ok(())
-        } else {
-            Err(Error::ExpectedName)
-        }
-    }
-
-    pub fn set_global_global(&self, vm: &mut Lua, main_program: &Program) -> Result<(), Error> {
-        validate_bytecode!(self, ByteCode::SetGlobalGlobal(dst_name, src_name));
-
-        let closure = vm.get_running_closure(main_program);
-
-        let dst_key = closure.constants[*dst_name as usize].clone();
-        let src_key = closure.constants[*src_name as usize].clone();
-        let value = vm
-            .globals
-            .iter()
-            .find(|global| global.0.eq(&src_key))
-            .map_or(Value::Nil, |global| global.1.clone());
-        if let Some(global) = vm.globals.iter_mut().find(|global| global.0.eq(&dst_key)) {
-            global.1 = value;
-            Ok(())
-        } else if matches!(dst_key, Value::String(_) | Value::ShortString(_)) {
-            vm.globals.push((dst_key.clone(), value));
-            Ok(())
-        } else {
-            Err(Error::ExpectedName)
         }
     }
 

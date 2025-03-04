@@ -23,11 +23,11 @@ print "hello, again!"
         &[
             ByteCode::VariadicArgumentPrepare(0),
             // print "hello, world!"
-            ByteCode::GetGlobal(0, 0),
+            ByteCode::GetUpTable(0, 0, 0),
             ByteCode::LoadConstant(1, 1),
             ByteCode::Call(0, 2, 1),
             // print "hello, again!"
-            ByteCode::GetGlobal(0, 0),
+            ByteCode::GetUpTable(0, 0, 0),
             ByteCode::LoadConstant(1, 2),
             ByteCode::Call(0, 2, 1),
             // EOF

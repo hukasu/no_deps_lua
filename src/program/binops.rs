@@ -43,7 +43,6 @@ impl Binop {
                 | Self::BitXor
                 | Self::ShiftLeft
                 | Self::ShiftRight
-                | Self::Concat
         )
     }
 
