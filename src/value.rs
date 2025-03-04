@@ -6,7 +6,7 @@ use core::{
 
 use alloc::rc::Rc;
 
-use crate::{ext::FloatExt, stack_str::StackStr, table::Table, Closure, Lua};
+use crate::{ext::FloatExt, stack_str::StackStr, table::Table, Function, Lua};
 
 const SHORT_STRING_LEN: usize = 23;
 
@@ -19,8 +19,10 @@ pub enum Value {
     ShortString(StackStr<SHORT_STRING_LEN>),
     String(Rc<str>),
     Table(Rc<RefCell<Table>>),
-    Function(fn(&mut Lua) -> i32),
-    Closure(Rc<Closure>),
+    /// Native Rust function
+    NativeFunction(fn(&mut Lua) -> i32),
+    /// Lua function
+    Function(Rc<Function>),
 }
 
 impl Value {
@@ -53,7 +55,7 @@ impl Value {
             Self::Float(_) => "float",
             Self::ShortString(_) | Self::String(_) => "string",
             Self::Table(_) => "table",
-            Self::Function(_) | Self::Closure(_) => "function",
+            Self::NativeFunction(_) | Self::Function(_) => "function",
         }
     }
 }
@@ -115,9 +117,9 @@ impl From<&str> for Value {
     }
 }
 
-impl From<Rc<Closure>> for Value {
-    fn from(closure: Rc<Closure>) -> Self {
-        Self::Closure(closure)
+impl From<Rc<Function>> for Value {
+    fn from(function: Rc<Function>) -> Self {
+        Self::Function(function)
     }
 }
 
@@ -134,8 +136,8 @@ impl Debug for Value {
                 let t = table.borrow();
                 write!(f, "Table({}:{})", t.array.len(), t.table.len())
             }
+            Self::NativeFunction(func) => write!(f, "NativeFunction({:?})", func),
             Self::Function(func) => write!(f, "Function({:?})", func),
-            Self::Closure(func) => write!(f, "Closure({:?})", func),
         }
     }
 }
@@ -150,7 +152,7 @@ impl Display for Value {
             Self::ShortString(s) => write!(f, "{s}"),
             Self::String(s) => write!(f, "{s}"),
             Self::Table(table) => write!(f, "table:{:?}", table.as_ptr()),
-            Self::Function(_) | Self::Closure(_) => write!(f, "function"),
+            Self::NativeFunction(_) | Self::Function(_) => write!(f, "function"),
         }
     }
 }
@@ -166,7 +168,7 @@ impl PartialEq for Value {
             (Self::ShortString(s1), Self::ShortString(s2)) => s1 == s2,
             (Self::String(s1), Self::String(s2)) => s1 == s2,
             (Self::Table(t1), Self::Table(t2)) => t1 == t2,
-            (Self::Function(f1), Self::Function(f2)) => core::ptr::eq(f1, f2),
+            (Self::NativeFunction(f1), Self::NativeFunction(f2)) => core::ptr::eq(f1, f2),
             (_, _) => false,
         }
     }
@@ -199,8 +201,8 @@ impl ValueKey {
             Value::ShortString(_) => 4,
             Value::String(_) => 5,
             Value::Table(_) => 6,
-            Value::Function(_) => 7,
-            Value::Closure(_) => 8,
+            Value::NativeFunction(_) => 7,
+            Value::Function(_) => 8,
         }
     }
 }
@@ -222,8 +224,10 @@ impl Ord for ValueKey {
                 (Value::ShortString(lhs), Value::ShortString(rhs)) => lhs.cmp(rhs),
                 (Value::String(lhs), Value::String(rhs)) => lhs.cmp(rhs),
                 (Value::Table(lhs), Value::Table(rhs)) => Rc::as_ptr(lhs).cmp(&Rc::as_ptr(rhs)),
-                (Value::Function(lhs), Value::Function(rhs)) => lhs.cmp(rhs),
-                (Value::Closure(lhs), Value::Closure(rhs)) => Rc::as_ptr(lhs).cmp(&Rc::as_ptr(rhs)),
+                (Value::NativeFunction(lhs), Value::NativeFunction(rhs)) => lhs.cmp(rhs),
+                (Value::Function(lhs), Value::Function(rhs)) => {
+                    Rc::as_ptr(lhs).cmp(&Rc::as_ptr(rhs))
+                }
                 _ => unreachable!("Equal `ord_priority` means equal types"),
             },
             other => other,

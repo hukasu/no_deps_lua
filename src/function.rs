@@ -1,13 +1,13 @@
 use super::Program;
 
 #[derive(Debug)]
-pub struct Closure {
+pub struct Function {
     program: Program,
     arg_count: usize,
     variadic_args: bool,
 }
 
-impl Closure {
+impl Function {
     pub fn new(program: Program, arg_count: usize, variadic_args: bool) -> Self {
         Self {
             program,
@@ -29,7 +29,7 @@ impl Closure {
     }
 }
 
-impl From<Program> for Closure {
+impl From<Program> for Function {
     fn from(program: Program) -> Self {
         Self {
             program,

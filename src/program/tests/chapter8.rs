@@ -35,7 +35,7 @@ hello()
     assert_eq!(&program.byte_codes, expected_bytecodes);
     assert_eq!(program.functions.len(), 1);
 
-    let Value::Closure(func) = &program.functions[0] else {
+    let Value::Function(func) = &program.functions[0] else {
         unreachable!("function must be a `Value::Closure`");
     };
     let expected_constants: &[Value] = &["print".into()];
@@ -86,7 +86,7 @@ hello()
     assert_eq!(&program.byte_codes, expected_bytecodes);
     assert_eq!(program.functions.len(), 1);
 
-    let Value::Closure(func) = &program.functions[0] else {
+    let Value::Function(func) = &program.functions[0] else {
         unreachable!("function must be a `Value::Closure`");
     };
     let expected_constants: &[Value] = &["print".into(), "hello, function!".into()];
@@ -136,7 +136,7 @@ print(hello)
     assert_eq!(&program.byte_codes, expected_bytecodes);
     assert_eq!(program.functions.len(), 1);
 
-    let Value::Closure(func) = &program.functions[0] else {
+    let Value::Function(func) = &program.functions[0] else {
         unreachable!("function must be a `Value::Closure`");
     };
     let expected_constants: &[Value] = &["print".into(), "hello, function!".into()];
@@ -187,7 +187,7 @@ print (f1)
     assert_eq!(&program.byte_codes, expected_bytecodes);
     assert_eq!(program.functions.len(), 1);
 
-    let Value::Closure(func) = &program.functions[0] else {
+    let Value::Function(func) = &program.functions[0] else {
         unreachable!("function must be a `Value::Closure`");
     };
     let expected_bytecodes = &[
@@ -205,7 +205,7 @@ print (f1)
     assert_eq!(func.program().byte_codes, expected_bytecodes);
     assert_eq!(func.program().functions.len(), 1);
 
-    let Value::Closure(func) = &func.program().functions[0] else {
+    let Value::Function(func) = &func.program().functions[0] else {
         unreachable!("function must be a `Value::Closure`");
     };
     let expected_constants: &[Value] = &["print".into(), "internal".into()];
@@ -256,7 +256,7 @@ print(t.f)
     assert_eq!(&program.byte_codes, expected_bytecodes);
     assert_eq!(program.functions.len(), 1);
 
-    let Value::Closure(func) = &program.functions[0] else {
+    let Value::Function(func) = &program.functions[0] else {
         unreachable!("function must be a `Value::Closure`");
     };
     let expected_bytecodes = &[
@@ -324,7 +324,7 @@ f(1)
     assert_eq!(&program.byte_codes, expected_bytecodes);
     assert_eq!(program.functions.len(), 1);
 
-    let Value::Closure(func) = &program.functions[0] else {
+    let Value::Function(func) = &program.functions[0] else {
         unreachable!("function must be a `Value::Closure`");
     };
     let expected_constants: &[Value] = &["print".into()];
@@ -390,7 +390,7 @@ print(f(100,200))
     assert_eq!(program.byte_codes, expected_bytecodes);
     assert_eq!(program.functions.len(), 1);
 
-    let Value::Closure(func) = &program.functions[0] else {
+    let Value::Function(func) = &program.functions[0] else {
         unreachable!("function must be a `Value::Closure`");
     };
     let expected_bytecodes = &[
@@ -472,7 +472,7 @@ print(type(function()end))
     assert_eq!(program.byte_codes, expected_bytecodes);
     assert_eq!(program.functions.len(), 1);
 
-    let Value::Closure(closure) = &program.functions[0] else {
+    let Value::Function(closure) = &program.functions[0] else {
         panic!("Closure must be a closure")
     };
     assert!(closure.program().constants.is_empty());
@@ -518,7 +518,7 @@ print(f(0))
     assert_eq!(program.byte_codes, expected_bytecodes);
     assert_eq!(program.functions.len(), 1);
 
-    let Value::Closure(closure) = &program.functions[0] else {
+    let Value::Function(closure) = &program.functions[0] else {
         panic!("Closure must be a closure")
     };
     let expected_constants: &[Value] = &["f".into()];
@@ -585,7 +585,7 @@ f(100,200,"hello")
     assert_eq!(program.byte_codes, expected_bytecodes);
     assert_eq!(program.functions.len(), 1);
 
-    let Value::Closure(closure) = &program.functions[0] else {
+    let Value::Function(closure) = &program.functions[0] else {
         panic!("Closure must be a closure")
     };
     let expected_constants: &[Value] = &["print".into()];
@@ -685,7 +685,7 @@ f3('x', 1,2,3,4)
     assert_eq!(program.byte_codes, expected_bytecodes);
     assert_eq!(program.functions.len(), 3);
 
-    let Value::Closure(closure) = &program.functions[0] else {
+    let Value::Function(closure) = &program.functions[0] else {
         panic!("Closure must be a closure")
     };
     let expected_constants: &[Value] = &["print".into()];
@@ -717,7 +717,7 @@ f3('x', 1,2,3,4)
     assert_eq!(closure.program().byte_codes, expected_bytecodes);
     assert!(closure.program().functions.is_empty());
 
-    let Value::Closure(closure) = &program.functions[1] else {
+    let Value::Function(closure) = &program.functions[1] else {
         panic!("Closure must be a closure")
     };
     let expected_constants: &[Value] = &["f".into()];
@@ -736,7 +736,7 @@ f3('x', 1,2,3,4)
     assert_eq!(closure.program().byte_codes, expected_bytecodes);
     assert!(closure.program().functions.is_empty());
 
-    let Value::Closure(closure) = &program.functions[2] else {
+    let Value::Function(closure) = &program.functions[2] else {
         panic!("Closure must be a closure")
     };
     let expected_constants: &[Value] = &["f".into()];
@@ -803,7 +803,7 @@ foo(1,2,100,200,300)
     assert_eq!(program.byte_codes, expected_bytecodes);
     assert_eq!(program.functions.len(), 1);
 
-    let Value::Closure(closure) = &program.functions[0] else {
+    let Value::Function(closure) = &program.functions[0] else {
         panic!("Closure must be a closure")
     };
     let expected_constants: &[Value] = &["print".into()];
@@ -907,7 +907,7 @@ print(y)
     assert_eq!(&program.byte_codes, expected_bytecodes);
     assert_eq!(program.functions.len(), 2);
 
-    let Value::Closure(func) = &program.functions[0] else {
+    let Value::Function(func) = &program.functions[0] else {
         unreachable!("function must be a `Value::Closure`");
     };
     let expected_bytecodes = &[
@@ -923,7 +923,7 @@ print(y)
     assert_eq!(func.program().byte_codes, expected_bytecodes);
     assert!(func.program().functions.is_empty());
 
-    let Value::Closure(func) = &program.functions[1] else {
+    let Value::Function(func) = &program.functions[1] else {
         unreachable!("function must be a `Value::Closure`");
     };
     let expected_bytecodes = &[
@@ -1016,7 +1016,7 @@ t.methods.bar(t, 100, 200)
     assert_eq!(&program.byte_codes, expected_bytecodes);
     assert_eq!(program.functions.len(), 2);
 
-    let Value::Closure(func) = &program.functions[0] else {
+    let Value::Function(func) = &program.functions[0] else {
         unreachable!("function must be a `Value::Closure`");
     };
     let expected_bytecodes = &[
@@ -1032,7 +1032,7 @@ t.methods.bar(t, 100, 200)
     assert_eq!(func.program().byte_codes, expected_bytecodes);
     assert!(func.program().functions.is_empty());
 
-    let Value::Closure(func) = &program.functions[1] else {
+    let Value::Function(func) = &program.functions[1] else {
         unreachable!("function must be a `Value::Closure`");
     };
     let expected_bytecodes = &[

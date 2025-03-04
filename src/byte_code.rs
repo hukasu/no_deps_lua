@@ -10,7 +10,7 @@ use crate::{
     stack_frame::FunctionIndex,
     table::Table,
     value::{Value, ValueKey},
-    Closure, Lua, Program,
+    Function, Lua, Program,
 };
 
 use super::Error;
@@ -1094,8 +1094,8 @@ impl ByteCode {
                 Value::Nil => return Err(Error::NilConcat),
                 Value::Boolean(_) => return Err(Error::BoolConcat),
                 Value::Table(_) => return Err(Error::TableConcat),
+                Value::NativeFunction(_) => return Err(Error::FunctionConcat),
                 Value::Function(_) => return Err(Error::FunctionConcat),
-                Value::Closure(_) => return Err(Error::FunctionConcat),
                 Value::Integer(lhs) => strings.push(lhs.to_string()),
                 Value::Float(lhs) => strings.push(lhs.to_string()),
                 Value::ShortString(lhs) => strings.push(lhs.to_string()),
@@ -1239,9 +1239,9 @@ impl ByteCode {
         let out_params = usize::from(*out);
 
         let func = &vm.get_stack(*func_index)?;
-        if let Value::Function(func) = func {
+        if let Value::NativeFunction(func) = func {
             Self::run_native_function(vm, func_index_usize, in_items, out_params, *func)
-        } else if let Value::Closure(func) = func {
+        } else if let Value::Function(func) = func {
             let func = func.clone();
             Self::setup_closure(vm, func_index_usize, in_items, out_params, func.as_ref())
         } else {
@@ -1265,9 +1265,9 @@ impl ByteCode {
         vm.drop_stack_frame(func_index_usize, vm.stack.len() - tail_start);
 
         let func = &vm.get_stack(u8::try_from(prev_func_index)?)?;
-        if let Value::Function(func) = func {
+        if let Value::NativeFunction(func) = func {
             Self::run_native_function(vm, prev_func_index, args, out_params, *func)
-        } else if let Value::Closure(func) = func {
+        } else if let Value::Function(func) = func {
             let func = func.clone();
             Self::setup_closure(vm, prev_func_index, args, out_params, func.as_ref())
         } else {
@@ -1483,7 +1483,7 @@ impl ByteCode {
         func_index: usize,
         args: usize,
         out_params: usize,
-        func: &Closure,
+        func: &Function,
     ) -> Result<(), Error> {
         log::trace!("Calling closure");
 

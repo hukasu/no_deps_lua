@@ -18,7 +18,7 @@ use {
 use crate::{
     byte_code::ByteCode,
     parser::{Parser, Token, TokenType},
-    Closure,
+    Function,
 };
 
 use super::value::Value;
@@ -73,7 +73,7 @@ impl Program {
     }
 
     fn push_function(&mut self, value: impl Into<Value>) -> Result<u8, Error> {
-        let value @ Value::Closure(_) = value.into() else {
+        let value @ Value::Function(_) = value.into() else {
             unreachable!("Should never be called with anything other than a closure.");
         };
 

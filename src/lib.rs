@@ -1,9 +1,9 @@
 #![no_std]
 
 mod byte_code;
-mod closure;
 mod error;
 mod ext;
+mod function;
 mod lex;
 mod parser;
 mod program;
@@ -23,7 +23,7 @@ use table::Table;
 use value::ValueKey;
 
 use self::{byte_code::ByteCode, stack_frame::StackFrame, value::Value};
-pub use self::{closure::Closure, error::Error, program::Program};
+pub use self::{error::Error, function::Function, program::Program};
 
 #[derive(Debug, Default)]
 pub struct Lua {
@@ -37,8 +37,14 @@ impl Lua {
     fn new() -> Self {
         let mut table = Table::new(0, 2);
         table.table.extend([
-            (ValueKey("print".into()), Value::Function(std::lib_print)),
-            (ValueKey("type".into()), Value::Function(std::lib_type)),
+            (
+                ValueKey("print".into()),
+                Value::NativeFunction(std::lib_print),
+            ),
+            (
+                ValueKey("type".into()),
+                Value::NativeFunction(std::lib_type),
+            ),
         ]);
 
         let upvalues = Vec::from([("_ENV".into(), Value::Table(Rc::new(RefCell::new(table))))]);
@@ -333,7 +339,7 @@ impl Lua {
 
         if let FunctionIndex::Closure(_) = stack_frame.function_index {
             match &self.stack[stack_frame.stack_frame - 1] {
-                Value::Closure(func) => func.program(),
+                Value::Function(func) => func.program(),
                 other => unreachable!(
                     "Value at {} should be a closure, but was {:?}",
                     stack_frame.stack_frame, other
