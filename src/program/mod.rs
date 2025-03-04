@@ -851,7 +851,7 @@ impl Program {
                 let mut namelist = NameList::default();
                 namelist.push((*name).into());
 
-                self.attnamelist_cont(attnamelist_cont, &mut namelist)?;
+                Self::attnamelist_cont(attnamelist_cont, &mut namelist)?;
 
                 Ok(namelist)
             }
@@ -869,7 +869,6 @@ impl Program {
     }
 
     fn attnamelist_cont(
-        &mut self,
         attnamelist_cont: &Token<'_>,
         namelist: &mut NameList,
     ) -> Result<(), Error> {
@@ -883,7 +882,7 @@ impl Program {
             ) => {
                 namelist.push((*name).into());
 
-                self.attnamelist_cont(attnamelist_cont, namelist)
+                Self::attnamelist_cont(attnamelist_cont, namelist)
             }
             _ => {
                 unreachable!(
@@ -1083,7 +1082,7 @@ impl Program {
                 let mut func_namelist = FunctionNameList::default();
                 func_namelist.names.push(name);
 
-                self.funcname_cont(funcname_cont, &mut func_namelist)?;
+                Self::funcname_cont(funcname_cont, &mut func_namelist)?;
                 self.funcname_end(funcname_end, &mut func_namelist)?;
 
                 Ok(func_namelist)
@@ -1102,7 +1101,6 @@ impl Program {
     }
 
     fn funcname_cont<'a>(
-        &mut self,
         funcname_cont: &Token<'a>,
         func_namelist: &mut FunctionNameList<'a>,
     ) -> Result<(), Error> {
@@ -1115,7 +1113,7 @@ impl Program {
             ) => {
                 func_namelist.names.push(name);
 
-                self.funcname_cont(funcname_cont, func_namelist)?;
+                Self::funcname_cont(funcname_cont, func_namelist)?;
 
                 Ok(())
             }
@@ -1262,54 +1260,6 @@ impl Program {
         }
     }
 
-    fn namelist(
-        &mut self,
-        namelist: &Token,
-        compile_context: &CompileContext,
-    ) -> Result<(), Error> {
-        match namelist.tokens.as_slice() {
-            make_deconstruct!(
-                _name(TokenType::Name(_)),
-                namelist_cont(TokenType::NamelistCont)
-            ) => self.namelist_cont(namelist_cont, compile_context),
-            _ => {
-                unreachable!(
-                    "Namelist did not match any of the productions. Had {:#?}.",
-                    namelist
-                        .tokens
-                        .iter()
-                        .map(|t| &t.token_type)
-                        .collect::<Vec<_>>()
-                );
-            }
-        }
-    }
-
-    fn namelist_cont(
-        &mut self,
-        namelist_cont: &Token,
-        compile_context: &CompileContext,
-    ) -> Result<(), Error> {
-        match namelist_cont.tokens.as_slice() {
-            [] => Ok(()),
-            make_deconstruct!(
-                _comma(TokenType::Comma),
-                _name(TokenType::Name(_)),
-                namelist_cont(TokenType::NamelistCont)
-            ) => self.namelist_cont(namelist_cont, compile_context),
-            _ => {
-                unreachable!(
-                    "NamelistCont did not match any of the productions. Had {:#?}.",
-                    namelist_cont
-                        .tokens
-                        .iter()
-                        .map(|t| &t.token_type)
-                        .collect::<Vec<_>>()
-                );
-            }
-        }
-    }
-
     fn explist<'a>(
         &mut self,
         explist: &Token<'a>,
@@ -1368,7 +1318,6 @@ impl Program {
         }
     }
 
-    #[must_use = "ExpDesc might be constant values that need to be discharged"]
     fn exp<'a>(
         &mut self,
         exp: &Token<'a>,
@@ -1610,7 +1559,7 @@ impl Program {
                     )?;
                 }
 
-                let closure_position = self.push_function(Rc::new(Closure::new(
+                let closure_position = self.push_function(Rc::new(Function::new(
                     func_program,
                     parlist_name_count + (needs_self as usize),
                     parlist.variadic_args,
@@ -1659,7 +1608,7 @@ impl Program {
                 parlist_cont(TokenType::ParlistCont)
             ) => {
                 func_parlist.names.push((*name).into());
-                self.parlist_cont(parlist_cont, func_parlist)
+                Self::parlist_cont(parlist_cont, func_parlist)
             }
             make_deconstruct!(_dots(TokenType::Dots)) => {
                 func_parlist.variadic_args = true;
@@ -1678,11 +1627,7 @@ impl Program {
         }
     }
 
-    fn parlist_cont(
-        &mut self,
-        parlist_cont: &Token<'_>,
-        func_parlist: &mut ParList,
-    ) -> Result<(), Error> {
+    fn parlist_cont(parlist_cont: &Token<'_>, func_parlist: &mut ParList) -> Result<(), Error> {
         match parlist_cont.tokens.as_slice() {
             [] => Ok(()),
             make_deconstruct!(
@@ -1691,7 +1636,7 @@ impl Program {
                 parlist_cont(TokenType::ParlistCont)
             ) => {
                 func_parlist.names.push((*name).into());
-                self.parlist_cont(parlist_cont, func_parlist)
+                Self::parlist_cont(parlist_cont, func_parlist)
             }
             make_deconstruct!(_comma(TokenType::Comma), _dots(TokenType::Dots)) => {
                 func_parlist.variadic_args = true;
