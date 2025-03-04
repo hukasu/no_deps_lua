@@ -19,10 +19,7 @@ pub enum Error {
     // Binary relational operators
     RelationalOperand(&'static str, &'static str),
     // Concat
-    NilConcat,
-    BoolConcat,
-    TableConcat,
-    FunctionConcat,
+    ConcatOperand(&'static str),
     // Other
     TryFloatConversion,
     IntegerConversion,
@@ -51,10 +48,9 @@ impl Display for Error {
             Self::RelationalOperand(lhs, rhs) => {
                 write!(f, "Can't compare {} with {}", lhs, rhs)
             }
-            Self::NilConcat => write!(f, "{}", crate::program::Error::NilConcat),
-            Self::BoolConcat => write!(f, "{}", crate::program::Error::BoolConcat),
-            Self::TableConcat => write!(f, "{}", crate::program::Error::TableConcat),
-            Self::FunctionConcat => write!(f, "Can't use Function in concat operations."),
+            Self::ConcatOperand(lhs) => {
+                write!(f, "Can't use {} in concatenation.", lhs)
+            }
             Self::TryFloatConversion => write!(f, "Failed to convert Value to Value::Float."),
             Self::IntegerConversion => write!(
                 f,

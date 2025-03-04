@@ -1091,15 +1091,11 @@ impl ByteCode {
 
         for src in *first..(first + count) {
             match &vm.get_stack(src)? {
-                Value::Nil => return Err(Error::NilConcat),
-                Value::Boolean(_) => return Err(Error::BoolConcat),
-                Value::Table(_) => return Err(Error::TableConcat),
-                Value::NativeFunction(_) => return Err(Error::FunctionConcat),
-                Value::Function(_) => return Err(Error::FunctionConcat),
                 Value::Integer(lhs) => strings.push(lhs.to_string()),
                 Value::Float(lhs) => strings.push(lhs.to_string()),
                 Value::ShortString(lhs) => strings.push(lhs.to_string()),
                 Value::String(lhs) => strings.push(lhs.to_string()),
+                other => return Err(Error::ConcatOperand(other.static_type_name())),
             };
         }
 
