@@ -1,4 +1,4 @@
-use crate::{byte_code::ByteCode, Program};
+use crate::{bytecode::Bytecode, Program};
 
 #[test]
 fn if_statement() {
@@ -29,33 +29,33 @@ print (a) -- should be nil
     assert_eq!(
         &program.byte_codes,
         &[
-            ByteCode::VariadicArgumentPrepare(0),
+            Bytecode::variadic_arguments_prepare(0),
             // if a then
-            ByteCode::GetUpTable(0, 0, 0),
-            ByteCode::Test(0, 0),
-            ByteCode::Jmp(3),
+            Bytecode::get_uptable(0, 0, 0),
+            Bytecode::test(0, 0),
+            Bytecode::jump(3),
             // print "skip this"
-            ByteCode::GetUpTable(0, 0, 1),
-            ByteCode::LoadConstant(1, 2),
-            ByteCode::Call(0, 2, 1),
+            Bytecode::get_uptable(0, 0, 1),
+            Bytecode::load_constant(1, 2),
+            Bytecode::call(0, 2, 1),
             // end
             // if print then
-            ByteCode::GetUpTable(0, 0, 1),
-            ByteCode::Test(0, 0),
-            ByteCode::Jmp(4),
+            Bytecode::get_uptable(0, 0, 1),
+            Bytecode::test(0, 0),
+            Bytecode::jump(4),
             // local a = "I am true"
-            ByteCode::LoadConstant(0, 3),
+            Bytecode::load_constant(0, 3),
             // print(a)
-            ByteCode::GetUpTable(1, 0, 1),
-            ByteCode::Move(2, 0),
-            ByteCode::Call(1, 2, 1),
+            Bytecode::get_uptable(1, 0, 1),
+            Bytecode::move_bytecode(2, 0),
+            Bytecode::call(1, 2, 1),
             // end
             // print (a) -- should be nil
-            ByteCode::GetUpTable(0, 0, 1),
-            ByteCode::GetUpTable(1, 0, 0),
-            ByteCode::Call(0, 2, 1),
+            Bytecode::get_uptable(0, 0, 1),
+            Bytecode::get_uptable(1, 0, 0),
+            Bytecode::call(0, 2, 1),
             // EOF
-            ByteCode::Return(0, 1, 1),
+            Bytecode::return_bytecode(0, 1, 1),
         ]
     );
     crate::Lua::execute(&program).expect("Should run");
@@ -101,65 +101,65 @@ end
     assert_eq!(
         &program.byte_codes,
         &[
-            ByteCode::VariadicArgumentPrepare(0),
+            Bytecode::variadic_arguments_prepare(0),
             // local a,b = 123
-            ByteCode::LoadInt(0, 123),
-            ByteCode::LoadNil(1, 0),
+            Bytecode::load_integer(0, 123),
+            Bytecode::load_nil(1, 0),
             // if b then
-            ByteCode::Test(1, 0),
-            ByteCode::Jmp(4),
+            Bytecode::test(1, 0),
+            Bytecode::jump(4),
             //   print "not here"
-            ByteCode::GetUpTable(2, 0, 0),
-            ByteCode::LoadConstant(3, 1),
-            ByteCode::Call(2, 2, 1),
-            ByteCode::Jmp(16),
+            Bytecode::get_uptable(2, 0, 0),
+            Bytecode::load_constant(3, 1),
+            Bytecode::call(2, 2, 1),
+            Bytecode::jump(16),
             // elseif g then
-            ByteCode::GetUpTable(2, 0, 2),
-            ByteCode::Test(2, 0),
-            ByteCode::Jmp(4),
+            Bytecode::get_uptable(2, 0, 2),
+            Bytecode::test(2, 0),
+            Bytecode::jump(4),
             //   print "not here"
-            ByteCode::GetUpTable(2, 0, 0),
-            ByteCode::LoadConstant(3, 1),
-            ByteCode::Call(2, 2, 1),
-            ByteCode::Jmp(9),
+            Bytecode::get_uptable(2, 0, 0),
+            Bytecode::load_constant(3, 1),
+            Bytecode::call(2, 2, 1),
+            Bytecode::jump(9),
             // elseif a then
-            ByteCode::Test(0, 0),
-            ByteCode::Jmp(4),
+            Bytecode::test(0, 0),
+            Bytecode::jump(4),
             //   print "yes, here"
-            ByteCode::GetUpTable(2, 0, 0),
-            ByteCode::LoadConstant(3, 3),
-            ByteCode::Call(2, 2, 1),
-            ByteCode::Jmp(3),
+            Bytecode::get_uptable(2, 0, 0),
+            Bytecode::load_constant(3, 3),
+            Bytecode::call(2, 2, 1),
+            Bytecode::jump(3),
             // else
             //   print "not here"
-            ByteCode::GetUpTable(2, 0, 0),
-            ByteCode::LoadConstant(3, 1),
-            ByteCode::Call(2, 2, 1),
+            Bytecode::get_uptable(2, 0, 0),
+            Bytecode::load_constant(3, 1),
+            Bytecode::call(2, 2, 1),
             // end
             // if b then
-            ByteCode::Test(1, 0),
-            ByteCode::Jmp(4),
+            Bytecode::test(1, 0),
+            Bytecode::jump(4),
             //   print "not here"
-            ByteCode::GetUpTable(2, 0, 0),
-            ByteCode::LoadConstant(3, 1),
-            ByteCode::Call(2, 2, 1),
-            ByteCode::Jmp(3),
+            Bytecode::get_uptable(2, 0, 0),
+            Bytecode::load_constant(3, 1),
+            Bytecode::call(2, 2, 1),
+            Bytecode::jump(3),
             // else
             //   print "yes, here"
-            ByteCode::GetUpTable(2, 0, 0),
-            ByteCode::LoadConstant(3, 3),
-            ByteCode::Call(2, 2, 1),
+            Bytecode::get_uptable(2, 0, 0),
+            Bytecode::load_constant(3, 3),
+            Bytecode::call(2, 2, 1),
             // end
             // if b then
-            ByteCode::Test(1, 0),
-            ByteCode::Jmp(3),
+            Bytecode::test(1, 0),
+            Bytecode::jump(3),
             //   print "yes, here"
-            ByteCode::GetUpTable(2, 0, 0),
-            ByteCode::LoadConstant(3, 1),
-            ByteCode::Call(2, 2, 1),
+            Bytecode::get_uptable(2, 0, 0),
+            Bytecode::load_constant(3, 1),
+            Bytecode::call(2, 2, 1),
             // end
             // EOF
-            ByteCode::Return(2, 1, 1),
+            Bytecode::return_bytecode(2, 1, 1),
         ]
     );
     crate::Lua::execute(&program).expect("Should run");
@@ -182,22 +182,22 @@ end
     assert_eq!(
         &program.byte_codes,
         &[
-            ByteCode::VariadicArgumentPrepare(0),
+            Bytecode::variadic_arguments_prepare(0),
             // local a = 123
-            ByteCode::LoadInt(0, 123),
+            Bytecode::load_integer(0, 123),
             // while a do
-            ByteCode::Test(0, 0),
-            ByteCode::Jmp(5),
+            Bytecode::test(0, 0),
+            Bytecode::jump(5),
             //   print(a)
-            ByteCode::GetUpTable(1, 0, 0),
-            ByteCode::Move(2, 0),
-            ByteCode::Call(1, 2, 1),
+            Bytecode::get_uptable(1, 0, 0),
+            Bytecode::move_bytecode(2, 0),
+            Bytecode::call(1, 2, 1),
             //   a = not a
-            ByteCode::Not(0, 0),
+            Bytecode::not(0, 0),
             // end
-            ByteCode::Jmp(-7),
+            Bytecode::jump(-7),
             // EOF
-            ByteCode::Return(1, 1, 1),
+            Bytecode::return_bytecode(1, 1, 1),
         ]
     );
     crate::Lua::execute(&program).expect("Should run");
@@ -236,41 +236,41 @@ end
     assert_eq!(
         &program.byte_codes,
         &[
-            ByteCode::VariadicArgumentPrepare(0),
+            Bytecode::variadic_arguments_prepare(0),
             // local z = 1
-            ByteCode::LoadInt(0, 1),
+            Bytecode::load_integer(0, 1),
             // while z do
-            ByteCode::Test(0, 0),
-            ByteCode::Jmp(18),
+            Bytecode::test(0, 0),
+            Bytecode::jump(18),
             //   while z do
-            ByteCode::Test(0, 0),
-            ByteCode::Jmp(8),
+            Bytecode::test(0, 0),
+            Bytecode::jump(8),
             //     print "break inner"
-            ByteCode::GetUpTable(1, 0, 0),
-            ByteCode::LoadConstant(2, 1),
-            ByteCode::Call(1, 2, 1),
+            Bytecode::get_uptable(1, 0, 0),
+            Bytecode::load_constant(2, 1),
+            Bytecode::call(1, 2, 1),
             //     break
-            ByteCode::Jmp(4),
+            Bytecode::jump(4),
             //     print "unreachable inner"
-            ByteCode::GetUpTable(1, 0, 0),
-            ByteCode::LoadConstant(2, 2),
-            ByteCode::Call(1, 2, 1),
+            Bytecode::get_uptable(1, 0, 0),
+            Bytecode::load_constant(2, 2),
+            Bytecode::call(1, 2, 1),
             //   end
-            ByteCode::Jmp(-10),
+            Bytecode::jump(-10),
             //   print "break outer"
-            ByteCode::GetUpTable(1, 0, 0),
-            ByteCode::LoadConstant(2, 3),
-            ByteCode::Call(1, 2, 1),
+            Bytecode::get_uptable(1, 0, 0),
+            Bytecode::load_constant(2, 3),
+            Bytecode::call(1, 2, 1),
             //   break
-            ByteCode::Jmp(4),
+            Bytecode::jump(4),
             //   print "unreachable outer"
-            ByteCode::GetUpTable(1, 0, 0),
-            ByteCode::LoadConstant(2, 4),
-            ByteCode::Call(1, 2, 1),
+            Bytecode::get_uptable(1, 0, 0),
+            Bytecode::load_constant(2, 4),
+            Bytecode::call(1, 2, 1),
             // end
-            ByteCode::Jmp(-20),
+            Bytecode::jump(-20),
             // EOF
-            ByteCode::Return(1, 1, 1),
+            Bytecode::return_bytecode(1, 1, 1),
         ]
     );
     crate::Lua::execute(&program).expect("Should run");
@@ -293,21 +293,21 @@ until a
     assert_eq!(
         &program.byte_codes,
         &[
-            ByteCode::VariadicArgumentPrepare(0),
+            Bytecode::variadic_arguments_prepare(0),
             // local a = false
-            ByteCode::LoadFalse(0),
+            Bytecode::load_false(0),
             // repeat
             //   print(a)
-            ByteCode::GetUpTable(1, 0, 0),
-            ByteCode::Move(2, 0),
-            ByteCode::Call(1, 2, 1),
+            Bytecode::get_uptable(1, 0, 0),
+            Bytecode::move_bytecode(2, 0),
+            Bytecode::call(1, 2, 1),
             //   a = not a
-            ByteCode::Not(0, 0),
+            Bytecode::not(0, 0),
             // until a
-            ByteCode::Test(0, 0),
-            ByteCode::Jmp(-6),
+            Bytecode::test(0, 0),
+            Bytecode::jump(-6),
             // EOF
-            ByteCode::Return(1, 1, 1),
+            Bytecode::return_bytecode(1, 1, 1),
         ]
     );
     crate::Lua::execute(&program).expect("Should run");
@@ -358,66 +358,66 @@ end
     assert_eq!(
         &program.byte_codes,
         &[
-            ByteCode::VariadicArgumentPrepare(0),
+            Bytecode::variadic_arguments_prepare(0),
             // for i = 1, 3, 1 do
-            ByteCode::LoadInt(0, 1),
-            ByteCode::LoadInt(1, 3),
-            ByteCode::LoadInt(2, 1),
-            ByteCode::ForPrepare(0, 3),
+            Bytecode::load_integer(0, 1),
+            Bytecode::load_integer(1, 3),
+            Bytecode::load_integer(2, 1),
+            Bytecode::for_prepare(0, 3),
             //     print(i)
-            ByteCode::GetUpTable(4, 0, 0),
-            ByteCode::Move(5, 3),
-            ByteCode::Call(4, 2, 1),
+            Bytecode::get_uptable(4, 0, 0),
+            Bytecode::move_bytecode(5, 3),
+            Bytecode::call(4, 2, 1),
             // end
-            ByteCode::ForLoop(0, 4),
+            Bytecode::for_loop(0, 4),
             // for i = 1, -2, -1 do
-            ByteCode::LoadInt(0, 1),
-            ByteCode::LoadInt(1, -2),
-            ByteCode::LoadInt(2, -1),
-            ByteCode::ForPrepare(0, 3),
+            Bytecode::load_integer(0, 1),
+            Bytecode::load_integer(1, -2),
+            Bytecode::load_integer(2, -1),
+            Bytecode::for_prepare(0, 3),
             //     print(i)
-            ByteCode::GetUpTable(4, 0, 0),
-            ByteCode::Move(5, 3),
-            ByteCode::Call(4, 2, 1),
+            Bytecode::get_uptable(4, 0, 0),
+            Bytecode::move_bytecode(5, 3),
+            Bytecode::call(4, 2, 1),
             // end
-            ByteCode::ForLoop(0, 4),
+            Bytecode::for_loop(0, 4),
             // for i = 1, 3.2 do
-            ByteCode::LoadInt(0, 1),
-            ByteCode::LoadConstant(1, 1),
-            ByteCode::LoadInt(2, 1),
-            ByteCode::ForPrepare(0, 3),
+            Bytecode::load_integer(0, 1),
+            Bytecode::load_constant(1, 1),
+            Bytecode::load_integer(2, 1),
+            Bytecode::for_prepare(0, 3),
             //     print(i)
-            ByteCode::GetUpTable(4, 0, 0),
-            ByteCode::Move(5, 3),
-            ByteCode::Call(4, 2, 1),
+            Bytecode::get_uptable(4, 0, 0),
+            Bytecode::move_bytecode(5, 3),
+            Bytecode::call(4, 2, 1),
             // end
-            ByteCode::ForLoop(0, 4),
+            Bytecode::for_loop(0, 4),
             // for i = 1.0, 3 do
-            ByteCode::LoadFloat(0, 1),
-            ByteCode::LoadInt(1, 3),
-            ByteCode::LoadInt(2, 1),
-            ByteCode::ForPrepare(0, 3),
+            Bytecode::load_float(0, 1),
+            Bytecode::load_integer(1, 3),
+            Bytecode::load_integer(2, 1),
+            Bytecode::for_prepare(0, 3),
             //     print(i)
-            ByteCode::GetUpTable(4, 0, 0),
-            ByteCode::Move(5, 3),
-            ByteCode::Call(4, 2, 1),
+            Bytecode::get_uptable(4, 0, 0),
+            Bytecode::move_bytecode(5, 3),
+            Bytecode::call(4, 2, 1),
             // end
-            ByteCode::ForLoop(0, 4),
+            Bytecode::for_loop(0, 4),
             // local max = 9223372036854775807
-            ByteCode::LoadConstant(0, 2),
+            Bytecode::load_constant(0, 2),
             // for i = max, max*10.0, -1 do
-            ByteCode::Move(1, 0),
-            ByteCode::MulConstant(2, 0, 3),
-            ByteCode::LoadInt(3, -1),
-            ByteCode::ForPrepare(1, 3),
+            Bytecode::move_bytecode(1, 0),
+            Bytecode::mul_constant(2, 0, 3),
+            Bytecode::load_integer(3, -1),
+            Bytecode::for_prepare(1, 3),
             //     print (i)
-            ByteCode::GetUpTable(5, 0, 0),
-            ByteCode::Move(6, 4),
-            ByteCode::Call(5, 2, 1),
+            Bytecode::get_uptable(5, 0, 0),
+            Bytecode::move_bytecode(6, 4),
+            Bytecode::call(5, 2, 1),
             // end
-            ByteCode::ForLoop(1, 4),
+            Bytecode::for_loop(1, 4),
             // EOF
-            ByteCode::Return(1, 1, 1),
+            Bytecode::return_bytecode(1, 1, 1),
         ]
     );
     crate::Lua::execute(&program).expect("Should run");
@@ -467,39 +467,39 @@ end
     assert_eq!(
         &program.byte_codes,
         &[
-            ByteCode::VariadicArgumentPrepare(0),
+            Bytecode::variadic_arguments_prepare(0),
             // print("block: 1")
-            ByteCode::GetUpTable(0, 0, 0),
-            ByteCode::LoadConstant(1, 1),
-            ByteCode::Call(0, 2, 1),
+            Bytecode::get_uptable(0, 0, 0),
+            Bytecode::load_constant(1, 1),
+            Bytecode::call(0, 2, 1),
             // goto label2
-            ByteCode::Jmp(4),
+            Bytecode::jump(4),
             // print("block: 3")
-            ByteCode::GetUpTable(0, 0, 0),
-            ByteCode::LoadConstant(1, 2),
-            ByteCode::Call(0, 2, 1),
+            Bytecode::get_uptable(0, 0, 0),
+            Bytecode::load_constant(1, 2),
+            Bytecode::call(0, 2, 1),
             // goto label4
-            ByteCode::Jmp(4),
+            Bytecode::jump(4),
             // do
             //   print("block: 2")
-            ByteCode::GetUpTable(0, 0, 0),
-            ByteCode::LoadConstant(1, 3),
-            ByteCode::Call(0, 2, 1),
+            Bytecode::get_uptable(0, 0, 0),
+            Bytecode::load_constant(1, 3),
+            Bytecode::call(0, 2, 1),
             //   goto label3 -- goto outer block
-            ByteCode::Jmp(-8),
+            Bytecode::jump(-8),
             // end
             // print("block: 4")
-            ByteCode::GetUpTable(0, 0, 0),
-            ByteCode::LoadConstant(1, 4),
-            ByteCode::Call(0, 2, 1),
+            Bytecode::get_uptable(0, 0, 0),
+            Bytecode::load_constant(1, 4),
+            Bytecode::call(0, 2, 1),
             // do
             //   goto label
-            ByteCode::Jmp(1),
+            Bytecode::jump(1),
             //   local a = 'local var'
-            ByteCode::LoadConstant(0, 5),
+            Bytecode::load_constant(0, 5),
             // end
             // EOF
-            ByteCode::Return(0, 1, 1),
+            Bytecode::return_bytecode(0, 1, 1),
         ]
     );
     crate::Lua::execute(&program).expect("Should run");

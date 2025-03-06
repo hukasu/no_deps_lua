@@ -1,4 +1,4 @@
-use crate::byte_code::ByteCode;
+use crate::bytecode::Bytecode;
 
 #[test]
 fn hello_world() {
@@ -21,17 +21,17 @@ print "hello, again!"
     assert_eq!(
         &program.byte_codes,
         &[
-            ByteCode::VariadicArgumentPrepare(0),
+            Bytecode::variadic_arguments_prepare(0),
             // print "hello, world!"
-            ByteCode::GetUpTable(0, 0, 0),
-            ByteCode::LoadConstant(1, 1),
-            ByteCode::Call(0, 2, 1),
+            Bytecode::get_uptable(0, 0, 0),
+            Bytecode::load_constant(1, 1),
+            Bytecode::call(0, 2, 1),
             // print "hello, again!"
-            ByteCode::GetUpTable(0, 0, 0),
-            ByteCode::LoadConstant(1, 2),
-            ByteCode::Call(0, 2, 1),
+            Bytecode::get_uptable(0, 0, 0),
+            Bytecode::load_constant(1, 2),
+            Bytecode::call(0, 2, 1),
             // EOF
-            ByteCode::Return(0, 1, 1),
+            Bytecode::return_bytecode(0, 1, 1),
         ]
     );
     crate::Lua::execute(&program).unwrap();

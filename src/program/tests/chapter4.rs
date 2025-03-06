@@ -1,4 +1,4 @@
-use crate::{byte_code::ByteCode, Program};
+use crate::{bytecode::Bytecode, Program};
 
 #[test]
 fn table() {
@@ -33,40 +33,40 @@ print(t)
     assert_eq!(
         &program.byte_codes,
         &[
-            ByteCode::VariadicArgumentPrepare(0),
+            Bytecode::variadic_arguments_prepare(0),
             // local key = "key"
-            ByteCode::LoadConstant(0, 0),
+            Bytecode::load_constant(0, 0),
             // local t = {...}
-            ByteCode::NewTable(1, 3, 3),
+            Bytecode::new_table(1, 3, 3),
             // 100, 200, 300;
-            ByteCode::LoadInt(2, 100),
-            ByteCode::LoadInt(3, 200),
-            ByteCode::LoadInt(4, 300),
+            Bytecode::load_integer(2, 100),
+            Bytecode::load_integer(3, 200),
+            Bytecode::load_integer(4, 300),
             // x="hello", y="world";
-            ByteCode::SetFieldConstant(1, 1, 2),
-            ByteCode::SetFieldConstant(1, 3, 4),
+            Bytecode::set_field(1, 1, 2, 1),
+            Bytecode::set_field(1, 3, 4, 1),
             // [key]="val";
-            ByteCode::SetTableConstant(1, 0, 5),
+            Bytecode::set_table(1, 0, 5, 1),
             // {...}
-            ByteCode::SetList(1, 3, 0),
+            Bytecode::set_list(1, 3, 0),
             // print(t[1])
-            ByteCode::GetUpTable(2, 0, 6),
-            ByteCode::GetInt(3, 1, 1),
-            ByteCode::Call(2, 2, 1),
+            Bytecode::get_uptable(2, 0, 6),
+            Bytecode::get_index(3, 1, 1),
+            Bytecode::call(2, 2, 1),
             // print(t['x'])
-            ByteCode::GetUpTable(2, 0, 6),
-            ByteCode::GetField(3, 1, 1),
-            ByteCode::Call(2, 2, 1),
+            Bytecode::get_uptable(2, 0, 6),
+            Bytecode::get_field(3, 1, 1),
+            Bytecode::call(2, 2, 1),
             // print(t.key)
-            ByteCode::GetUpTable(2, 0, 6),
-            ByteCode::GetField(3, 1, 0),
-            ByteCode::Call(2, 2, 1),
+            Bytecode::get_uptable(2, 0, 6),
+            Bytecode::get_field(3, 1, 0),
+            Bytecode::call(2, 2, 1),
             // print(t)
-            ByteCode::GetUpTable(2, 0, 6),
-            ByteCode::Move(3, 1),
-            ByteCode::Call(2, 2, 1),
+            Bytecode::get_uptable(2, 0, 6),
+            Bytecode::move_bytecode(3, 1),
+            Bytecode::call(2, 2, 1),
             // EOF
-            ByteCode::Return(2, 1, 1),
+            Bytecode::return_bytecode(2, 1, 1),
         ]
     );
     crate::Lua::execute(&program).unwrap();
@@ -105,62 +105,62 @@ t.f(t[1000])
     assert_eq!(
         &program.byte_codes,
         &[
-            ByteCode::VariadicArgumentPrepare(0),
+            Bytecode::variadic_arguments_prepare(0),
             // local a,b = 100,200
-            ByteCode::LoadInt(0, 100),
-            ByteCode::LoadInt(1, 200),
+            Bytecode::load_integer(0, 100),
+            Bytecode::load_integer(1, 200),
             // t = {...}
-            ByteCode::NewTable(2, 2, 3),
+            Bytecode::new_table(2, 2, 3),
             // k=300
-            ByteCode::SetFieldConstant(2, 1, 2),
+            Bytecode::set_field(2, 1, 2, 1),
             // z=a
-            ByteCode::SetField(2, 3, 0),
+            Bytecode::set_field(2, 3, 0, 0),
             // 10,20,30
-            ByteCode::LoadInt(3, 10),
-            ByteCode::LoadInt(4, 20),
-            ByteCode::LoadInt(5, 30),
-            ByteCode::SetList(2, 3, 0),
+            Bytecode::load_integer(3, 10),
+            Bytecode::load_integer(4, 20),
+            Bytecode::load_integer(5, 30),
+            Bytecode::set_list(2, 3, 0),
             // t = {...}
-            ByteCode::SetUpTable(0, 0, 2),
+            Bytecode::set_uptable(0, 0, 2, 0),
             // t.k = 400 -- set
-            ByteCode::GetUpTable(2, 0, 0),
-            ByteCode::SetFieldConstant(2, 1, 4),
+            Bytecode::get_uptable(2, 0, 0),
+            Bytecode::set_field(2, 1, 4, 1),
             // t.x = t.z -- new
-            ByteCode::GetUpTable(2, 0, 0),
-            ByteCode::GetUpTable(3, 0, 0),
-            ByteCode::GetField(3, 3, 3),
-            ByteCode::SetField(2, 5, 3),
+            Bytecode::get_uptable(2, 0, 0),
+            Bytecode::get_uptable(3, 0, 0),
+            Bytecode::get_field(3, 3, 3),
+            Bytecode::set_field(2, 5, 3, 0),
             // t.f = print -- new
-            ByteCode::GetUpTable(2, 0, 0),
-            ByteCode::GetUpTable(3, 0, 7),
-            ByteCode::SetField(2, 6, 3),
+            Bytecode::get_uptable(2, 0, 0),
+            Bytecode::get_uptable(3, 0, 7),
+            Bytecode::set_field(2, 6, 3, 0),
             // t.f(t.k)
-            ByteCode::GetUpTable(2, 0, 0),
-            ByteCode::GetField(2, 2, 6),
-            ByteCode::GetUpTable(3, 0, 0),
-            ByteCode::GetField(3, 3, 1),
-            ByteCode::Call(2, 2, 1),
+            Bytecode::get_uptable(2, 0, 0),
+            Bytecode::get_field(2, 2, 6),
+            Bytecode::get_uptable(3, 0, 0),
+            Bytecode::get_field(3, 3, 1),
+            Bytecode::call(2, 2, 1),
             // t.f(t.x)
-            ByteCode::GetUpTable(2, 0, 0),
-            ByteCode::GetField(2, 2, 6),
-            ByteCode::GetUpTable(3, 0, 0),
-            ByteCode::GetField(3, 3, 5),
-            ByteCode::Call(2, 2, 1),
+            Bytecode::get_uptable(2, 0, 0),
+            Bytecode::get_field(2, 2, 6),
+            Bytecode::get_uptable(3, 0, 0),
+            Bytecode::get_field(3, 3, 5),
+            Bytecode::call(2, 2, 1),
             // t.f(t[2])
-            ByteCode::GetUpTable(2, 0, 0),
-            ByteCode::GetField(2, 2, 6),
-            ByteCode::GetUpTable(3, 0, 0),
-            ByteCode::GetInt(3, 3, 2),
-            ByteCode::Call(2, 2, 1),
+            Bytecode::get_uptable(2, 0, 0),
+            Bytecode::get_field(2, 2, 6),
+            Bytecode::get_uptable(3, 0, 0),
+            Bytecode::get_index(3, 3, 2),
+            Bytecode::call(2, 2, 1),
             // t.f(t[1000])
-            ByteCode::GetUpTable(2, 0, 0),
-            ByteCode::GetField(2, 2, 6),
-            ByteCode::GetUpTable(3, 0, 0),
-            ByteCode::LoadInt(4, 1000),
-            ByteCode::GetTable(3, 3, 4),
-            ByteCode::Call(2, 2, 1),
+            Bytecode::get_uptable(2, 0, 0),
+            Bytecode::get_field(2, 2, 6),
+            Bytecode::get_uptable(3, 0, 0),
+            Bytecode::load_integer(4, 1000),
+            Bytecode::get_table(3, 3, 4),
+            Bytecode::call(2, 2, 1),
             // EOF
-            ByteCode::Return(2, 1, 1),
+            Bytecode::return_bytecode(2, 1, 1),
         ]
     );
     crate::Lua::execute(&program).unwrap();

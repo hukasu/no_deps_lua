@@ -1,6 +1,6 @@
 use alloc::string::String;
 
-use crate::{byte_code::ByteCode, ext::Unescape, Program};
+use crate::{bytecode::Bytecode, ext::Unescape, Program};
 
 #[test]
 fn escape() {
@@ -39,29 +39,29 @@ print "null: \0." -- '\0'
     assert_eq!(
         &program.byte_codes,
         &[
-            ByteCode::VariadicArgumentPrepare(0),
+            Bytecode::variadic_arguments_prepare(0),
             // print "tab:\thi" -- tab
-            ByteCode::GetUpTable(0, 0, 0),
-            ByteCode::LoadConstant(1, 1),
-            ByteCode::Call(0, 2, 1),
+            Bytecode::get_uptable(0, 0, 0),
+            Bytecode::load_constant(1, 1),
+            Bytecode::call(0, 2, 1),
             // print "\xE4\xBD\xA0\xE5\xA5\xBD" -- 你好
-            ByteCode::GetUpTable(0, 0, 0),
-            ByteCode::LoadConstant(1, 2),
-            ByteCode::Call(0, 2, 1),
+            Bytecode::get_uptable(0, 0, 0),
+            Bytecode::load_constant(1, 2),
+            Bytecode::call(0, 2, 1),
             // print "\xE4\xBD" -- invalid UTF-8
-            ByteCode::GetUpTable(0, 0, 0),
-            ByteCode::LoadConstant(1, 3),
-            ByteCode::Call(0, 2, 1),
+            Bytecode::get_uptable(0, 0, 0),
+            Bytecode::load_constant(1, 3),
+            Bytecode::call(0, 2, 1),
             // print "\72\101\108\108\111" -- Hello
-            ByteCode::GetUpTable(0, 0, 0),
-            ByteCode::LoadConstant(1, 4),
-            ByteCode::Call(0, 2, 1),
+            Bytecode::get_uptable(0, 0, 0),
+            Bytecode::load_constant(1, 4),
+            Bytecode::call(0, 2, 1),
             // print "null: \0." -- '\0'
-            ByteCode::GetUpTable(0, 0, 0),
-            ByteCode::LoadConstant(1, 5),
-            ByteCode::Call(0, 2, 1),
+            Bytecode::get_uptable(0, 0, 0),
+            Bytecode::load_constant(1, 5),
+            Bytecode::call(0, 2, 1),
             // EOF
-            ByteCode::Return(0, 1, 1),
+            Bytecode::return_bytecode(0, 1, 1),
         ]
     );
     crate::Lua::execute(&program).unwrap();
@@ -103,49 +103,49 @@ print(long_string_long_string_long_string_long_string_long_string)
     assert_eq!(
         &program.byte_codes,
         &[
-            ByteCode::VariadicArgumentPrepare(0),
+            Bytecode::variadic_arguments_prepare(0),
             // local s = "hello_world"
-            ByteCode::LoadConstant(0, 0),
+            Bytecode::load_constant(0, 0),
             // local m = "middle_string_middle_string"
-            ByteCode::LoadConstant(1, 1),
+            Bytecode::load_constant(1, 1),
             // local l = "long_string_long_string_long_string_long_string_long_string"
-            ByteCode::LoadConstant(2, 2),
+            Bytecode::load_constant(2, 2),
             // print(s)
-            ByteCode::GetUpTable(3, 0, 3),
-            ByteCode::Move(4, 0),
-            ByteCode::Call(3, 2, 1),
+            Bytecode::get_uptable(3, 0, 3),
+            Bytecode::move_bytecode(4, 0),
+            Bytecode::call(3, 2, 1),
             // print(m)
-            ByteCode::GetUpTable(3, 0, 3),
-            ByteCode::Move(4, 1),
-            ByteCode::Call(3, 2, 1),
+            Bytecode::get_uptable(3, 0, 3),
+            Bytecode::move_bytecode(4, 1),
+            Bytecode::call(3, 2, 1),
             // print(l)
-            ByteCode::GetUpTable(3, 0, 3),
-            ByteCode::Move(4, 2),
-            ByteCode::Call(3, 2, 1),
+            Bytecode::get_uptable(3, 0, 3),
+            Bytecode::move_bytecode(4, 2),
+            Bytecode::call(3, 2, 1),
             // hello_world = 12
-            ByteCode::SetUpTableConstant(0, 0, 4),
+            Bytecode::set_uptable(0, 0, 4, 1),
             // middle_string_middle_string = 345
-            ByteCode::SetUpTableConstant(0, 1, 5),
+            Bytecode::set_uptable(0, 1, 5, 1),
             // long_string_long_string_long_string_long_string_long_string = 6789
-            ByteCode::GetUpValue(3, 0),
-            ByteCode::LoadConstant(4, 2),
-            ByteCode::SetTableConstant(3, 4, 6),
+            Bytecode::get_upvalue(3, 0),
+            Bytecode::load_constant(4, 2),
+            Bytecode::set_table(3, 4, 6, 1),
             // print(hello_world)
-            ByteCode::GetUpTable(3, 0, 3),
-            ByteCode::GetUpTable(4, 0, 0),
-            ByteCode::Call(3, 2, 1),
+            Bytecode::get_uptable(3, 0, 3),
+            Bytecode::get_uptable(4, 0, 0),
+            Bytecode::call(3, 2, 1),
             // print(middle_string_middle_string)
-            ByteCode::GetUpTable(3, 0, 3),
-            ByteCode::GetUpTable(4, 0, 1),
-            ByteCode::Call(3, 2, 1),
+            Bytecode::get_uptable(3, 0, 3),
+            Bytecode::get_uptable(4, 0, 1),
+            Bytecode::call(3, 2, 1),
             // print(long_string_long_string_long_string_long_string_long_string)
-            ByteCode::GetUpTable(3, 0, 3),
-            ByteCode::GetUpValue(4, 0),
-            ByteCode::LoadConstant(5, 2),
-            ByteCode::GetTable(4, 4, 5),
-            ByteCode::Call(3, 2, 1),
+            Bytecode::get_uptable(3, 0, 3),
+            Bytecode::get_upvalue(4, 0),
+            Bytecode::load_constant(5, 2),
+            Bytecode::get_table(4, 4, 5),
+            Bytecode::call(3, 2, 1),
             // EOF
-            ByteCode::Return(3, 1, 1)
+            Bytecode::return_bytecode(3, 1, 1)
         ]
     );
     crate::Lua::execute(&program).unwrap();

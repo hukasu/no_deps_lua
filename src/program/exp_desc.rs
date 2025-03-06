@@ -1,6 +1,7 @@
 use alloc::boxed::Box;
 
 use crate::{
+    bytecode::OpCode,
     ext::{FloatExt, Unescape},
     value::Value,
 };
@@ -9,7 +10,7 @@ use super::{
     binops::Binop,
     compile_context::CompileContext,
     helper_types::{ExpList, TableFields, TableKey},
-    ByteCode, Error, Program,
+    Bytecode, Error, Program,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -20,7 +21,7 @@ pub enum ExpDesc<'a> {
     Float(f64),
     String(&'a str),
     Name(&'a str),
-    Unop(fn(u8, u8) -> ByteCode, Box<ExpDesc<'a>>),
+    Unop(fn(u8, u8) -> Bytecode, Box<ExpDesc<'a>>),
     Binop(Binop, Box<ExpDesc<'a>>, Box<ExpDesc<'a>>),
     Local(usize),
     Global(usize),
@@ -108,7 +109,7 @@ impl<'a> ExpDesc<'a> {
         match dst {
             Self::Local(dst) => {
                 let dst = u8::try_from(*dst)?;
-                program.byte_codes.push(ByteCode::LoadNil(dst, 0));
+                program.byte_codes.push(Bytecode::load_nil(dst, 0));
 
                 Ok(())
             }
@@ -127,9 +128,9 @@ impl<'a> ExpDesc<'a> {
                 let dst = u8::try_from(*dst)?;
 
                 if *boolean {
-                    program.byte_codes.push(ByteCode::LoadTrue(dst));
+                    program.byte_codes.push(Bytecode::load_true(dst));
                 } else {
-                    program.byte_codes.push(ByteCode::LoadFalse(dst));
+                    program.byte_codes.push(Bytecode::load_false(dst));
                 }
 
                 Ok(())
@@ -161,19 +162,20 @@ impl<'a> ExpDesc<'a> {
 
                         let int_constant = program.push_constant(*integer)?;
 
-                        program.byte_codes.push(ByteCode::GetUpValue(dst, 0));
+                        program.byte_codes.push(Bytecode::get_upvalue(dst, 0));
                         program
                             .byte_codes
-                            .push(ByteCode::LoadConstant(key_loc, key));
-                        program.byte_codes.push(ByteCode::SetTableConstant(
+                            .push(Bytecode::load_constant(key_loc, key));
+                        program.byte_codes.push(Bytecode::set_table(
                             dst,
                             key_loc,
-                            int_constant,
+                            u8::try_from(int_constant)?,
+                            1,
                         ));
 
                         Ok(())
                     } else {
-                        let global = ExpDesc::Global(usize::from(key));
+                        let global = ExpDesc::Global(usize::try_from(key)?);
                         self.discharge(&global, program, compile_context)
                     }
                 }
@@ -182,10 +184,10 @@ impl<'a> ExpDesc<'a> {
                 let dst = u8::try_from(*dst)?;
 
                 let code = if let Ok(i) = i16::try_from(*integer) {
-                    ByteCode::LoadInt(dst, i)
+                    Bytecode::load_integer(dst, i32::from(i))
                 } else {
                     let position = program.push_constant(*integer)?;
-                    ByteCode::LoadConstant(dst, position)
+                    Bytecode::load_constant(dst, position)
                 };
 
                 program.byte_codes.push(code);
@@ -222,10 +224,11 @@ impl<'a> ExpDesc<'a> {
                     ExpDesc::Name(name) => {
                         let key_constant = program.push_constant(*name)?;
                         let int_constant = program.push_constant(*integer)?;
-                        program.byte_codes.push(ByteCode::SetFieldConstant(
+                        program.byte_codes.push(Bytecode::set_field(
                             u8::try_from(table_loc)?,
-                            key_constant,
-                            int_constant,
+                            u8::try_from(key_constant)?,
+                            u8::try_from(int_constant)?,
+                            1,
                         ));
 
                         Ok(())
@@ -246,16 +249,16 @@ impl<'a> ExpDesc<'a> {
             Self::Local(dst) => {
                 let dst = u8::try_from(*dst)?;
 
-                match float.to_i16() {
+                match float.to_sbx() {
                     Some(i) => {
-                        program.byte_codes.push(ByteCode::LoadFloat(dst, i));
+                        program.byte_codes.push(Bytecode::load_float(dst, i));
                         Ok(())
                     }
                     _ => {
                         let position = program.push_constant(*float)?;
                         program
                             .byte_codes
-                            .push(ByteCode::LoadConstant(dst, position));
+                            .push(Bytecode::load_constant(dst, position));
                         Ok(())
                     }
                 }
@@ -279,7 +282,7 @@ impl<'a> ExpDesc<'a> {
             Self::Name(name) => {
                 let dst = match compile_context.find_name(name) {
                     Some(local) => local,
-                    None => ExpDesc::Global(usize::from(program.push_constant(*name)?)),
+                    None => ExpDesc::Global(usize::try_from(program.push_constant(*name)?)?),
                 };
 
                 self.discharge(&dst, program, compile_context)
@@ -291,7 +294,7 @@ impl<'a> ExpDesc<'a> {
 
                 program
                     .byte_codes
-                    .push(ByteCode::LoadConstant(dst, position));
+                    .push(Bytecode::load_constant(dst, position));
 
                 Ok(())
             }
@@ -324,10 +327,11 @@ impl<'a> ExpDesc<'a> {
                 let string = string.unescape()?;
                 let string_constant = program.push_constant(string.as_str())?;
 
-                program.byte_codes.push(ByteCode::SetTableConstant(
+                program.byte_codes.push(Bytecode::set_table(
                     u8::try_from(*table)?,
                     u8::try_from(key_stack)?,
-                    string_constant,
+                    u8::try_from(string_constant)?,
+                    1,
                 ));
 
                 Ok(())
@@ -350,10 +354,11 @@ impl<'a> ExpDesc<'a> {
                 let string = string.unescape()?;
                 let string_constant = program.push_constant(string.as_str())?;
 
-                program.byte_codes.push(ByteCode::SetFieldConstant(
+                program.byte_codes.push(Bytecode::set_field(
                     u8::try_from(*table)?,
-                    key_constant,
-                    string_constant,
+                    u8::try_from(key_constant)?,
+                    u8::try_from(string_constant)?,
+                    1,
                 ));
 
                 Ok(())
@@ -373,15 +378,15 @@ impl<'a> ExpDesc<'a> {
         };
 
         match dst {
-            Self::Name(lhs) => {
-                if name != lhs {
+            Self::Name(dst) => {
+                if name != dst {
                     let rhs = match compile_context.find_name(name) {
                         Some(local) => local,
-                        None => ExpDesc::Global(usize::from(program.push_constant(*name)?)),
+                        None => ExpDesc::Global(usize::try_from(program.push_constant(*name)?)?),
                     };
-                    let lhs = match compile_context.find_name(lhs) {
+                    let lhs = match compile_context.find_name(dst) {
                         Some(local) => local,
-                        None => ExpDesc::Global(usize::from(program.push_constant(*lhs)?)),
+                        None => ExpDesc::Global(usize::try_from(program.push_constant(*dst)?)?),
                     };
                     rhs.discharge(&lhs, program, compile_context)
                 } else {
@@ -395,7 +400,7 @@ impl<'a> ExpDesc<'a> {
                     Some(ExpDesc::Local(pos)) => {
                         program
                             .byte_codes
-                            .push(ByteCode::Move(dst, u8::try_from(pos)?));
+                            .push(Bytecode::move_bytecode(dst, u8::try_from(pos)?));
                     }
                     Some(_) => unreachable!("Local will always be a `Local`."),
                     None => {
@@ -403,17 +408,19 @@ impl<'a> ExpDesc<'a> {
                         if name.len() > 32 {
                             let name_loc = dst + 1;
 
-                            program.byte_codes.push(ByteCode::GetUpValue(dst, 0));
+                            program.byte_codes.push(Bytecode::get_upvalue(dst, 0));
                             program
                                 .byte_codes
-                                .push(ByteCode::LoadConstant(name_loc, constant));
+                                .push(Bytecode::load_constant(name_loc, constant));
                             program
                                 .byte_codes
-                                .push(ByteCode::GetTable(dst, dst, name_loc));
+                                .push(Bytecode::get_table(dst, dst, name_loc));
                         } else {
-                            program
-                                .byte_codes
-                                .push(ByteCode::GetUpTable(dst, 0, constant));
+                            program.byte_codes.push(Bytecode::get_uptable(
+                                dst,
+                                0,
+                                u8::try_from(constant)?,
+                            ));
                         }
                     }
                 }
@@ -444,9 +451,12 @@ impl<'a> ExpDesc<'a> {
                             let (name_loc, name_stack_top) = compile_context.reserve_stack_top();
                             self.discharge(&name_stack_top, program, compile_context)?;
 
-                            program
-                                .byte_codes
-                                .push(ByteCode::SetField(table_loc, key, name_loc));
+                            program.byte_codes.push(Bytecode::set_field(
+                                table_loc,
+                                u8::try_from(key)?,
+                                name_loc,
+                                0,
+                            ));
 
                             compile_context.stack_top -= 2;
                         }
@@ -476,7 +486,7 @@ impl<'a> ExpDesc<'a> {
                 }
 
                 let jump = program.byte_codes.len();
-                program.byte_codes.push(ByteCode::Jmp(0));
+                program.byte_codes.push(Bytecode::jump(0));
                 compile_context.jumps_to_end.push(jump);
 
                 Ok(())
@@ -561,7 +571,7 @@ impl<'a> ExpDesc<'a> {
                     };
 
                     Self::discharge_binop_integer(
-                        ByteCode::AddInteger,
+                        Bytecode::add_integer,
                         lhs,
                         integer,
                         dst,
@@ -577,7 +587,7 @@ impl<'a> ExpDesc<'a> {
                     };
 
                     Self::discharge_binop_integer(
-                        ByteCode::AddInteger,
+                        Bytecode::add_integer,
                         rhs,
                         integer,
                         dst,
@@ -586,7 +596,7 @@ impl<'a> ExpDesc<'a> {
                     )
                 } else {
                     Self::discharge_generic_binop(
-                        ByteCode::Add,
+                        Bytecode::add,
                         lhs,
                         rhs,
                         dst,
@@ -622,7 +632,7 @@ impl<'a> ExpDesc<'a> {
                     };
 
                     Self::discharge_binop_integer(
-                        ByteCode::AddInteger,
+                        Bytecode::add_integer,
                         lhs,
                         -integer,
                         dst,
@@ -638,7 +648,7 @@ impl<'a> ExpDesc<'a> {
                     };
 
                     Self::discharge_binop_integer(
-                        ByteCode::AddInteger,
+                        Bytecode::add_integer,
                         rhs,
                         -integer,
                         dst,
@@ -647,7 +657,7 @@ impl<'a> ExpDesc<'a> {
                     )
                 } else {
                     Self::discharge_generic_binop(
-                        ByteCode::Sub,
+                        Bytecode::sub,
                         lhs,
                         rhs,
                         dst,
@@ -679,11 +689,19 @@ impl<'a> ExpDesc<'a> {
                 let (_, stack_top) = compile_context.reserve_stack_top();
                 rhs.discharge(&stack_top, program, compile_context)?;
 
-                if let Some(ByteCode::Concat(start, count)) = program.byte_codes.last_mut() {
-                    *start = dst;
-                    *count += 1;
+                if program
+                    .byte_codes
+                    .last()
+                    .filter(|bytecode| bytecode.get_opcode() == OpCode::Concat)
+                    .is_some()
+                {
+                    let Some(concat) = program.byte_codes.pop() else {
+                        unreachable!("Program bytecodes should not be empty.");
+                    };
+                    let (_, count, _, _) = concat.decode_abck();
+                    program.byte_codes.push(Bytecode::concat(dst, count + 1));
                 } else {
-                    program.byte_codes.push(ByteCode::Concat(dst, 2));
+                    program.byte_codes.push(Bytecode::concat(dst, 2));
                 }
 
                 compile_context.stack_top -= 1;
@@ -710,7 +728,7 @@ impl<'a> ExpDesc<'a> {
         };
 
         fn discharge_binop_constant(
-            bytecode: fn(u8, u8, u8) -> ByteCode,
+            bytecode: fn(u8, u8, u8) -> Bytecode,
             lhs: &ExpDesc,
             constant: u8,
             dst: u8,
@@ -730,7 +748,7 @@ impl<'a> ExpDesc<'a> {
         }
 
         fn discharge_relational_binop_into_local(
-            bytecode: fn(u8, u8, u8) -> ByteCode,
+            bytecode: fn(u8, u8, u8) -> Bytecode,
             lhs: &ExpDesc,
             rhs: &ExpDesc,
             dst: u8,
@@ -768,7 +786,7 @@ impl<'a> ExpDesc<'a> {
                 .byte_codes
                 .push(bytecode(lhs_loc, rhs_loc, test as u8));
             let jump = program.byte_codes.len();
-            program.byte_codes.push(ByteCode::Jmp(0));
+            program.byte_codes.push(Bytecode::jump(0));
             compile_context.jumps_to_false.push(jump);
 
             Ok(())
@@ -787,14 +805,14 @@ impl<'a> ExpDesc<'a> {
                 let after_lhs = program.byte_codes.len();
 
                 if !lhs.is_relational() {
-                    program.byte_codes.push(ByteCode::Test(dst, 0));
+                    program.byte_codes.push(Bytecode::test(dst, 0));
                     let jump = program.byte_codes.len();
-                    program.byte_codes.push(ByteCode::Jmp(0));
+                    program.byte_codes.push(Bytecode::jump(0));
                     compile_context.jumps_to_end.push(jump);
                 }
                 for jump in compile_context.jumps_to_block.drain(jump_to_block_count..) {
-                    program.byte_codes[jump] = ByteCode::Jmp(
-                        i16::try_from((after_lhs + 2) - jump - 1).map_err(|_| Error::LongJump)?,
+                    program.byte_codes[jump] = Bytecode::jump(
+                        i32::try_from((after_lhs + 2) - jump - 1).map_err(|_| Error::LongJump)?,
                     );
                 }
 
@@ -810,9 +828,9 @@ impl<'a> ExpDesc<'a> {
                     lhs.discharge(local, program, compile_context)?;
                 };
 
-                program.byte_codes.push(ByteCode::Test(dst, 1));
+                program.byte_codes.push(Bytecode::test(dst, 1));
                 let jump = program.byte_codes.len();
-                program.byte_codes.push(ByteCode::Jmp(0));
+                program.byte_codes.push(Bytecode::jump(0));
                 compile_context.jumps_to_block.push(jump);
 
                 rhs.discharge(local, program, compile_context)?;
@@ -841,9 +859,9 @@ impl<'a> ExpDesc<'a> {
 
                     program
                         .byte_codes
-                        .push(ByteCode::EqualInteger(lhs_loc, integer, 0));
+                        .push(Bytecode::equal_integer(lhs_loc, integer, 0));
                     let jump = program.byte_codes.len();
-                    program.byte_codes.push(ByteCode::Jmp(0));
+                    program.byte_codes.push(Bytecode::jump(0));
                     compile_context.jumps_to_false.push(jump);
                 } else if rhs.is_integer() || rhs.is_float() || rhs.is_string() {
                     let lhs_loc = if let name @ ExpDesc::Name(_) = lhs.as_ref() {
@@ -863,11 +881,13 @@ impl<'a> ExpDesc<'a> {
                         ),
                     };
 
-                    program
-                        .byte_codes
-                        .push(ByteCode::EqualConstant(lhs_loc, constant, 0));
+                    program.byte_codes.push(Bytecode::equal_constant(
+                        lhs_loc,
+                        u8::try_from(constant)?,
+                        0,
+                    ));
                     let jump = program.byte_codes.len();
-                    program.byte_codes.push(ByteCode::Jmp(0));
+                    program.byte_codes.push(Bytecode::jump(0));
                     compile_context.jumps_to_false.push(jump);
                 } else {
                     unimplemented!("eq")
@@ -878,7 +898,7 @@ impl<'a> ExpDesc<'a> {
             (Self::Binop(Binop::LessThan, lhs, rhs), Self::Local(dst)) => {
                 let dst = u8::try_from(*dst)?;
                 discharge_relational_binop_into_local(
-                    ByteCode::LessThan,
+                    Bytecode::less_than,
                     lhs,
                     rhs,
                     dst,
@@ -911,9 +931,9 @@ impl<'a> ExpDesc<'a> {
 
                 program
                     .byte_codes
-                    .push(ByteCode::GreaterThanInteger(lhs_loc, integer, 0));
+                    .push(Bytecode::greater_than_integer(lhs_loc, integer, 0));
                 let jump = program.byte_codes.len();
-                program.byte_codes.push(ByteCode::Jmp(0));
+                program.byte_codes.push(Bytecode::jump(0));
                 compile_context.jumps_to_false.push(jump);
 
                 Ok(())
@@ -921,7 +941,7 @@ impl<'a> ExpDesc<'a> {
             (Self::Binop(Binop::GreaterThan, lhs, rhs), Self::Local(dst)) => {
                 let dst = u8::try_from(*dst)?;
                 discharge_relational_binop_into_local(
-                    ByteCode::LessThan,
+                    Bytecode::less_than,
                     rhs,
                     lhs,
                     dst,
@@ -933,7 +953,7 @@ impl<'a> ExpDesc<'a> {
             (Self::Binop(Binop::LessEqual, lhs, rhs), Self::Local(dst)) => {
                 let dst = u8::try_from(*dst)?;
                 discharge_relational_binop_into_local(
-                    ByteCode::LessEqual,
+                    Bytecode::less_equal,
                     lhs,
                     rhs,
                     dst,
@@ -945,7 +965,7 @@ impl<'a> ExpDesc<'a> {
             (Self::Binop(Binop::GreaterEqual, lhs, rhs), Self::Local(dst)) => {
                 let dst = u8::try_from(*dst)?;
                 discharge_relational_binop_into_local(
-                    ByteCode::LessEqual,
+                    Bytecode::less_equal,
                     rhs,
                     lhs,
                     dst,
@@ -960,8 +980,8 @@ impl<'a> ExpDesc<'a> {
                 lhs.discharge(&Self::Condition(false), program, compile_context)?;
                 let after_lhs_cond = program.byte_codes.len();
                 for jump in compile_context.jumps_to_block.drain(jump_to_block_count..) {
-                    program.byte_codes[jump] = ByteCode::Jmp(
-                        i16::try_from(after_lhs_cond - jump - 1).map_err(|_| Error::LongJump)?,
+                    program.byte_codes[jump] = Bytecode::jump(
+                        i32::try_from(after_lhs_cond - jump - 1).map_err(|_| Error::LongJump)?,
                     );
                 }
 
@@ -990,11 +1010,13 @@ impl<'a> ExpDesc<'a> {
                     ),
                 };
 
-                program
-                    .byte_codes
-                    .push(ByteCode::EqualConstant(lhs_loc, constant, *cond as u8));
+                program.byte_codes.push(Bytecode::equal_constant(
+                    lhs_loc,
+                    u8::try_from(constant)?,
+                    *cond as u8,
+                ));
                 let jump = program.byte_codes.len();
-                program.byte_codes.push(ByteCode::Jmp(0));
+                program.byte_codes.push(Bytecode::jump(0));
                 compile_context.jumps_to_end.push(jump);
 
                 compile_context.stack_top -= 1;
@@ -1031,9 +1053,9 @@ impl<'a> ExpDesc<'a> {
 
                 program
                     .byte_codes
-                    .push(ByteCode::LessThan(rhs_loc, lhs_loc, 0));
+                    .push(Bytecode::less_than(rhs_loc, lhs_loc, 0));
                 let jump = program.byte_codes.len();
-                program.byte_codes.push(ByteCode::Jmp(0));
+                program.byte_codes.push(Bytecode::jump(0));
                 compile_context.jumps_to_end.push(jump);
 
                 compile_context.stack_top -= reserved_stack;
@@ -1070,9 +1092,9 @@ impl<'a> ExpDesc<'a> {
 
                 program
                     .byte_codes
-                    .push(ByteCode::LessEqual(lhs_loc, rhs_loc, 0));
+                    .push(Bytecode::less_equal(lhs_loc, rhs_loc, 0));
                 let jump = program.byte_codes.len();
-                program.byte_codes.push(ByteCode::Jmp(0));
+                program.byte_codes.push(Bytecode::jump(0));
                 compile_context.jumps_to_end.push(jump);
 
                 compile_context.stack_top -= reserved_stack;
@@ -1099,13 +1121,13 @@ impl<'a> ExpDesc<'a> {
                     );
                 };
 
-                program.byte_codes.push(ByteCode::GreaterEqualInteger(
+                program.byte_codes.push(Bytecode::greater_equal_integer(
                     lhs_loc,
                     integer,
                     *cond as u8,
                 ));
                 let jump = program.byte_codes.len();
-                program.byte_codes.push(ByteCode::Jmp(0));
+                program.byte_codes.push(Bytecode::jump(0));
                 compile_context.jumps_to_end.push(jump);
 
                 compile_context.stack_top -= 1;
@@ -1120,7 +1142,7 @@ impl<'a> ExpDesc<'a> {
                 let bytecode = match binop {
                         Binop::Add => unimplemented!("addk"),
                         Binop::Sub => unimplemented!("subk"),
-                        Binop::Mul => ByteCode::MulConstant,
+                        Binop::Mul => Bytecode::mul_constant,
                         Binop::Mod => unimplemented!("modk"),
                         Binop::Pow => unimplemented!("powk"),
                         Binop::Div => unimplemented!("divk"),
@@ -1136,7 +1158,14 @@ impl<'a> ExpDesc<'a> {
                 };
                 let constant = program.push_constant(*float)?;
 
-                discharge_binop_constant(bytecode, lhs, constant, dst, program, compile_context)
+                discharge_binop_constant(
+                    bytecode,
+                    lhs,
+                    u8::try_from(constant)?,
+                    dst,
+                    program,
+                    compile_context,
+                )
             }
             (Self::Binop(binop, lhs, rhs), Self::Local(dst))
                 if binop.arithmetic_binary_operator() =>
@@ -1144,18 +1173,18 @@ impl<'a> ExpDesc<'a> {
                 let dst = u8::try_from(*dst)?;
 
                 let bytecode = match binop {
-                        Binop::Add => ByteCode::Add,
-                        Binop::Sub => ByteCode::Sub,
-                        Binop::Mul => ByteCode::Mul,
-                        Binop::Mod => ByteCode::Mod,
-                        Binop::Pow => ByteCode::Pow,
-                        Binop::Div => ByteCode::Div,
-                        Binop::Idiv => ByteCode::Idiv,
-                        Binop::ShiftLeft => ByteCode::ShiftLeft,
-                        Binop::ShiftRight => ByteCode::ShiftRight,
-                        Binop::BitAnd => ByteCode::BitAnd,
-                        Binop::BitOr => ByteCode::BitOr,
-                        Binop::BitXor => ByteCode::BitXor,
+                        Binop::Add => Bytecode::add,
+                        Binop::Sub => Bytecode::sub,
+                        Binop::Mul => Bytecode::mul,
+                        Binop::Mod => Bytecode::mod_bytecode,
+                        Binop::Pow => Bytecode::pow,
+                        Binop::Div => Bytecode::div,
+                        Binop::Idiv => Bytecode::idiv,
+                        Binop::ShiftLeft => Bytecode::shift_left,
+                        Binop::ShiftRight => Bytecode::shift_right,
+                        Binop::BitAnd => Bytecode::bit_and,
+                        Binop::BitOr => Bytecode::bit_or,
+                        Binop::BitXor => Bytecode::bit_xor,
                         other => unreachable!("Match guard garantees this is an arithmetic binary operator, but was {:?}.", other),
                     };
 
@@ -1166,12 +1195,12 @@ impl<'a> ExpDesc<'a> {
             {
                 let dst = u8::try_from(*dst)?;
 
-                let (bytecode, lhs, rhs): (fn(u8,u8,u8) -> ByteCode, _ ,_) = match binop {
+                let (bytecode, lhs, rhs): (fn(u8,u8,u8) -> Bytecode, _ ,_) = match binop {
                         Binop::Equal => unimplemented!("eq"),
                         Binop::NotEqual => unimplemented!("neq"),
-                        Binop::GreaterThan => (ByteCode::LessThan, rhs, lhs),
-                        Binop::LessEqual => (ByteCode::LessEqual, lhs, rhs),
-                        Binop::GreaterEqual => (ByteCode::LessEqual, rhs, lhs),
+                        Binop::GreaterThan => (Bytecode::less_than, rhs, lhs),
+                        Binop::LessEqual => (Bytecode::less_equal, lhs, rhs),
+                        Binop::GreaterEqual => (Bytecode::less_equal, rhs, lhs),
                         other => unreachable!("Match guard garantees this is an relational binary operator, but was {:?}.", other),
                     };
 
@@ -1194,8 +1223,8 @@ impl<'a> ExpDesc<'a> {
                         lhs.discharge(&Self::Condition(false), program, compile_context)?;
                         let after_lhs_cond = program.byte_codes.len();
                         for jump in compile_context.jumps_to_block.drain(jump_to_block_count..) {
-                            program.byte_codes[jump] = ByteCode::Jmp(
-                                i16::try_from(after_lhs_cond - jump - 1)
+                            program.byte_codes[jump] = Bytecode::jump(
+                                i32::try_from(after_lhs_cond - jump - 1)
                                     .map_err(|_| Error::LongJump)?,
                             );
                         }
@@ -1211,7 +1240,7 @@ impl<'a> ExpDesc<'a> {
 
                         program
                             .byte_codes
-                            .push(ByteCode::LessEqual(lhs_loc, rhs_loc, 1));
+                            .push(Bytecode::less_equal(lhs_loc, rhs_loc, 1));
                     }
                     Binop::GreaterEqual => match (lhs.as_ref(), rhs.as_ref()) {
                         (lhs, ExpDesc::Integer(integer)) => {
@@ -1221,7 +1250,7 @@ impl<'a> ExpDesc<'a> {
                             if let Ok(integer) = i8::try_from(*integer) {
                                 program
                                     .byte_codes
-                                    .push(ByteCode::GreaterEqualInteger(lhs_loc, integer, 0));
+                                    .push(Bytecode::greater_equal_integer(lhs_loc, integer, 0));
 
                                 compile_context.stack_top -= 1;
                             } else {
@@ -1230,7 +1259,7 @@ impl<'a> ExpDesc<'a> {
 
                                 program
                                     .byte_codes
-                                    .push(ByteCode::LessEqual(rhs_loc, lhs_loc, 1));
+                                    .push(Bytecode::less_equal(rhs_loc, lhs_loc, 1));
 
                                 compile_context.stack_top -= 2;
                             }
@@ -1248,9 +1277,11 @@ impl<'a> ExpDesc<'a> {
 
                             let string = program.push_constant(*string)?;
 
-                            program
-                                .byte_codes
-                                .push(ByteCode::EqualConstant(lhs_loc, string, 1));
+                            program.byte_codes.push(Bytecode::equal_constant(
+                                lhs_loc,
+                                u8::try_from(string)?,
+                                1,
+                            ));
 
                             compile_context.stack_top -= 2;
                         }
@@ -1287,7 +1318,7 @@ impl<'a> ExpDesc<'a> {
                     let src = u8::try_from(*src)?;
                     let dst = u8::try_from(*dst)?;
 
-                    program.byte_codes.push(ByteCode::Move(dst, src));
+                    program.byte_codes.push(Bytecode::move_bytecode(dst, src));
 
                     Ok(())
                 }
@@ -1296,7 +1327,9 @@ impl<'a> ExpDesc<'a> {
                 let src = u8::try_from(*src)?;
                 let key = u8::try_from(*key)?;
 
-                program.byte_codes.push(ByteCode::SetUpTable(0, key, src));
+                program
+                    .byte_codes
+                    .push(Bytecode::set_uptable(0, key, src, 0));
 
                 Ok(())
             }
@@ -1305,7 +1338,7 @@ impl<'a> ExpDesc<'a> {
                     Some(local) => local,
                     None => {
                         let global = program.push_constant(*name)?;
-                        Self::Global(usize::from(global))
+                        Self::Global(usize::try_from(global)?)
                     }
                 };
 
@@ -1334,10 +1367,11 @@ impl<'a> ExpDesc<'a> {
                     ExpDesc::String(key) => {
                         let constant = program.push_constant(*key)?;
 
-                        program.byte_codes.push(ByteCode::SetField(
+                        program.byte_codes.push(Bytecode::set_field(
                             table_loc,
-                            constant,
+                            u8::try_from(constant)?,
                             u8::try_from(*src)?,
+                            0,
                         ));
                     }
                     other => unimplemented!("Only String keys, but was {:?}.", other),
@@ -1363,10 +1397,11 @@ impl<'a> ExpDesc<'a> {
                 match key.as_ref() {
                     ExpDesc::Name(name) => {
                         let constant = program.push_constant(*name)?;
-                        program.byte_codes.push(ByteCode::SetField(
+                        program.byte_codes.push(Bytecode::set_field(
                             table_loc,
-                            constant,
+                            u8::try_from(constant)?,
                             u8::try_from(*src)?,
+                            0,
                         ));
 
                         Ok(())
@@ -1386,10 +1421,11 @@ impl<'a> ExpDesc<'a> {
                 match key.as_ref() {
                     ExpDesc::Name(name) => {
                         let constant = program.push_constant(*name)?;
-                        program.byte_codes.push(ByteCode::SetField(
+                        program.byte_codes.push(Bytecode::set_field(
                             u8::try_from(*table_loc)?,
-                            constant,
+                            u8::try_from(constant)?,
                             u8::try_from(*src)?,
+                            0,
                         ));
 
                         Ok(())
@@ -1427,7 +1463,7 @@ impl<'a> ExpDesc<'a> {
                 let src = u8::try_from(*src)?;
                 program
                     .byte_codes
-                    .push(ByteCode::Test(src, *condition as u8));
+                    .push(Bytecode::test(src, *condition as u8));
 
                 Ok(())
             }
@@ -1450,7 +1486,7 @@ impl<'a> ExpDesc<'a> {
                 let key = u8::try_from(*key)?;
                 let dst = u8::try_from(*dst)?;
 
-                program.byte_codes.push(ByteCode::GetUpTable(dst, 0, key));
+                program.byte_codes.push(Bytecode::get_uptable(dst, 0, key));
 
                 Ok(())
             }
@@ -1462,10 +1498,10 @@ impl<'a> ExpDesc<'a> {
 
                 program
                     .byte_codes
-                    .push(ByteCode::GetUpTable(stack_loc, 0, src_key));
+                    .push(Bytecode::get_uptable(stack_loc, 0, src_key));
                 program
                     .byte_codes
-                    .push(ByteCode::SetUpTable(0, dst_key, stack_loc));
+                    .push(Bytecode::set_uptable(0, dst_key, stack_loc, 0));
 
                 compile_context.stack_top -= 1;
 
@@ -1477,13 +1513,37 @@ impl<'a> ExpDesc<'a> {
 
                 program
                     .byte_codes
-                    .push(ByteCode::Test(dst, *condition as u8));
+                    .push(Bytecode::test(dst, *condition as u8));
 
                 compile_context.stack_top -= 1;
 
                 Ok(())
             }
             other => unreachable!("Global can't be discharged in {:?}.", other),
+        }
+    }
+
+    fn discharge_upvalue(
+        &self,
+        dst: &ExpDesc<'a>,
+        program: &mut Program,
+        _compile_context: &mut CompileContext,
+    ) -> Result<(), Error> {
+        let ExpDesc::Upvalue(upvalue) = &self else {
+            unreachable!("Should never be anything other than Table");
+        };
+
+        match dst {
+            ExpDesc::Local(local) => {
+                program.byte_codes.push(Bytecode::get_upvalue(
+                    u8::try_from(*local)?,
+                    u8::try_from(*upvalue)?,
+                ));
+                Ok(())
+            }
+            other => {
+                unimplemented!("Can't discharge Upvalue to {:?}.", other)
+            }
         }
     }
 
@@ -1506,7 +1566,7 @@ impl<'a> ExpDesc<'a> {
 
                     self.discharge(&stack_top, program, compile_context)?;
                     stack_top.discharge(
-                        &ExpDesc::Global(usize::from(constant)),
+                        &ExpDesc::Global(usize::try_from(constant)?),
                         program,
                         compile_context,
                     )?;
@@ -1537,9 +1597,11 @@ impl<'a> ExpDesc<'a> {
 
                 let table = dst;
 
-                program
-                    .byte_codes
-                    .push(ByteCode::NewTable(dst, table_items, adjusted_array_items));
+                program.byte_codes.push(Bytecode::new_table(
+                    dst,
+                    table_items,
+                    adjusted_array_items,
+                ));
 
                 for (i, (key, val)) in fields.iter().enumerate() {
                     match key {
@@ -1571,12 +1633,20 @@ impl<'a> ExpDesc<'a> {
                         }
                     }
 
-                    if i != fields.len() - 1 {
-                        if let Some(ByteCode::VariadicArguments(_, count)) =
-                            program.byte_codes.last_mut()
-                        {
-                            *count = 2;
-                        }
+                    if i != fields.len() - 1
+                        && program
+                            .byte_codes
+                            .last_mut()
+                            .filter(|bytecode| bytecode.get_opcode() == OpCode::VariadicArguments)
+                            .is_some()
+                    {
+                        let Some(variadic) = program.byte_codes.pop() else {
+                            unreachable!("Program bytecodes should not be empty.");
+                        };
+                        let (register, _, _, _) = variadic.decode_abck();
+                        program
+                            .byte_codes
+                            .push(Bytecode::variadic_arguments(register, 2));
                     }
                 }
 
@@ -1587,7 +1657,7 @@ impl<'a> ExpDesc<'a> {
                         adjusted_array_items
                     };
 
-                    program.byte_codes.push(ByteCode::SetList(table, count, 0));
+                    program.byte_codes.push(Bytecode::set_list(table, count, 0));
                 }
 
                 compile_context.stack_top -= array_items;
@@ -1639,28 +1709,33 @@ impl<'a> ExpDesc<'a> {
                         if let Ok(index) = u8::try_from(*integer) {
                             program
                                 .byte_codes
-                                .push(ByteCode::GetInt(dst, table_loc, index));
-                        } else if let Ok(index) = i16::try_from(*integer) {
+                                .push(Bytecode::get_index(dst, table_loc, index));
+                            // TODO proper conversion
+                        } else if let Ok(index) = i32::try_from(*integer) {
                             program
                                 .byte_codes
-                                .push(ByteCode::LoadInt(compile_context.stack_top, index));
-                            program.byte_codes.push(ByteCode::GetTable(
+                                .push(Bytecode::load_integer(compile_context.stack_top, index));
+                            program.byte_codes.push(Bytecode::get_table(
                                 dst,
                                 table_loc,
                                 compile_context.stack_top,
                             ));
                         } else {
                             let constant = program.push_constant(*integer)?;
-                            program
-                                .byte_codes
-                                .push(ByteCode::GetField(dst, table_loc, constant));
+                            program.byte_codes.push(Bytecode::get_field(
+                                dst,
+                                table_loc,
+                                u8::try_from(constant)?,
+                            ));
                         }
                     }
                     ExpDesc::String(string) => {
                         let constant = program.push_constant(*string)?;
-                        program
-                            .byte_codes
-                            .push(ByteCode::GetField(dst, table_loc, constant));
+                        program.byte_codes.push(Bytecode::get_field(
+                            dst,
+                            table_loc,
+                            u8::try_from(constant)?,
+                        ));
                     }
                     other => {
                         unimplemented!(
@@ -1731,9 +1806,11 @@ impl<'a> ExpDesc<'a> {
                 match key.as_ref() {
                     ExpDesc::Name(name) => {
                         let constant = program.push_constant(*name)?;
-                        program
-                            .byte_codes
-                            .push(ByteCode::GetField(dst, table_loc, constant));
+                        program.byte_codes.push(Bytecode::get_field(
+                            dst,
+                            table_loc,
+                            u8::try_from(constant)?,
+                        ));
 
                         Ok(())
                     }
@@ -1755,9 +1832,12 @@ impl<'a> ExpDesc<'a> {
                         let (src_loc, src_stack_top) = compile_context.reserve_stack_top();
                         self.discharge(&src_stack_top, program, compile_context)?;
 
-                        program
-                            .byte_codes
-                            .push(ByteCode::SetField(table_loc, key, src_loc));
+                        program.byte_codes.push(Bytecode::set_field(
+                            table_loc,
+                            u8::try_from(key)?,
+                            src_loc,
+                            0,
+                        ));
 
                         compile_context.stack_top -= 2;
                     }
@@ -1788,7 +1868,9 @@ impl<'a> ExpDesc<'a> {
             ExpDesc::Local(dst) => {
                 let dst = u8::try_from(*dst)?;
 
-                program.byte_codes.push(ByteCode::Closure(dst, *index));
+                program
+                    .byte_codes
+                    .push(Bytecode::closure(dst, u32::from(*index)));
 
                 Ok(())
             }
@@ -1819,60 +1901,68 @@ impl<'a> ExpDesc<'a> {
                     let (_, stack_top) = compile_context.reserve_stack_top();
                     arg.discharge(&stack_top, program, compile_context)?;
 
-                    if let Some(ByteCode::VariadicArguments(_, count)) =
-                        program.byte_codes.last_mut()
+                    if program
+                        .byte_codes
+                        .last_mut()
+                        .filter(|bytecode| bytecode.get_opcode() == OpCode::VariadicArguments)
+                        .is_some()
                     {
-                        if i == args.len() - 1 {
-                            *count = 0;
-                        } else {
-                            *count = 2;
-                        }
+                        let Some(variadic) = program.byte_codes.pop() else {
+                            unreachable!()
+                        };
+                        let (register, _, _, _) = variadic.decode_abck();
+                        let count = if i == args.len() - 1 { 0 } else { 2 };
+                        program
+                            .byte_codes
+                            .push(Bytecode::variadic_arguments(register, count));
                     }
                 }
 
-                if let Some(ByteCode::Call(_, _, out)) = program.byte_codes.last_mut() {
-                    *out = 0;
+                if program
+                    .byte_codes
+                    .last_mut()
+                    .filter(|bytecode| bytecode.get_opcode() == OpCode::Call)
+                    .is_some()
+                {
+                    let Some(call) = program.byte_codes.pop() else {
+                        unreachable!()
+                    };
+                    let (func_index, inputs, _, _) = call.decode_abck();
+                    program
+                        .byte_codes
+                        .push(Bytecode::call(func_index, inputs, 0));
                 }
 
                 let after_args = program.byte_codes.len();
 
                 for jump in compile_context.jumps_to_block.drain(jumps_to_block_count..) {
-                    program.byte_codes[jump] = ByteCode::Jmp(
-                        i16::try_from(after_args - jump - 1).map_err(|_| Error::LongJump)?,
+                    program.byte_codes[jump] = Bytecode::jump(
+                        i32::try_from(after_args - jump - 1).map_err(|_| Error::LongJump)?,
                     );
                 }
                 for jump in compile_context.jumps_to_end.drain(jumps_to_end_count..) {
-                    program.byte_codes[jump] = ByteCode::Jmp(
-                        i16::try_from(after_args - jump - 1).map_err(|_| Error::LongJump)?,
+                    program.byte_codes[jump] = Bytecode::jump(
+                        i32::try_from(after_args - jump - 1).map_err(|_| Error::LongJump)?,
                     );
                 }
                 if compile_context.jumps_to_false.len() > jumps_to_false_count {
                     let false_bytecode = program.byte_codes.len();
                     program
                         .byte_codes
-                        .push(ByteCode::LoadFalseSkip(func_index + 1));
+                        .push(Bytecode::load_false_skip(func_index + 1));
 
                     let Some(last) = compile_context.jumps_to_false.pop() else {
                         unreachable!("Should always have at least one jump on the list.");
                     };
-                    program.byte_codes[last] = ByteCode::Jmp(1);
-                    match &mut program.byte_codes[last - 1] {
-                        ByteCode::EqualConstant(_, _, test)
-                        | ByteCode::EqualInteger(_, _, test)
-                        | ByteCode::LessThan(_, _, test)
-                        | ByteCode::LessEqual(_, _, test)
-                        | ByteCode::GreaterThanInteger(_, _, test)
-                        | ByteCode::GreaterEqualInteger(_, _, test) => *test ^= 1,
-                        other => unreachable!(
-                            "Last test should always be a relational test, but was {:?}.",
-                            other
-                        ),
+                    program.byte_codes[last] = Bytecode::jump(1);
+                    if program.byte_codes[last - 1].get_opcode().is_relational() {
+                        program.byte_codes[last - 1].flip_test();
                     }
 
-                    program.byte_codes.push(ByteCode::LoadTrue(func_index + 1));
+                    program.byte_codes.push(Bytecode::load_true(func_index + 1));
                     for jump in compile_context.jumps_to_false.drain(jumps_to_false_count..) {
-                        program.byte_codes[jump] = ByteCode::Jmp(
-                            i16::try_from(false_bytecode - jump - 1)
+                        program.byte_codes[jump] = Bytecode::jump(
+                            i32::try_from(false_bytecode - jump - 1)
                                 .map_err(|_| Error::LongJump)?,
                         );
                     }
@@ -1881,7 +1971,12 @@ impl<'a> ExpDesc<'a> {
                 // TODO do proper bytecode
                 let args_len = if let Some(ExpDesc::FunctionCall(_, _)) = args.last() {
                     0
-                } else if let Some(ByteCode::VariadicArguments(_, _)) = program.byte_codes.last() {
+                } else if program
+                    .byte_codes
+                    .last()
+                    .filter(|bytecode| bytecode.get_opcode() == OpCode::VariadicArguments)
+                    .is_some()
+                {
                     0
                 } else {
                     u8::try_from(args.len())? + 1
@@ -1889,7 +1984,7 @@ impl<'a> ExpDesc<'a> {
 
                 program
                     .byte_codes
-                    .push(ByteCode::Call(func_index, args_len, 1));
+                    .push(Bytecode::call(func_index, args_len, 1));
 
                 compile_context.stack_top -= u8::try_from(args.len())?;
 
@@ -1899,9 +1994,12 @@ impl<'a> ExpDesc<'a> {
                 let (local_loc, stack_top) = compile_context.reserve_stack_top();
                 self.discharge(&stack_top, program, compile_context)?;
 
-                program
-                    .byte_codes
-                    .push(ByteCode::SetUpTable(0, u8::try_from(*global)?, local_loc));
+                program.byte_codes.push(Bytecode::set_uptable(
+                    0,
+                    u8::try_from(*global)?,
+                    local_loc,
+                    0,
+                ));
                 compile_context.stack_top -= 1;
 
                 Ok(())
@@ -1911,7 +2009,7 @@ impl<'a> ExpDesc<'a> {
                     Some(local) => local,
                     None => {
                         let global = program.push_constant(*name)?;
-                        ExpDesc::Global(usize::from(global))
+                        ExpDesc::Global(usize::try_from(global)?)
                     }
                 };
                 self.discharge(&name, program, compile_context)
@@ -1944,9 +2042,11 @@ impl<'a> ExpDesc<'a> {
             unreachable!("Method name should always be Name, but was {:?}.", name);
         };
         let constant = program.push_constant(*name)?;
-        program
-            .byte_codes
-            .push(ByteCode::TableSelf(dst_u8, dst_u8, constant));
+        program.byte_codes.push(Bytecode::table_self(
+            dst_u8,
+            dst_u8,
+            u8::try_from(constant)?,
+        ));
         // TableSelf uses 2 locations on the stack
         compile_context.stack_top += 1;
 
@@ -1957,7 +2057,7 @@ impl<'a> ExpDesc<'a> {
 
         program
             .byte_codes
-            .push(ByteCode::Call(dst_u8, u8::try_from(args.len() + 2)?, 1));
+            .push(Bytecode::call(dst_u8, u8::try_from(args.len() + 2)?, 1));
 
         compile_context.stack_top -= u8::try_from(args.len() + 1)?;
 
@@ -1973,7 +2073,9 @@ impl<'a> ExpDesc<'a> {
         match dst {
             ExpDesc::Local(dst) => {
                 let dst = u8::try_from(*dst)?;
-                program.byte_codes.push(ByteCode::VariadicArguments(dst, 0));
+                program
+                    .byte_codes
+                    .push(Bytecode::variadic_arguments(dst, 0));
             }
             _ => unimplemented!(
                 "Discharging Variable arguments into {:?} is not yet supported.",
@@ -1984,7 +2086,7 @@ impl<'a> ExpDesc<'a> {
     }
 
     fn discharge_generic_binop(
-        bytecode: fn(u8, u8, u8) -> ByteCode,
+        bytecode: fn(u8, u8, u8) -> Bytecode,
         lhs: &ExpDesc,
         rhs: &ExpDesc,
         dst: u8,
@@ -2022,7 +2124,7 @@ impl<'a> ExpDesc<'a> {
     }
 
     fn discharge_binop_integer(
-        bytecode: fn(u8, u8, i8) -> ByteCode,
+        bytecode: fn(u8, u8, i8) -> Bytecode,
         lhs: &ExpDesc,
         integer: i8,
         dst: u8,
@@ -2051,7 +2153,7 @@ impl<'a> ExpDesc<'a> {
 
         program
             .byte_codes
-            .push(ByteCode::SetUpTableConstant(0, key, constant));
+            .push(Bytecode::set_uptable(0, key, u8::try_from(constant)?, 1));
 
         Ok(())
     }

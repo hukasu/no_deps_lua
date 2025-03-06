@@ -1,6 +1,6 @@
 #![no_std]
 
-mod byte_code;
+mod bytecode;
 mod error;
 mod ext;
 mod function;
@@ -22,8 +22,8 @@ use stack_frame::FunctionIndex;
 use table::Table;
 use value::ValueKey;
 
-use self::{byte_code::ByteCode, stack_frame::StackFrame, value::Value};
-pub use self::{error::Error, function::Function, program::Program};
+use self::{bytecode::Bytecode, stack_frame::StackFrame, value::Value};
+pub use self::{error::Error, program::Program};
 
 #[derive(Debug, Default)]
 pub struct Lua {
@@ -71,122 +71,7 @@ impl Lua {
         });
 
         while let Some(code) = self.read_bytecode(main_program) {
-            match code {
-                move_bytecode @ ByteCode::Move(_, _) => {
-                    move_bytecode.move_bytecode(self, main_program)?
-                }
-                load_int @ ByteCode::LoadInt(_, _) => load_int.load_int(self, main_program)?,
-                load_float @ ByteCode::LoadFloat(_, _) => {
-                    load_float.load_float(self, main_program)?
-                }
-                load_constant @ ByteCode::LoadConstant(_, _) => {
-                    load_constant.load_constant(self, main_program)?
-                }
-                load_false @ ByteCode::LoadFalse(_) => load_false.load_false(self, main_program)?,
-                load_false_skip @ ByteCode::LoadFalseSkip(_) => {
-                    load_false_skip.load_false_skip(self, main_program)?
-                }
-                load_true @ ByteCode::LoadTrue(_) => load_true.load_true(self, main_program)?,
-                load_nil @ ByteCode::LoadNil(_, _) => load_nil.load_nil(self, main_program)?,
-                get_up_value @ ByteCode::GetUpValue(_, _) => {
-                    get_up_value.get_up_value(self, main_program)?
-                }
-                get_up_table @ ByteCode::GetUpTable(_, _, _) => {
-                    get_up_table.get_up_table(self, main_program)?
-                }
-                get_table @ ByteCode::GetTable(_, _, _) => {
-                    get_table.get_table(self, main_program)?
-                }
-                get_int @ ByteCode::GetInt(_, _, _) => get_int.get_int(self, main_program)?,
-                get_field @ ByteCode::GetField(_, _, _) => {
-                    get_field.get_field(self, main_program)?
-                }
-                set_up_table @ ByteCode::SetUpTable(_, _, _) => {
-                    set_up_table.set_up_table(self, main_program)?
-                }
-                set_up_table_constant @ ByteCode::SetUpTableConstant(_, _, _) => {
-                    set_up_table_constant.set_up_table_constant(self, main_program)?
-                }
-                set_table @ ByteCode::SetTable(_, _, _) => {
-                    set_table.set_table(self, main_program)?
-                }
-                set_table_constant @ ByteCode::SetTableConstant(_, _, _) => {
-                    set_table_constant.set_table_constant(self, main_program)?
-                }
-                set_field @ ByteCode::SetField(_, _, _) => {
-                    set_field.set_field(self, main_program)?
-                }
-                set_field_constant @ ByteCode::SetFieldConstant(_, _, _) => {
-                    set_field_constant.set_field_constant(self, main_program)?
-                }
-                new_table @ ByteCode::NewTable(_, _, _) => {
-                    new_table.new_table(self, main_program)?
-                }
-                table_self @ ByteCode::TableSelf(_, _, _) => {
-                    table_self.table_self(self, main_program)?
-                }
-                add_integer @ ByteCode::AddInteger(_, _, _) => {
-                    add_integer.add_integer(self, main_program)?
-                }
-                add_constant @ ByteCode::AddConstant(_, _, _) => {
-                    add_constant.add_constant(self, main_program)?
-                }
-                mul_constant @ ByteCode::MulConstant(_, _, _) => {
-                    mul_constant.mul_constant(self, main_program)?
-                }
-                add @ ByteCode::Add(_, _, _) => add.add(self, main_program)?,
-                sub @ ByteCode::Sub(_, _, _) => sub.sub(self, main_program)?,
-                mul @ ByteCode::Mul(_, _, _) => mul.mul(self, main_program)?,
-                mod_bytecode @ ByteCode::Mod(_, _, _) => {
-                    mod_bytecode.mod_bytecode(self, main_program)?
-                }
-                pow @ ByteCode::Pow(_, _, _) => pow.pow(self, main_program)?,
-                div @ ByteCode::Div(_, _, _) => div.div(self, main_program)?,
-                idiv @ ByteCode::Idiv(_, _, _) => idiv.idiv(self, main_program)?,
-                bit_and @ ByteCode::BitAnd(_, _, _) => bit_and.bit_and(self, main_program)?,
-                bit_or @ ByteCode::BitOr(_, _, _) => bit_or.bit_or(self, main_program)?,
-                bit_xor @ ByteCode::BitXor(_, _, _) => bit_xor.bit_xor(self, main_program)?,
-                shiftl @ ByteCode::ShiftLeft(_, _, _) => shiftl.shiftl(self, main_program)?,
-                shiftr @ ByteCode::ShiftRight(_, _, _) => shiftr.shiftr(self, main_program)?,
-                neg @ ByteCode::Neg(_, _) => neg.neg(self, main_program)?,
-                bit_not @ ByteCode::BitNot(_, _) => bit_not.bit_not(self, main_program)?,
-                not @ ByteCode::Not(_, _) => not.not(self, main_program)?,
-                len @ ByteCode::Len(_, _) => len.len(self, main_program)?,
-                concat @ ByteCode::Concat(_, _) => concat.concat(self, main_program)?,
-                jmp @ ByteCode::Jmp(_) => jmp.jmp(self, main_program)?,
-                lt @ ByteCode::LessThan(_, _, _) => lt.less_than(self, main_program)?,
-                le @ ByteCode::LessEqual(_, _, _) => le.less_equal(self, main_program)?,
-                eqk @ ByteCode::EqualConstant(_, _, _) => eqk.equal_constant(self, main_program)?,
-                eqi @ ByteCode::EqualInteger(_, _, _) => eqi.equal_integer(self, main_program)?,
-                gti @ ByteCode::GreaterThanInteger(_, _, _) => {
-                    gti.greater_than_integer(self, main_program)?
-                }
-                gei @ ByteCode::GreaterEqualInteger(_, _, _) => {
-                    gei.greater_equal_integer(self, main_program)?
-                }
-                test @ ByteCode::Test(_, _) => test.test(self, main_program)?,
-                call @ ByteCode::Call(_, _, _) => call.call(self, main_program)?,
-                tail_call @ ByteCode::TailCall(_, _, _) => {
-                    tail_call.tail_call(self, main_program)?
-                }
-                return_bytecode @ ByteCode::Return(_, _, _) => {
-                    return_bytecode.return_bytecode(self, main_program)?
-                }
-                zero_return @ ByteCode::ZeroReturn => {
-                    zero_return.zero_return(self, main_program)?
-                }
-                one_return @ ByteCode::OneReturn(_) => one_return.one_return(self, main_program)?,
-                forloop @ ByteCode::ForLoop(_, _) => forloop.for_loop(self, main_program)?,
-                forprep @ ByteCode::ForPrepare(_, _) => forprep.for_prepare(self, main_program)?,
-                set_list @ ByteCode::SetList(_, _, _) => set_list.set_list(self, main_program)?,
-                closure @ ByteCode::Closure(_, _) => closure.closure(self, main_program)?,
-                variadic_args @ ByteCode::VariadicArguments(_, _) => {
-                    variadic_args.variadic_arguments(self, main_program)?
-                }
-                ByteCode::VariadicArgumentPrepare(_) => {
-                    // Nothing is done here as this functionality is already dealt with
-                }
-            }
+            code.execute(self, main_program)?;
         }
 
         Ok(())
@@ -320,7 +205,7 @@ impl Lua {
         self.upvalues.get(uptable).map(|(_, value)| value)
     }
 
-    fn read_bytecode(&mut self, main_program: &Program) -> Option<ByteCode> {
+    fn read_bytecode(&mut self, main_program: &Program) -> Option<Bytecode> {
         if self.stack_frame.is_empty() {
             return None;
         }

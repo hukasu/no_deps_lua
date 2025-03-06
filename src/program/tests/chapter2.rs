@@ -1,4 +1,4 @@
-use crate::{byte_code::ByteCode, Program};
+use crate::{bytecode::Bytecode, Program};
 
 #[test]
 fn types() {
@@ -20,29 +20,29 @@ print(123456.0)
     assert_eq!(
         &program.byte_codes,
         &[
-            ByteCode::VariadicArgumentPrepare(0),
+            Bytecode::variadic_arguments_prepare(0),
             // print(nil)
-            ByteCode::GetUpTable(0, 0, 0),
-            ByteCode::LoadNil(1, 0),
-            ByteCode::Call(0, 2, 1),
+            Bytecode::get_uptable(0, 0, 0),
+            Bytecode::load_nil(1, 0),
+            Bytecode::call(0, 2, 1),
             // print(false)
-            ByteCode::GetUpTable(0, 0, 0),
-            ByteCode::LoadFalse(1),
-            ByteCode::Call(0, 2, 1),
+            Bytecode::get_uptable(0, 0, 0),
+            Bytecode::load_false(1),
+            Bytecode::call(0, 2, 1),
             // print(123)
-            ByteCode::GetUpTable(0, 0, 0),
-            ByteCode::LoadInt(1, 123),
-            ByteCode::Call(0, 2, 1),
+            Bytecode::get_uptable(0, 0, 0),
+            Bytecode::load_integer(1, 123),
+            Bytecode::call(0, 2, 1),
             // print(123456)
-            ByteCode::GetUpTable(0, 0, 0),
-            ByteCode::LoadConstant(1, 1),
-            ByteCode::Call(0, 2, 1),
+            Bytecode::get_uptable(0, 0, 0),
+            Bytecode::load_constant(1, 1),
+            Bytecode::call(0, 2, 1),
             // print(123456.0)
-            ByteCode::GetUpTable(0, 0, 0),
-            ByteCode::LoadConstant(1, 2),
-            ByteCode::Call(0, 2, 1),
+            Bytecode::get_uptable(0, 0, 0),
+            Bytecode::load_constant(1, 2),
+            Bytecode::call(0, 2, 1),
             // EOF
-            ByteCode::Return(0, 1, 1),
+            Bytecode::return_bytecode(0, 1, 1),
         ]
     );
     crate::Lua::execute(&program).unwrap();
@@ -73,27 +73,27 @@ print "I'm local-print!"  -- call local function
     assert_eq!(
         &program.byte_codes,
         &[
-            ByteCode::VariadicArgumentPrepare(0),
+            Bytecode::variadic_arguments_prepare(0),
             // local a = "hello, local!"
-            ByteCode::LoadConstant(0, 0),
+            Bytecode::load_constant(0, 0),
             // local b = a
-            ByteCode::Move(1, 0),
+            Bytecode::move_bytecode(1, 0),
             // print(b)
-            ByteCode::GetUpTable(2, 0, 1),
-            ByteCode::Move(3, 1),
-            ByteCode::Call(2, 2, 1),
+            Bytecode::get_uptable(2, 0, 1),
+            Bytecode::move_bytecode(3, 1),
+            Bytecode::call(2, 2, 1),
             // print(print)
-            ByteCode::GetUpTable(2, 0, 1),
-            ByteCode::GetUpTable(3, 0, 1),
-            ByteCode::Call(2, 2, 1),
+            Bytecode::get_uptable(2, 0, 1),
+            Bytecode::get_uptable(3, 0, 1),
+            Bytecode::call(2, 2, 1),
             // local print = print
-            ByteCode::GetUpTable(2, 0, 1),
+            Bytecode::get_uptable(2, 0, 1),
             // print "I'm local-print!"
-            ByteCode::Move(3, 2),
-            ByteCode::LoadConstant(4, 2),
-            ByteCode::Call(3, 2, 1),
+            Bytecode::move_bytecode(3, 2),
+            Bytecode::load_constant(4, 2),
+            Bytecode::call(3, 2, 1),
             // EOF
-            ByteCode::Return(3, 1, 1),
+            Bytecode::return_bytecode(3, 1, 1),
         ]
     );
     crate::Lua::execute(&program).unwrap();
@@ -127,47 +127,47 @@ print(g)
     assert_eq!(
         &program.byte_codes,
         &[
-            ByteCode::VariadicArgumentPrepare(0),
+            Bytecode::variadic_arguments_prepare(0),
             // local a = 456
-            ByteCode::LoadInt(0, 456),
+            Bytecode::load_integer(0, 456),
             // a = 123
-            ByteCode::LoadInt(0, 123),
+            Bytecode::load_integer(0, 123),
             // print(a)
-            ByteCode::GetUpTable(1, 0, 0),
-            ByteCode::Move(2, 0),
-            ByteCode::Call(1, 2, 1),
+            Bytecode::get_uptable(1, 0, 0),
+            Bytecode::move_bytecode(2, 0),
+            Bytecode::call(1, 2, 1),
             // a = a
             // print(a)
-            ByteCode::GetUpTable(1, 0, 0),
-            ByteCode::Move(2, 0),
-            ByteCode::Call(1, 2, 1),
+            Bytecode::get_uptable(1, 0, 0),
+            Bytecode::move_bytecode(2, 0),
+            Bytecode::call(1, 2, 1),
             // a = g
-            ByteCode::GetUpTable(0, 0, 1),
+            Bytecode::get_uptable(0, 0, 1),
             // print(a)
-            ByteCode::GetUpTable(1, 0, 0),
-            ByteCode::Move(2, 0),
-            ByteCode::Call(1, 2, 1),
+            Bytecode::get_uptable(1, 0, 0),
+            Bytecode::move_bytecode(2, 0),
+            Bytecode::call(1, 2, 1),
             // g = 123
-            ByteCode::SetUpTableConstant(0, 1, 2),
+            Bytecode::set_uptable(0, 1, 2, 1),
             // print(g)
-            ByteCode::GetUpTable(1, 0, 0),
-            ByteCode::GetUpTable(2, 0, 1),
-            ByteCode::Call(1, 2, 1),
+            Bytecode::get_uptable(1, 0, 0),
+            Bytecode::get_uptable(2, 0, 1),
+            Bytecode::call(1, 2, 1),
             // g = a
-            ByteCode::SetUpTable(0, 1, 0),
+            Bytecode::set_uptable(0, 1, 0, 0),
             // print(g)
-            ByteCode::GetUpTable(1, 0, 0),
-            ByteCode::GetUpTable(2, 0, 1),
-            ByteCode::Call(1, 2, 1),
+            Bytecode::get_uptable(1, 0, 0),
+            Bytecode::get_uptable(2, 0, 1),
+            Bytecode::call(1, 2, 1),
             // g = g2
-            ByteCode::GetUpTable(1, 0, 3),
-            ByteCode::SetUpTable(0, 1, 1),
+            Bytecode::get_uptable(1, 0, 3),
+            Bytecode::set_uptable(0, 1, 1, 0),
             // print(g)
-            ByteCode::GetUpTable(1, 0, 0),
-            ByteCode::GetUpTable(2, 0, 1),
-            ByteCode::Call(1, 2, 1),
+            Bytecode::get_uptable(1, 0, 0),
+            Bytecode::get_uptable(2, 0, 1),
+            Bytecode::call(1, 2, 1),
             // EOF
-            ByteCode::Return(1, 1, 1),
+            Bytecode::return_bytecode(1, 1, 1),
         ]
     );
     crate::Lua::execute(&program).unwrap();

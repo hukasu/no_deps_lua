@@ -16,9 +16,9 @@ use {
 };
 
 use crate::{
-    byte_code::ByteCode,
+    bytecode::{Bytecode, OpCode},
+    function::Function,
     parser::{Parser, Token, TokenType},
-    Function,
 };
 
 use super::value::Value;
@@ -38,7 +38,7 @@ macro_rules! make_deconstruct {
 #[derive(Debug, Default)]
 pub struct Program {
     pub(super) constants: Vec<Value>,
-    pub(super) byte_codes: Vec<ByteCode>,
+    pub(super) byte_codes: Vec<Bytecode>,
     pub(super) functions: Vec<Value>,
 }
 
@@ -54,13 +54,13 @@ impl Program {
         Ok(program)
     }
 
-    pub fn read_bytecode(&self, index: usize) -> Option<ByteCode> {
+    pub fn read_bytecode(&self, index: usize) -> Option<Bytecode> {
         self.byte_codes.get(index).copied()
     }
 
-    fn push_constant(&mut self, value: impl Into<Value>) -> Result<u8, Error> {
+    fn push_constant(&mut self, value: impl Into<Value>) -> Result<u32, Error> {
         let value = value.into();
-        u8::try_from(
+        u32::try_from(
             self.constants
                 .iter()
                 .position(|v| v == &value)
@@ -100,7 +100,7 @@ impl Program {
         let start_of_block = self.byte_codes.len() - 1;
         for jump in compile_context.jumps_to_block.drain(jump_to_block_count..) {
             self.byte_codes[jump] =
-                ByteCode::Jmp(i16::try_from(start_of_block - jump).map_err(|_| Error::LongJump)?);
+                Bytecode::jump(i32::try_from(start_of_block - jump).map_err(|_| Error::LongJump)?);
         }
 
         let locals = compile_context.locals.len();
@@ -114,20 +114,20 @@ impl Program {
         compile_context.locals.truncate(locals);
 
         let jump_out_of_if = self.byte_codes.len();
-        self.byte_codes.push(ByteCode::Jmp(0));
+        self.byte_codes.push(Bytecode::jump(0));
 
         let start_of_block = self.byte_codes.len() - 1;
         for jump in compile_context.jumps_to_block.drain(jump_to_block_count..) {
             self.byte_codes[jump] =
-                ByteCode::Jmp(i16::try_from(start_of_block - jump).map_err(|_| Error::LongJump)?);
+                Bytecode::jump(i32::try_from(start_of_block - jump).map_err(|_| Error::LongJump)?);
         }
 
         self.stat_if(stat_if, compile_context)?;
 
         let after_elses = self.byte_codes.len();
         let offset = if after_elses != jump_out_of_if + 1 {
-            self.byte_codes[jump_out_of_if] = ByteCode::Jmp(
-                i16::try_from(after_elses - jump_out_of_if - 1).map_err(|_| Error::LongJump)?,
+            self.byte_codes[jump_out_of_if] = Bytecode::jump(
+                i32::try_from(after_elses - jump_out_of_if - 1).map_err(|_| Error::LongJump)?,
             );
             0
         } else {
@@ -136,8 +136,8 @@ impl Program {
         };
 
         for jump in compile_context.jumps_to_end.drain(jump_to_end_count..) {
-            self.byte_codes[jump] = ByteCode::Jmp(
-                i16::try_from(start_of_block - jump - offset).map_err(|_| Error::LongJump)?,
+            self.byte_codes[jump] = Bytecode::jump(
+                i32::try_from(start_of_block - jump - offset).map_err(|_| Error::LongJump)?,
             );
         }
 
@@ -149,16 +149,27 @@ impl Program {
         fixed_arguments: u8,
         compile_context: &CompileContext,
     ) -> Result<(), Error> {
-        let Some(ByteCode::ZeroReturn) = self.byte_codes.pop() else {
-            unreachable!("ByteCode at the end of a function body should always be `ZeroReturn`.");
+        if self
+            .byte_codes
+            .pop()
+            .filter(|bytecode| bytecode.get_opcode() == OpCode::ZeroReturn)
+            .is_none()
+        {
+            unreachable!("Bytecode at the end of a function body should always be `ZeroReturn`.");
         };
 
         let locals = u8::try_from(compile_context.locals.len())?;
-        if let Some(ByteCode::TailCall(_, _, _)) = self.byte_codes.last() {
-            self.byte_codes.push(ByteCode::Return(locals, 0, 0));
+        if self
+            .byte_codes
+            .last()
+            .filter(|bytecode| bytecode.get_opcode() == OpCode::TailCall)
+            .is_some()
+        {
+            self.byte_codes
+                .push(Bytecode::return_bytecode(locals, 0, 0));
         } else {
             self.byte_codes
-                .push(ByteCode::Return(locals, 1, fixed_arguments + 1));
+                .push(Bytecode::return_bytecode(locals, 1, fixed_arguments + 1));
         }
 
         Ok(())
@@ -218,7 +229,7 @@ impl Program {
 
                 if compile_context.var_args.unwrap_or(false) {
                     self.byte_codes
-                        .push(ByteCode::VariadicArgumentPrepare(locals));
+                        .push(Bytecode::variadic_arguments_prepare(locals));
                 }
 
                 self.block_stat(block_stat, compile_context)?;
@@ -243,10 +254,10 @@ impl Program {
                             let Ok(goto_i) = isize::try_from(goto.bytecode) else {
                                 return Some(Err(Error::IntCoversion));
                             };
-                            let Ok(jump) = i16::try_from((label_i - 1) - goto_i) else {
+                            let Ok(jump) = i32::try_from((label_i - 1) - goto_i) else {
                                 return Some(Err(Error::LongJump));
                             };
-                            self.byte_codes[goto.bytecode] = ByteCode::Jmp(jump);
+                            self.byte_codes[goto.bytecode] = Bytecode::jump(jump);
                             None
                         } else {
                             Some(Ok(goto))
@@ -258,7 +269,7 @@ impl Program {
                 compile_context.labels.truncate(labels);
 
                 if function_body {
-                    self.byte_codes.push(ByteCode::ZeroReturn);
+                    self.byte_codes.push(Bytecode::zero_return());
                 }
 
                 Ok(())
@@ -376,8 +387,18 @@ impl Program {
                         let (return_start, stack_top) = compile_context.reserve_stack_top();
                         last_call.discharge(&stack_top, self, compile_context)?;
 
-                        if let Some(ByteCode::Call(_, _, out)) = self.byte_codes.last_mut() {
-                            *out = u8::try_from(remaining)? + 1;
+                        if self
+                            .byte_codes
+                            .last_mut()
+                            .filter(|bytecode| bytecode.get_opcode() == OpCode::Call)
+                            .is_some()
+                        {
+                            let Some(call) = self.byte_codes.pop() else {
+                                unreachable!();
+                            };
+                            let (a, b, _, _) = call.decode_abck();
+                            self.byte_codes
+                                .push(Bytecode::call(a, b, u8::try_from(remaining)? + 1))
                         } else {
                             unreachable!("Last bytecode was not Call.");
                         }
@@ -416,14 +437,14 @@ impl Program {
                 Some(breaks) => {
                     let bytecode = self.byte_codes.len();
                     breaks.push(bytecode);
-                    self.byte_codes.push(ByteCode::Jmp(0));
+                    self.byte_codes.push(Bytecode::jump(0));
                     Ok(())
                 }
                 None => Err(Error::BreakOutsideLoop),
             },
             make_deconstruct!(_goto(TokenType::Goto), _name(TokenType::Name(name))) => {
                 let bytecode = self.byte_codes.len();
-                self.byte_codes.push(ByteCode::Jmp(0));
+                self.byte_codes.push(Bytecode::jump(0));
 
                 compile_context.push_goto(GotoLabel {
                     name,
@@ -466,8 +487,8 @@ impl Program {
 
                 let end_of_cond = self.byte_codes.len();
                 for jump in compile_context.jumps_to_block.drain(jump_to_block_count..) {
-                    self.byte_codes[jump] = ByteCode::Jmp(
-                        i16::try_from(end_of_cond - jump).map_err(|_| Error::LongJump)?,
+                    self.byte_codes[jump] = Bytecode::jump(
+                        i32::try_from(end_of_cond - jump).map_err(|_| Error::LongJump)?,
                     );
                 }
 
@@ -484,8 +505,8 @@ impl Program {
 
                 let end_of_block = self.byte_codes.len();
                 for jump in compile_context.jumps_to_end.drain(jump_to_end_count..) {
-                    self.byte_codes[jump] = ByteCode::Jmp(
-                        i16::try_from(end_of_block - jump).map_err(|_| Error::LongJump)?,
+                    self.byte_codes[jump] = Bytecode::jump(
+                        i32::try_from(end_of_block - jump).map_err(|_| Error::LongJump)?,
                     );
                 }
 
@@ -496,15 +517,15 @@ impl Program {
                     );
                 };
                 for break_bytecode in breaks {
-                    self.byte_codes[break_bytecode] = ByteCode::Jmp(
-                        i16::try_from(end_of_block - break_bytecode)
+                    self.byte_codes[break_bytecode] = Bytecode::jump(
+                        i32::try_from(end_of_block - break_bytecode)
                             .map_err(|_| Error::LongJump)?,
                     );
                 }
 
-                self.byte_codes.push(ByteCode::Jmp(
-                    i16::try_from(start_of_cond)
-                        .and_then(|lhs| i16::try_from(end_of_block + 1).map(|rhs| (lhs, rhs)))
+                self.byte_codes.push(Bytecode::jump(
+                    i32::try_from(start_of_cond)
+                        .and_then(|lhs| i32::try_from(end_of_block + 1).map(|rhs| (lhs, rhs)))
                         .map(|(lhs, rhs)| lhs - rhs)
                         .map_err(|_| Error::LongJump)?,
                 ));
@@ -540,8 +561,8 @@ impl Program {
                 );
 
                 let repeat_end = self.byte_codes.len();
-                self.byte_codes[jump_cache[0]] = ByteCode::Jmp(
-                    i16::try_from(isize::try_from(repeat_start)? - isize::try_from(repeat_end)?)
+                self.byte_codes[jump_cache[0]] = Bytecode::jump(
+                    i32::try_from(isize::try_from(repeat_start)? - isize::try_from(repeat_end)?)
                         .map_err(|_| Error::LongJump)?,
                 );
 
@@ -591,20 +612,20 @@ impl Program {
                 compile_context.stack_top += 1;
 
                 let counter_bytecode = self.byte_codes.len();
-                self.byte_codes.push(ByteCode::ForPrepare(for_stack, 0));
+                self.byte_codes.push(Bytecode::for_prepare(for_stack, 0));
 
                 let cache_var_args = compile_context.var_args.take();
                 self.block(block, compile_context, false)?;
                 compile_context.var_args = cache_var_args;
 
                 let end_bytecode = self.byte_codes.len();
-                self.byte_codes.push(ByteCode::ForLoop(
+                self.byte_codes.push(Bytecode::for_loop(
                     for_stack,
-                    u16::try_from(end_bytecode - counter_bytecode)?,
+                    u32::try_from(end_bytecode - counter_bytecode)?,
                 ));
-                self.byte_codes[counter_bytecode] = ByteCode::ForPrepare(
+                self.byte_codes[counter_bytecode] = Bytecode::for_prepare(
                     for_stack,
-                    u16::try_from(end_bytecode - (counter_bytecode + 1))?,
+                    u32::try_from(end_bytecode - (counter_bytecode + 1))?,
                 );
 
                 compile_context.stack_top = for_stack;
@@ -640,7 +661,7 @@ impl Program {
                     // This is the case where the function is defined as
                     // function f() ... end
                     let constant = self.push_constant(*tail)?;
-                    ExpDesc::Global(usize::from(constant))
+                    ExpDesc::Global(usize::try_from(constant)?)
                 } else {
                     let (stack_loc, stack_top) = compile_context.reserve_stack_top();
                     let mut used_stack_top = false;
@@ -651,8 +672,11 @@ impl Program {
                         } else {
                             used_stack_top = true;
                             let constant = self.push_constant(head[0])?;
-                            self.byte_codes
-                                .push(ByteCode::GetUpTable(stack_loc, 0, constant));
+                            self.byte_codes.push(Bytecode::get_uptable(
+                                stack_loc,
+                                0,
+                                u8::try_from(constant)?,
+                            ));
                             stack_loc
                         };
 
@@ -723,10 +747,20 @@ impl Program {
                 if explist.len() < namelist.len() {
                     let remaining = u8::try_from(namelist.len() - explist.len())?;
 
-                    if let Some(ByteCode::VariadicArguments(_, count)) = self.byte_codes.last_mut()
+                    if self
+                        .byte_codes
+                        .last_mut()
+                        .filter(|bytecode| bytecode.get_opcode() == OpCode::VariadicArguments)
+                        .is_some()
                     {
+                        let Some(variadic) = self.byte_codes.pop() else {
+                            unreachable!()
+                        };
                         compile_context.stack_top += remaining;
-                        *count = remaining + 2;
+
+                        let (register, _, _, _) = variadic.decode_abck();
+                        self.byte_codes
+                            .push(Bytecode::variadic_arguments(register, remaining + 2));
                     } else {
                         for _ in 0..remaining {
                             let (_, stack_top) = compile_context.reserve_stack_top();
@@ -932,7 +966,7 @@ impl Program {
                 let explist = self.retstat_explist(retstat_explist, compile_context)?;
 
                 match explist.len() {
-                    0 => self.byte_codes.push(ByteCode::ZeroReturn),
+                    0 => self.byte_codes.push(Bytecode::zero_return()),
                     1 => {
                         let Some(last) = explist.last() else {
                             unreachable!(
@@ -949,20 +983,23 @@ impl Program {
                                 compile_context,
                             )?;
 
-                            self.byte_codes.push(ByteCode::OneReturn(dst))
+                            self.byte_codes.push(Bytecode::one_return(dst))
                         } else {
                             last.discharge(&stack_top, self, compile_context)?;
 
                             if let ExpDesc::FunctionCall(_, _) = last {
-                                let Some(ByteCode::Call(func_index, b, _)) = self.byte_codes.pop()
-                                else {
+                                let Some(call) = self.byte_codes.pop() else {
                                     unreachable!("Last should always be a function call");
                                 };
+                                assert_eq!(call.get_opcode(), OpCode::Call);
+                                let (func_index, inputs, _, _) = call.decode_abck();
 
-                                self.byte_codes.push(ByteCode::TailCall(func_index, b, 0));
-                                self.byte_codes.push(ByteCode::Return(stack_loc, 0, 0))
+                                self.byte_codes
+                                    .push(Bytecode::tail_call(func_index, inputs, 0));
+                                self.byte_codes
+                                    .push(Bytecode::return_bytecode(stack_loc, 0, 0))
                             } else {
-                                self.byte_codes.push(ByteCode::OneReturn(stack_loc))
+                                self.byte_codes.push(Bytecode::one_return(stack_loc))
                             }
                         };
                         compile_context.stack_top -= 1;
@@ -975,7 +1012,7 @@ impl Program {
                         }
                         compile_context.stack_top -= u8::try_from(explist.len())?;
 
-                        self.byte_codes.push(ByteCode::Return(
+                        self.byte_codes.push(Bytecode::return_bytecode(
                             return_start,
                             u8::try_from(explist.len())? + 1,
                             0,
