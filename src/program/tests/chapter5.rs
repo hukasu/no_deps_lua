@@ -1,8 +1,9 @@
-use crate::{bytecode::Bytecode, Program};
+use crate::{bytecode::Bytecode, Error, Program};
 
 #[test]
 fn unops() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
+
     let program = Program::parse(
         r#"
 local i = 100
@@ -21,20 +22,9 @@ print(not print)
 "#,
     )
     .unwrap();
-    assert_eq!(
-        &program.constants,
-        &[
-            #[allow(clippy::approx_constant)]
-            3.14f64.into(),
-            "a".into(),
-            "iamastring".into(),
-            "print".into(),
-            #[allow(clippy::approx_constant)]
-            (-3.14f64).into(),
-        ]
-    );
-    assert_eq!(
-        &program.byte_codes,
+
+    super::compare_program(
+        &program,
         &[
             Bytecode::variadic_arguments_prepare(0),
             // local i = 100
@@ -87,14 +77,27 @@ print(not print)
             Bytecode::call(2, 2, 1),
             // EOF
             Bytecode::return_bytecode(2, 1, 1),
-        ]
+        ],
+        &[
+            #[allow(clippy::approx_constant)]
+            3.14f64.into(),
+            "a".into(),
+            "iamastring".into(),
+            "print".into(),
+            #[allow(clippy::approx_constant)]
+            (-3.14f64).into(),
+        ],
+        &["_ENV".into()],
+        0,
     );
-    crate::Lua::execute(&program).unwrap();
+
+    crate::Lua::run_program(program).unwrap();
 }
 
 #[test]
 fn binops() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
+
     let program = Program::parse(
         r#"
 g = 10
@@ -108,12 +111,9 @@ print(100>>a) -- panic
 "#,
     )
     .unwrap();
-    assert_eq!(
-        &program.constants,
-        &["g".into(), 10i64.into(), 1.1f64.into(), "print".into()]
-    );
-    assert_eq!(
-        &program.byte_codes,
+
+    super::compare_program(
+        &program,
         &[
             Bytecode::variadic_arguments_prepare(0),
             // g = 10
@@ -148,16 +148,23 @@ print(100>>a) -- panic
             Bytecode::call(3, 2, 1),
             // EOF
             Bytecode::return_bytecode(3, 1, 1),
-        ]
+        ],
+        &["g".into(), 10i64.into(), 1.1f64.into(), "print".into()],
+        &["_ENV".into()],
+        0,
     );
-    crate::Lua::execute(&program)
-        .inspect_err(|err| log::error!("{err}"))
-        .expect_err("Last print should fail");
+
+    match crate::Lua::run_program(program) {
+        Err(err @ Error::BitwiseOperand(_, _, _)) => log::error!("{}", err),
+        Err(err) => panic!("Expected `BitwiseOperand` error, but got {:?}.", err),
+        Ok(_) => panic!("Last print should fail"),
+    }
 }
 
 #[test]
 fn concat() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
+
     let program = Program::parse(
         r#"
 print('hello, '..'world')
@@ -168,19 +175,9 @@ print('hello' .. a) -- panic
 "#,
     )
     .unwrap();
-    assert_eq!(
-        &program.constants,
-        &[
-            "print".into(),
-            "hello, ".into(),
-            "world".into(),
-            #[allow(clippy::approx_constant)]
-            3.14f64.into(),
-            "hello".into(),
-        ]
-    );
-    assert_eq!(
-        &program.byte_codes,
+
+    super::compare_program(
+        &program,
         &[
             Bytecode::variadic_arguments_prepare(0),
             // print('hello, '..'world')
@@ -210,9 +207,22 @@ print('hello' .. a) -- panic
             Bytecode::call(1, 2, 1),
             // EOF
             Bytecode::return_bytecode(1, 1, 1),
-        ]
+        ],
+        &[
+            "print".into(),
+            "hello, ".into(),
+            "world".into(),
+            #[allow(clippy::approx_constant)]
+            3.14f64.into(),
+            "hello".into(),
+        ],
+        &["_ENV".into()],
+        0,
     );
-    crate::Lua::execute(&program)
-        .inspect_err(|err| log::error!("{err}"))
-        .expect_err("Last print should fail");
+
+    match crate::Lua::run_program(program) {
+        Err(err @ Error::ConcatOperand(_)) => log::error!("{}", err),
+        Err(err) => panic!("Expected `ConcatOperand` error, but got {:?}.", err),
+        Ok(_) => panic!("Last print should fail"),
+    }
 }

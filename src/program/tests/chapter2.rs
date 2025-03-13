@@ -3,6 +3,7 @@ use crate::{bytecode::Bytecode, Program};
 #[test]
 fn types() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
+
     let program = Program::parse(
         r#"
 print(nil)
@@ -13,12 +14,9 @@ print(123456.0)
 "#,
     )
     .unwrap();
-    assert_eq!(
-        &program.constants,
-        &["print".into(), 123456i64.into(), 123456.0.into(),]
-    );
-    assert_eq!(
-        &program.byte_codes,
+
+    super::compare_program(
+        &program,
         &[
             Bytecode::variadic_arguments_prepare(0),
             // print(nil)
@@ -43,14 +41,19 @@ print(123456.0)
             Bytecode::call(0, 2, 1),
             // EOF
             Bytecode::return_bytecode(0, 1, 1),
-        ]
+        ],
+        &["print".into(), 123456i64.into(), 123456.0.into()],
+        &["_ENV".into()],
+        0,
     );
-    crate::Lua::execute(&program).unwrap();
+
+    crate::Lua::run_program(program).unwrap();
 }
 
 #[test]
 fn local() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
+
     let program = Program::parse(
         r#"
 local a = "hello, local!"  -- define a local by string
@@ -62,16 +65,9 @@ print "I'm local-print!"  -- call local function
 "#,
     )
     .unwrap();
-    assert_eq!(
-        &program.constants,
-        &[
-            "hello, local!".into(),
-            "print".into(),
-            "I'm local-print!".into()
-        ]
-    );
-    assert_eq!(
-        &program.byte_codes,
+
+    super::compare_program(
+        &program,
         &[
             Bytecode::variadic_arguments_prepare(0),
             // local a = "hello, local!"
@@ -94,14 +90,23 @@ print "I'm local-print!"  -- call local function
             Bytecode::call(3, 2, 1),
             // EOF
             Bytecode::return_bytecode(3, 1, 1),
-        ]
+        ],
+        &[
+            "hello, local!".into(),
+            "print".into(),
+            "I'm local-print!".into(),
+        ],
+        &["_ENV".into()],
+        0,
     );
-    crate::Lua::execute(&program).unwrap();
+
+    crate::Lua::run_program(program).unwrap();
 }
 
 #[test]
 fn assign() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
+
     let program = Program::parse(
         r#"
 local a = 456
@@ -120,12 +125,9 @@ print(g)
 "#,
     )
     .unwrap();
-    assert_eq!(
-        &program.constants,
-        &["print".into(), "g".into(), 123i64.into(), "g2".into(),]
-    );
-    assert_eq!(
-        &program.byte_codes,
+
+    super::compare_program(
+        &program,
         &[
             Bytecode::variadic_arguments_prepare(0),
             // local a = 456
@@ -168,7 +170,11 @@ print(g)
             Bytecode::call(1, 2, 1),
             // EOF
             Bytecode::return_bytecode(1, 1, 1),
-        ]
+        ],
+        &["print".into(), "g".into(), 123i64.into(), "g2".into()],
+        &["_ENV".into()],
+        0,
     );
-    crate::Lua::execute(&program).unwrap();
+
+    crate::Lua::run_program(program).unwrap();
 }

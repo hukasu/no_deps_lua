@@ -50,6 +50,12 @@ impl<const N: usize> Deref for StackStr<N> {
     }
 }
 
+impl<const N: usize> From<[u8; N]> for StackStr<N> {
+    fn from(buffer: [u8; N]) -> Self {
+        Self { buffer }
+    }
+}
+
 #[derive(Debug)]
 pub enum Error {
     StringTooBig,

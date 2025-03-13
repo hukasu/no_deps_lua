@@ -62,10 +62,6 @@ impl Binop {
         )
     }
 
-    pub fn conditional_binary_operator(&self) -> bool {
-        matches!(self, Self::And | Self::Or)
-    }
-
     pub fn relational_binary_operator(&self) -> bool {
         matches!(
             self,
@@ -76,17 +72,6 @@ impl Binop {
                 | Self::LessEqual
                 | Self::GreaterEqual
         )
-    }
-
-    pub fn relational_binary_operator_integer(&self) -> bool {
-        matches!(
-            self,
-            Self::Equal | Self::LessThan | Self::GreaterThan | Self::LessEqual | Self::GreaterEqual
-        )
-    }
-
-    pub fn relational_binary_operator_constant(&self) -> bool {
-        matches!(self, Self::Equal)
     }
 }
 

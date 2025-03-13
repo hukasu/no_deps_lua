@@ -1,8 +1,9 @@
-use crate::{bytecode::Bytecode, value::Value, Program};
+use crate::{bytecode::Bytecode, Error, Program};
 
 #[test]
 fn and_or() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
+
     let program = Program::parse(
         r#"
 g1 = 1
@@ -26,23 +27,9 @@ end
 "#,
     )
     .unwrap();
-    assert_eq!(
-        &program.constants,
-        &[
-            "g1".into(),
-            1i64.into(),
-            "g2".into(),
-            2i64.into(),
-            "g3".into(),
-            "print".into(),
-            "test only once".into(),
-            "test 3 times".into(),
-            "g4".into(),
-            "test 4 times and fail".into(),
-        ]
-    );
-    assert_eq!(
-        &program.byte_codes,
+
+    super::compare_program(
+        &program,
         &[
             Bytecode::variadic_arguments_prepare(0),
             // g1 = 1
@@ -120,14 +107,30 @@ end
             // end
             // EOF
             Bytecode::return_bytecode(0, 1, 1),
-        ]
+        ],
+        &[
+            "g1".into(),
+            1i64.into(),
+            "g2".into(),
+            2i64.into(),
+            "g3".into(),
+            "print".into(),
+            "test only once".into(),
+            "test 3 times".into(),
+            "g4".into(),
+            "test 4 times and fail".into(),
+        ],
+        &["_ENV".into()],
+        0,
     );
-    crate::Lua::execute(&program).expect("Should run");
+
+    crate::Lua::run_program(program).expect("Should run");
 }
 
 #[test]
 fn test_set() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
+
     let program = Program::parse(
         r#"
 g1 = 1
@@ -140,20 +143,9 @@ print( (g3 or g1) and (g2 and g4))
 "#,
     )
     .unwrap();
-    assert_eq!(
-        &program.constants,
-        &[
-            "g1".into(),
-            1i64.into(),
-            "g2".into(),
-            2i64.into(),
-            "print".into(),
-            "g3".into(),
-            "g4".into(),
-        ]
-    );
-    assert_eq!(
-        &program.byte_codes,
+
+    super::compare_program(
+        &program,
         &[
             Bytecode::variadic_arguments_prepare(0),
             // g1 = 1
@@ -208,9 +200,21 @@ print( (g3 or g1) and (g2 and g4))
             Bytecode::call(0, 2, 1),
             // EOF
             Bytecode::return_bytecode(0, 1, 1),
-        ]
+        ],
+        &[
+            "g1".into(),
+            1i64.into(),
+            "g2".into(),
+            2i64.into(),
+            "print".into(),
+            "g3".into(),
+            "g4".into(),
+        ],
+        &["_ENV".into()],
+        0,
     );
-    crate::Lua::execute(&program).expect("Should run");
+
+    crate::Lua::run_program(program).expect("Should run");
 }
 
 #[test]
@@ -233,87 +237,94 @@ print (a>b)
 print (a<=b)
 print (a>=b)
 "#;
-    let expected_constants: &[Value] = &[
-        "hello".into(),
-        "print".into(),
-        "yes".into(),
-        "world".into(),
-        1000i64.into(),
-    ];
-    let expected_bytecodes = &[
-        Bytecode::variadic_arguments_prepare(0),
-        // local a, b = 123, "hello"
-        Bytecode::load_integer(0, 123),
-        Bytecode::load_constant(1, 0),
-        // if a >= 123 and b == "hello" then
-        Bytecode::greater_equal_integer(0, 123, 0),
-        Bytecode::jump(5),
-        Bytecode::equal_constant(1, 0, 0),
-        Bytecode::jump(3),
-        //     print "yes"
-        Bytecode::get_uptable(2, 0, 1),
-        Bytecode::load_constant(3, 2),
-        Bytecode::call(2, 2, 1),
-        // end
-
-        // if b <= "world" then
-        Bytecode::load_constant(2, 3),
-        Bytecode::less_equal(1, 2, 0),
-        Bytecode::jump(6),
-        //     print (a>100)
-        Bytecode::get_uptable(2, 0, 1),
-        Bytecode::greater_than_integer(0, 100, 1),
-        Bytecode::jump(1),
-        Bytecode::load_false_skip(3),
-        Bytecode::load_true(3),
-        Bytecode::call(2, 2, 1),
-        // end
-
-        // print (a == 1000 and b == "hello")
-        Bytecode::get_uptable(2, 0, 1),
-        Bytecode::equal_constant(0, 4, 0),
-        Bytecode::jump(2),
-        Bytecode::equal_constant(1, 0, 1),
-        Bytecode::jump(1),
-        Bytecode::load_false_skip(3),
-        Bytecode::load_true(3),
-        Bytecode::call(2, 2, 1),
-        // print (a<b)
-        Bytecode::get_uptable(2, 0, 1),
-        Bytecode::less_than(0, 1, 1),
-        Bytecode::jump(1),
-        Bytecode::load_false_skip(3),
-        Bytecode::load_true(3),
-        Bytecode::call(2, 2, 1),
-        // print (a>b)
-        Bytecode::get_uptable(2, 0, 1),
-        Bytecode::less_than(1, 0, 1),
-        Bytecode::jump(1),
-        Bytecode::load_false_skip(3),
-        Bytecode::load_true(3),
-        Bytecode::call(2, 2, 1),
-        // print (a<=b)
-        Bytecode::get_uptable(2, 0, 1),
-        Bytecode::less_equal(0, 1, 1),
-        Bytecode::jump(1),
-        Bytecode::load_false_skip(3),
-        Bytecode::load_true(3),
-        Bytecode::call(2, 2, 1),
-        // print (a>=b)
-        Bytecode::get_uptable(2, 0, 1),
-        Bytecode::less_equal(1, 0, 1),
-        Bytecode::jump(1),
-        Bytecode::load_false_skip(3),
-        Bytecode::load_true(3),
-        Bytecode::call(2, 2, 1),
-        // EOF
-        Bytecode::return_bytecode(2, 1, 1),
-    ];
 
     let program = Program::parse(code).unwrap();
-    assert_eq!(&program.constants, expected_constants);
-    assert_eq!(&program.byte_codes, expected_bytecodes);
-    crate::Lua::execute(&program)
-        .inspect_err(|err| log::error!("{err}"))
-        .expect_err("Comparison between string and integer should fail");
+
+    super::compare_program(
+        &program,
+        &[
+            Bytecode::variadic_arguments_prepare(0),
+            // local a, b = 123, "hello"
+            Bytecode::load_integer(0, 123),
+            Bytecode::load_constant(1, 0),
+            // if a >= 123 and b == "hello" then
+            Bytecode::greater_equal_integer(0, 123, 0),
+            Bytecode::jump(5),
+            Bytecode::equal_constant(1, 0, 0),
+            Bytecode::jump(3),
+            //     print "yes"
+            Bytecode::get_uptable(2, 0, 1),
+            Bytecode::load_constant(3, 2),
+            Bytecode::call(2, 2, 1),
+            // end
+
+            // if b <= "world" then
+            Bytecode::load_constant(2, 3),
+            Bytecode::less_equal(1, 2, 0),
+            Bytecode::jump(6),
+            //     print (a>100)
+            Bytecode::get_uptable(2, 0, 1),
+            Bytecode::greater_than_integer(0, 100, 1),
+            Bytecode::jump(1),
+            Bytecode::load_false_skip(3),
+            Bytecode::load_true(3),
+            Bytecode::call(2, 2, 1),
+            // end
+
+            // print (a == 1000 and b == "hello")
+            Bytecode::get_uptable(2, 0, 1),
+            Bytecode::equal_constant(0, 4, 0),
+            Bytecode::jump(2),
+            Bytecode::equal_constant(1, 0, 1),
+            Bytecode::jump(1),
+            Bytecode::load_false_skip(3),
+            Bytecode::load_true(3),
+            Bytecode::call(2, 2, 1),
+            // print (a<b)
+            Bytecode::get_uptable(2, 0, 1),
+            Bytecode::less_than(0, 1, 1),
+            Bytecode::jump(1),
+            Bytecode::load_false_skip(3),
+            Bytecode::load_true(3),
+            Bytecode::call(2, 2, 1),
+            // print (a>b)
+            Bytecode::get_uptable(2, 0, 1),
+            Bytecode::less_than(1, 0, 1),
+            Bytecode::jump(1),
+            Bytecode::load_false_skip(3),
+            Bytecode::load_true(3),
+            Bytecode::call(2, 2, 1),
+            // print (a<=b)
+            Bytecode::get_uptable(2, 0, 1),
+            Bytecode::less_equal(0, 1, 1),
+            Bytecode::jump(1),
+            Bytecode::load_false_skip(3),
+            Bytecode::load_true(3),
+            Bytecode::call(2, 2, 1),
+            // print (a>=b)
+            Bytecode::get_uptable(2, 0, 1),
+            Bytecode::less_equal(1, 0, 1),
+            Bytecode::jump(1),
+            Bytecode::load_false_skip(3),
+            Bytecode::load_true(3),
+            Bytecode::call(2, 2, 1),
+            // EOF
+            Bytecode::return_bytecode(2, 1, 1),
+        ],
+        &[
+            "hello".into(),
+            "print".into(),
+            "yes".into(),
+            "world".into(),
+            1000i64.into(),
+        ],
+        &["_ENV".into()],
+        0,
+    );
+
+    match crate::Lua::run_program(program) {
+        Err(err @ Error::RelationalOperand(_, _)) => log::error!("{}", err),
+        Err(err) => panic!("Expected `RelationalOperand` error, but got {:?}.", err),
+        Ok(_) => panic!("Last print should fail"),
+    }
 }

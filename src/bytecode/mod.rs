@@ -14,11 +14,11 @@ use alloc::{
 };
 
 use crate::{
+    closure::{Closure, FunctionType},
     function::Function,
-    stack_frame::FunctionIndex,
     table::Table,
     value::{Value, ValueKey},
-    Lua, Program,
+    Lua,
 };
 
 use super::Error;
@@ -31,8 +31,7 @@ pub struct Bytecode {
     function: BytecodeFunction,
 }
 
-type BytecodeFunction =
-    fn(bytecode: &Bytecode, vm: &mut Lua, program: &Program) -> Result<(), Error>;
+type BytecodeFunction = fn(bytecode: &Bytecode, vm: &mut Lua) -> Result<(), Error>;
 
 const A_MASK: u32 = 0x7f80;
 const A_SHIFT: u32 = 7;
@@ -54,9 +53,11 @@ const I8_OFFSET: u8 = u8::MAX >> 1;
 const I17_OFFSET: u32 = BX_MAX >> 1;
 const I25_OFFSET: u32 = J_MAX >> 1;
 
+const NO_CLOSURE: &str = "Must have a program while executing bytecode.";
+
 impl Bytecode {
-    pub fn execute(&self, vm: &mut Lua, program: &Program) -> Result<(), Error> {
-        (self.function)(self, vm, program)
+    pub fn execute(&self, vm: &mut Lua) -> Result<(), Error> {
+        (self.function)(self, vm)
     }
 
     /// `MOVE`  
@@ -163,6 +164,18 @@ impl Bytecode {
         Bytecode {
             bytecode: Self::encode_abck(OpCode::GetUpValue, dst, upvalue, 0, 0),
             function: Self::execute_get_upvalue,
+        }
+    }
+
+    /// `SETUPVAL`  
+    /// Sets a upvalue with value on stack
+    ///
+    /// `upvalue`: Upvalue to set  
+    /// `value`: Value on to set upvalue to
+    pub const fn set_upvalue(upvalue: u8, value: u8) -> Bytecode {
+        Bytecode {
+            bytecode: Self::encode_abck(OpCode::SetUpValue, upvalue, value, 0, 0),
+            function: Self::execute_set_upvalue,
         }
     }
 
@@ -778,48 +791,49 @@ impl Bytecode {
         }
     }
 
-    fn execute_move(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_move(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, src, _, _) = self.decode_abck();
         let value = vm.get_stack(src)?.clone();
         vm.set_stack(dst, value)
     }
 
-    fn execute_load_integer(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_load_integer(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, value) = self.decode_asbx();
         vm.set_stack(dst, Value::Integer(i64::from(value)))
     }
 
-    fn execute_load_float(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_load_float(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, value) = self.decode_asbx();
         vm.set_stack(dst, Value::Float(value as f64))
     }
 
-    fn execute_load_constant(&self, vm: &mut Lua, main_program: &Program) -> Result<(), Error> {
+    fn execute_load_constant(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, constant) = self.decode_abx();
 
-        vm.set_stack(
-            dst,
-            vm.get_running_closure(main_program).constants[usize::try_from(constant)?].clone(),
-        )
+        let Some(closure) = vm.get_running_closure() else {
+            unreachable!("{NO_CLOSURE}");
+        };
+        let value = closure.constant(usize::try_from(constant)?)?;
+        vm.set_stack(dst, value)
     }
 
-    fn execute_load_false(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_load_false(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, _, _, _) = self.decode_abck();
         vm.set_stack(dst, Value::Boolean(false))
     }
 
-    fn execute_load_false_skip(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_load_false_skip(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, _, _, _) = self.decode_abck();
         vm.jump(1)?;
         vm.set_stack(dst, Value::Boolean(false))
     }
 
-    fn execute_load_true(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_load_true(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, _, _, _) = self.decode_abck();
         vm.set_stack(dst, Value::Boolean(true))
     }
 
-    fn execute_load_nil(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_load_nil(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, extras, _, _) = self.decode_abck();
         // If `extra` is 0, runs once
         for dst in dst..=(dst + extras) {
@@ -828,34 +842,38 @@ impl Bytecode {
         Ok(())
     }
 
-    fn execute_get_upvalue(&self, vm: &mut Lua, _main_program: &Program) -> Result<(), Error> {
+    fn execute_get_upvalue(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, upvalue, _, _) = self.decode_abck();
-
-        let upvalue = vm
-            .get_up_table(usize::from(upvalue))
-            .cloned()
-            .ok_or(Error::UpvalueDoesNotExist)?;
-
+        let upvalue = vm.get_upvalue(usize::from(upvalue))?;
         vm.set_stack(dst, upvalue)
     }
 
-    fn execute_get_uptable(&self, vm: &mut Lua, main_program: &Program) -> Result<(), Error> {
+    fn execute_set_upvalue(&self, vm: &mut Lua) -> Result<(), Error> {
+        let (upvalue, value, _, _) = self.decode_abck();
+
+        let value = vm.get_stack(value).cloned()?;
+        vm.set_upvalue(usize::from(upvalue), value)?;
+
+        Ok(())
+    }
+
+    fn execute_get_uptable(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, upvalue, key, _) = self.decode_abck();
 
-        let Value::Table(upvalue) = vm
-            .get_up_table(usize::from(upvalue))
-            .ok_or(Error::UpvalueDoesNotExist)?
-        else {
+        let Value::Table(upvalue) = vm.get_upvalue(usize::from(upvalue))? else {
             return Err(Error::ExpectedTable);
         };
 
-        let key = &vm.get_running_closure(main_program).constants[usize::from(key)];
+        let Some(closure) = vm.get_running_closure() else {
+            unreachable!("{NO_CLOSURE}");
+        };
+        let key = closure.constant(usize::from(key))?;
         let value = upvalue.deref().borrow().get(ValueKey(key.clone())).clone();
 
         vm.set_stack(dst, value)
     }
 
-    fn execute_get_table(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_get_table(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, table, src, _) = self.decode_abck();
 
         if let Value::Table(table) = vm.get_stack(table)?.clone() {
@@ -875,7 +893,7 @@ impl Bytecode {
         }
     }
 
-    fn execute_get_index(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_get_index(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, table, index, _) = self.decode_abck();
 
         if let Value::Table(table) = vm.get_stack(table)?.clone() {
@@ -902,13 +920,14 @@ impl Bytecode {
         }
     }
 
-    fn execute_get_field(&self, vm: &mut Lua, main_program: &Program) -> Result<(), Error> {
+    fn execute_get_field(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, table, key, _) = self.decode_abck();
 
         if let Value::Table(table) = vm.get_stack(table)?.clone() {
-            let key = ValueKey::from(
-                vm.get_running_closure(main_program).constants[usize::from(key)].clone(),
-            );
+            let Some(closure) = vm.get_running_closure() else {
+                unreachable!("{NO_CLOSURE}");
+            };
+            let key = ValueKey::from(closure.constant(usize::from(key))?);
             let bin_search = (*table)
                 .borrow()
                 .table
@@ -924,31 +943,35 @@ impl Bytecode {
         }
     }
 
-    fn execute_set_uptable(&self, vm: &mut Lua, main_program: &Program) -> Result<(), Error> {
+    fn execute_set_uptable(&self, vm: &mut Lua) -> Result<(), Error> {
         let (upvalue, key, src, constant) = self.decode_abck();
 
-        let running_program = vm.get_running_closure(main_program);
-        let key = running_program.constants[usize::from(key)].clone();
+        let Some(running_program) = vm.get_running_closure() else {
+            unreachable!("{NO_CLOSURE}");
+        };
+        let key = running_program.constant(usize::from(key))?;
         let value = if constant == 1 {
-            running_program.constants[usize::from(src)].clone()
+            running_program.constant(usize::from(src))?
         } else {
             vm.get_stack(src)?.clone()
         };
 
-        match vm.get_up_table(usize::from(upvalue)) {
-            Some(Value::Table(upvalue)) => upvalue.borrow_mut().set(ValueKey(key), value),
-            Some(_) => Err(Error::ExpectedTable),
-            None => Err(Error::UpvalueDoesNotExist),
+        match vm.get_upvalue(usize::from(upvalue))? {
+            Value::Table(upvalue) => upvalue.borrow_mut().set(ValueKey(key), value),
+            _ => Err(Error::ExpectedTable),
         }
     }
 
-    fn execute_set_table(&self, vm: &mut Lua, main_program: &Program) -> Result<(), Error> {
+    fn execute_set_table(&self, vm: &mut Lua) -> Result<(), Error> {
         let (table, key, src, constant) = self.decode_abck();
 
         if let Value::Table(table) = vm.get_stack(table)?.clone() {
+            let Some(program) = vm.get_running_closure() else {
+                unreachable!("{NO_CLOSURE}");
+            };
             let key = ValueKey::from(vm.get_stack(key)?.clone());
             let value = if constant == 1 {
-                main_program.constants[usize::from(src)].clone()
+                program.constant(usize::from(src))?
             } else {
                 vm.get_stack(src)?.clone()
             };
@@ -973,14 +996,16 @@ impl Bytecode {
         }
     }
 
-    fn execute_set_field(&self, vm: &mut Lua, main_program: &Program) -> Result<(), Error> {
+    fn execute_set_field(&self, vm: &mut Lua) -> Result<(), Error> {
         let (table, key, src, constant) = self.decode_abck();
 
         if let Value::Table(table) = vm.get_stack(table)?.clone() {
-            let running_program = vm.get_running_closure(main_program);
-            let key = ValueKey::from(running_program.constants[usize::from(key)].clone());
+            let Some(running_program) = vm.get_running_closure() else {
+                unreachable!("{NO_CLOSURE}");
+            };
+            let key = ValueKey::from(running_program.constant(usize::from(key))?);
             let value = if constant == 1 {
-                running_program.constants[usize::from(src)].clone()
+                running_program.constant(usize::from(src))?
             } else {
                 vm.get_stack(src)?.clone()
             };
@@ -1005,7 +1030,7 @@ impl Bytecode {
         }
     }
 
-    fn execute_new_table(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_new_table(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, array_initial_size, table_initial_size, _) = self.decode_abck();
 
         vm.set_stack(
@@ -1017,15 +1042,16 @@ impl Bytecode {
         )
     }
 
-    fn execute_table_self(&self, vm: &mut Lua, main_program: &Program) -> Result<(), Error> {
+    fn execute_table_self(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, table, key, _) = self.decode_abck();
 
         if let Value::Table(table) = vm.get_stack(table).cloned()? {
             vm.set_stack(dst + 1, Value::Table(table.clone()))?;
 
-            let key = ValueKey::from(
-                vm.get_running_closure(main_program).constants[usize::from(key)].clone(),
-            );
+            let Some(program) = vm.get_running_closure() else {
+                unreachable!("{NO_CLOSURE}");
+            };
+            let key = ValueKey::from(program.constant(usize::from(key))?);
             let bin_search = (*table)
                 .borrow()
                 .table
@@ -1041,7 +1067,7 @@ impl Bytecode {
         }
     }
 
-    fn execute_add_integer(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_add_integer(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, lhs, int, _) = self.decode_absck();
 
         let res = match &vm.get_stack(lhs)? {
@@ -1058,12 +1084,16 @@ impl Bytecode {
         vm.set_stack(dst, res)
     }
 
-    fn execute_add_constant(&self, vm: &mut Lua, main_program: &Program) -> Result<(), Error> {
+    fn execute_add_constant(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, lhs, constant, _) = self.decode_abck();
+
+        let Some(program) = vm.get_running_closure() else {
+            unreachable!("{NO_CLOSURE}");
+        };
 
         let res = match (
             &vm.get_stack(lhs)?,
-            &vm.get_running_closure(main_program).constants[usize::from(constant)],
+            &program.constant(usize::from(constant))?,
         ) {
             (Value::Integer(l), Value::Integer(r)) => Value::Integer(l + r),
             (Value::Integer(l), Value::Float(r)) => Value::Float(*l as f64 + r),
@@ -1080,12 +1110,16 @@ impl Bytecode {
         vm.set_stack(dst, res)
     }
 
-    fn execute_mul_constant(&self, vm: &mut Lua, main_program: &Program) -> Result<(), Error> {
+    fn execute_mul_constant(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, lhs, constant, _) = self.decode_abck();
+
+        let Some(program) = vm.get_running_closure() else {
+            unreachable!("{NO_CLOSURE}");
+        };
 
         let res = match (
             &vm.get_stack(lhs)?,
-            &vm.get_running_closure(main_program).constants[usize::from(constant)],
+            &program.constant(usize::from(constant))?,
         ) {
             (Value::Integer(l), Value::Integer(r)) => Value::Integer(l * r),
             (Value::Integer(l), Value::Float(r)) => Value::Float(*l as f64 * r),
@@ -1102,7 +1136,7 @@ impl Bytecode {
         vm.set_stack(dst, res)
     }
 
-    fn execute_add(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_add(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, lhs, rhs, _) = self.decode_abck();
 
         let res = match (&vm.get_stack(lhs)?, &vm.get_stack(rhs)?) {
@@ -1121,7 +1155,7 @@ impl Bytecode {
         vm.set_stack(dst, res)
     }
 
-    fn execute_sub(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_sub(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, lhs, rhs, _) = self.decode_abck();
 
         let res = match (&vm.get_stack(lhs)?, &vm.get_stack(rhs)?) {
@@ -1140,7 +1174,7 @@ impl Bytecode {
         vm.set_stack(dst, res)
     }
 
-    fn execute_mul(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_mul(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, lhs, rhs, _) = self.decode_abck();
 
         let res = match (&vm.get_stack(lhs)?, &vm.get_stack(rhs)?) {
@@ -1159,7 +1193,7 @@ impl Bytecode {
         vm.set_stack(dst, res)
     }
 
-    fn execute_mod(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_mod(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, lhs, rhs, _) = self.decode_abck();
 
         let res = match (&vm.get_stack(lhs)?, &vm.get_stack(rhs)?) {
@@ -1178,7 +1212,7 @@ impl Bytecode {
         vm.set_stack(dst, res)
     }
 
-    fn execute_pow(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_pow(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, lhs, rhs, _) = self.decode_abck();
 
         let res = match (&vm.get_stack(lhs)?, &vm.get_stack(rhs)?) {
@@ -1197,7 +1231,7 @@ impl Bytecode {
         vm.set_stack(dst, res)
     }
 
-    fn execute_div(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_div(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, lhs, rhs, _) = self.decode_abck();
 
         let res = match (&vm.get_stack(lhs)?, &vm.get_stack(rhs)?) {
@@ -1216,7 +1250,7 @@ impl Bytecode {
         vm.set_stack(dst, res)
     }
 
-    fn execute_idiv(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_idiv(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, lhs, rhs, _) = self.decode_abck();
 
         let res = match (&vm.get_stack(lhs)?, &vm.get_stack(rhs)?) {
@@ -1235,7 +1269,7 @@ impl Bytecode {
         vm.set_stack(dst, res)
     }
 
-    fn execute_bit_and(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_bit_and(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, lhs, rhs, _) = self.decode_abck();
 
         let res = match (&vm.get_stack(lhs)?, &vm.get_stack(rhs)?) {
@@ -1251,7 +1285,7 @@ impl Bytecode {
         vm.set_stack(dst, res)
     }
 
-    fn execute_bit_or(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_bit_or(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, lhs, rhs, _) = self.decode_abck();
 
         let res = match (&vm.get_stack(lhs)?, &vm.get_stack(rhs)?) {
@@ -1267,7 +1301,7 @@ impl Bytecode {
         vm.set_stack(dst, res)
     }
 
-    fn execute_bit_xor(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_bit_xor(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, lhs, rhs, _) = self.decode_abck();
 
         let res = match (&vm.get_stack(lhs)?, &vm.get_stack(rhs)?) {
@@ -1283,7 +1317,7 @@ impl Bytecode {
         vm.set_stack(dst, res)
     }
 
-    fn execute_shift_left(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_shift_left(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, lhs, rhs, _) = self.decode_abck();
 
         let res = match (&vm.get_stack(lhs)?, &vm.get_stack(rhs)?) {
@@ -1299,7 +1333,7 @@ impl Bytecode {
         vm.set_stack(dst, res)
     }
 
-    fn execute_shift_right(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_shift_right(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, lhs, rhs, _) = self.decode_abck();
 
         let res = match (
@@ -1318,7 +1352,7 @@ impl Bytecode {
         vm.set_stack(dst, res)
     }
 
-    fn execute_neg(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_neg(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, rhs, _, _) = self.decode_abck();
 
         let value = match vm.get_stack(rhs)? {
@@ -1329,7 +1363,7 @@ impl Bytecode {
         vm.set_stack(dst, value)
     }
 
-    fn execute_bit_not(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_bit_not(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, rhs, _, _) = self.decode_abck();
 
         let value = match vm.get_stack(rhs)? {
@@ -1339,7 +1373,7 @@ impl Bytecode {
         vm.set_stack(dst, value)
     }
 
-    fn execute_not(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_not(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, rhs, _, _) = self.decode_abck();
 
         let value = match &vm.get_stack(rhs)? {
@@ -1349,7 +1383,7 @@ impl Bytecode {
         vm.set_stack(dst, value)
     }
 
-    fn execute_len(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_len(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, rhs, _, _) = self.decode_abck();
 
         let value = match &vm.get_stack(rhs)? {
@@ -1360,7 +1394,7 @@ impl Bytecode {
         vm.set_stack(dst, value)
     }
 
-    fn execute_concat(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_concat(&self, vm: &mut Lua) -> Result<(), Error> {
         let (first, count, _, _) = self.decode_abck();
 
         let mut strings = Vec::with_capacity(usize::from(count));
@@ -1379,13 +1413,13 @@ impl Bytecode {
         vm.set_stack(first, concatenated.as_str().into())
     }
 
-    fn execute_jump(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_jump(&self, vm: &mut Lua) -> Result<(), Error> {
         let jump = self.decode_sj();
 
         vm.jump(isize::try_from(jump)?)
     }
 
-    fn execute_less_than(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_less_than(&self, vm: &mut Lua) -> Result<(), Error> {
         let (lhs, rhs, _, test) = self.decode_abck();
 
         let lhs = vm.get_stack(lhs)?;
@@ -1400,7 +1434,7 @@ impl Bytecode {
             })
     }
 
-    fn execute_less_equal(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_less_equal(&self, vm: &mut Lua) -> Result<(), Error> {
         let (lhs, rhs, _, test) = self.decode_abck();
 
         let lhs = &vm.get_stack(lhs)?;
@@ -1420,11 +1454,15 @@ impl Bytecode {
         })
     }
 
-    fn execute_equal_constant(&self, vm: &mut Lua, main_program: &Program) -> Result<(), Error> {
+    fn execute_equal_constant(&self, vm: &mut Lua) -> Result<(), Error> {
         let (register, constant, _, test) = self.decode_abck();
 
+        let Some(program) = vm.get_running_closure() else {
+            unreachable!("{NO_CLOSURE}");
+        };
+
         let lhs = vm.get_stack(register)?;
-        let rhs = &vm.get_running_closure(main_program).constants[usize::from(constant)];
+        let rhs = &program.constant(usize::from(constant))?;
 
         Self::relational_comparison(lhs, rhs, |ordering| ordering == Ordering::Equal, test == 1)
             .and_then(|should_advance_pc| {
@@ -1435,7 +1473,7 @@ impl Bytecode {
             })
     }
 
-    fn execute_equal_integer(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_equal_integer(&self, vm: &mut Lua) -> Result<(), Error> {
         let (register, integer, _, test) = self.decode_asbck();
 
         let lhs = vm.get_stack(register)?;
@@ -1450,7 +1488,7 @@ impl Bytecode {
             })
     }
 
-    fn execute_greater_than_integer(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_greater_than_integer(&self, vm: &mut Lua) -> Result<(), Error> {
         let (register, integer, _, test) = self.decode_asbck();
 
         let lhs = vm.get_stack(register)?;
@@ -1470,7 +1508,7 @@ impl Bytecode {
         })
     }
 
-    fn execute_greater_equal_integer(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_greater_equal_integer(&self, vm: &mut Lua) -> Result<(), Error> {
         let (register, integer, _, test) = self.decode_asbck();
 
         let lhs = vm.get_stack(register)?;
@@ -1485,7 +1523,7 @@ impl Bytecode {
             })
     }
 
-    fn execute_test(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_test(&self, vm: &mut Lua) -> Result<(), Error> {
         let (src, _, _, test) = self.decode_abck();
 
         let cond = vm.get_stack(src)?;
@@ -1500,7 +1538,7 @@ impl Bytecode {
         Ok(())
     }
 
-    fn execute_call(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_call(&self, vm: &mut Lua) -> Result<(), Error> {
         let (func_index, in_items, out, _) = self.decode_abck();
 
         let func_index_usize = usize::from(func_index);
@@ -1508,11 +1546,22 @@ impl Bytecode {
         let out_params = usize::from(out);
 
         let func = &vm.get_stack(func_index)?;
-        if let Value::NativeFunction(func) = func {
-            Self::run_native_function(vm, func_index_usize, in_items, out_params, *func)
-        } else if let Value::Function(func) = func {
-            let func = func.clone();
-            Self::setup_closure(vm, func_index_usize, in_items, out_params, func.as_ref())
+        if let Value::Closure(closure) = func {
+            match closure.closure_type() {
+                FunctionType::Native(closure) => {
+                    Self::run_native_function(vm, func_index_usize, in_items, out_params, *closure)
+                }
+                FunctionType::Lua(closure) => {
+                    let closure = closure.clone();
+                    Self::setup_closure(
+                        vm,
+                        func_index_usize,
+                        in_items,
+                        out_params,
+                        closure.as_ref(),
+                    )
+                }
+            }
         } else {
             Err(Error::InvalidFunction((*func).clone()))
         }
@@ -1520,7 +1569,7 @@ impl Bytecode {
         // TODO deal with c
     }
 
-    fn execute_tail_call(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_tail_call(&self, vm: &mut Lua) -> Result<(), Error> {
         let (func_index, args, out_params, _) = self.decode_abck();
 
         let func_index_usize = usize::from(func_index);
@@ -1529,47 +1578,50 @@ impl Bytecode {
 
         let top_stack = vm.get_stack_frame();
         let tail_start = top_stack.stack_frame + func_index_usize;
-        let FunctionIndex::Closure(prev_func_index) = top_stack.function_index else {
-            unreachable!("Tailcall should never be called on main.");
-        };
+        let prev_func_index = top_stack.function_index;
         vm.drop_stack_frame(func_index_usize, vm.stack.len() - tail_start);
 
         let func = &vm.get_stack(u8::try_from(prev_func_index)?)?;
-        if let Value::NativeFunction(func) = func {
-            Self::run_native_function(vm, prev_func_index, args, out_params, *func)
-        } else if let Value::Function(func) = func {
-            let func = func.clone();
-            Self::setup_closure(vm, prev_func_index, args, out_params, func.as_ref())
+        if let Value::Closure(closure) = func {
+            match closure.closure_type() {
+                FunctionType::Native(closure) => {
+                    Self::run_native_function(vm, prev_func_index, args, out_params, *closure)
+                }
+                FunctionType::Lua(closure) => {
+                    let closure = closure.clone();
+                    Self::setup_closure(vm, prev_func_index, args, out_params, closure.as_ref())
+                }
+            }
         } else {
             Err(Error::InvalidFunction((*func).clone()))
         }
     }
 
-    fn execute_return(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_return(&self, vm: &mut Lua) -> Result<(), Error> {
         // TODO treat out params
         let (return_start, count, _, _) = self.decode_abck();
         vm.drop_stack_frame(usize::from(return_start), usize::from(count - 1));
         Ok(())
     }
 
-    fn execute_zero_return(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_zero_return(&self, vm: &mut Lua) -> Result<(), Error> {
         vm.drop_stack_frame(0, 0);
         Ok(())
     }
 
-    fn execute_one_return(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_one_return(&self, vm: &mut Lua) -> Result<(), Error> {
         let (return_loc, _, _, _) = self.decode_abck();
         vm.drop_stack_frame(usize::from(return_loc), 1);
         Ok(())
     }
 
-    fn execute_for_loop(&self, vm: &mut Lua, program: &Program) -> Result<(), Error> {
+    fn execute_for_loop(&self, vm: &mut Lua) -> Result<(), Error> {
         let (for_stack, jmp) = self.decode_abx();
 
         if let Value::Integer(counter) = &mut vm.get_stack_mut(for_stack + 1)? {
             if counter != &0 {
                 *counter -= 1;
-                Bytecode::add(for_stack + 3, for_stack + 3, for_stack + 2).execute(vm, program)?;
+                Bytecode::add(for_stack + 3, for_stack + 3, for_stack + 2).execute(vm)?;
                 vm.jump(-isize::try_from(jmp)?)?;
             }
             Ok(())
@@ -1579,7 +1631,7 @@ impl Bytecode {
         }
     }
 
-    fn execute_for_prepare(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_for_prepare(&self, vm: &mut Lua) -> Result<(), Error> {
         let (for_stack, jmp) = self.decode_abx();
 
         let init = vm.get_stack(for_stack)?;
@@ -1633,7 +1685,7 @@ impl Bytecode {
         }
     }
 
-    fn execute_set_list(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_set_list(&self, vm: &mut Lua) -> Result<(), Error> {
         let (table, count, _c, _) = self.decode_abck();
 
         let top_stack = vm.get_stack_frame();
@@ -1657,13 +1709,28 @@ impl Bytecode {
         }
     }
 
-    fn execute_closure(&self, vm: &mut Lua, program: &Program) -> Result<(), Error> {
+    fn execute_closure(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, func_id) = self.decode_abx();
-        let func = program.functions[usize::try_from(func_id)?].clone();
-        vm.set_stack(dst, func)
+
+        let Some(program) = vm.get_running_closure() else {
+            unreachable!("{NO_CLOSURE}");
+        };
+
+        let func = program.function(usize::try_from(func_id)?)?;
+
+        let upvalues = func
+            .program()
+            .upvalues
+            .iter()
+            .map(|upvalue| vm.find_upvalue(upvalue))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let closure = Value::Closure(Rc::new(Closure::new_lua(func, upvalues)));
+
+        vm.set_stack(dst, closure)
     }
 
-    fn execute_variadic_arguments(&self, vm: &mut Lua, _program: &Program) -> Result<(), Error> {
+    fn execute_variadic_arguments(&self, vm: &mut Lua) -> Result<(), Error> {
         let (register, _, count, _) = self.decode_abck();
 
         let top_stack = vm.get_stack_frame();
@@ -1697,11 +1764,7 @@ impl Bytecode {
         Ok(())
     }
 
-    fn execute_variadic_arguments_prepare(
-        &self,
-        _vm: &mut Lua,
-        _program: &Program,
-    ) -> Result<(), Error> {
+    fn execute_variadic_arguments_prepare(&self, _vm: &mut Lua) -> Result<(), Error> {
         // Do nothing
         Ok(())
     }
@@ -1748,7 +1811,7 @@ impl Bytecode {
             args - 1
         };
 
-        vm.prepare_new_function_stack(func_index, args, out_params, 0);
+        vm.prepare_new_stack_frame(func_index, args, out_params, 0);
 
         let returns = usize::try_from(func(vm))?;
 
@@ -1800,7 +1863,7 @@ impl Bytecode {
             vm.stack.extend(fixed);
         }
 
-        vm.prepare_new_function_stack(func_index, args, out_params, var_args);
+        vm.prepare_new_stack_frame(func_index, args, out_params, var_args);
 
         Ok(())
     }

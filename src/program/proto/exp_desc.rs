@@ -10,7 +10,7 @@ use super::{
     binops::Binop,
     compile_context::CompileContext,
     helper_types::{ExpList, TableFields, TableKey},
-    Bytecode, Error, Program,
+    Bytecode, Error, Proto,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -25,6 +25,7 @@ pub enum ExpDesc<'a> {
     Binop(Binop, Box<ExpDesc<'a>>, Box<ExpDesc<'a>>),
     Local(usize),
     Global(usize),
+    Upvalue(usize),
     Table(TableFields<'a>),
     /// Access to a table
     ///
@@ -47,7 +48,7 @@ impl<'a> ExpDesc<'a> {
     pub fn discharge(
         &self,
         dst: &ExpDesc<'a>,
-        program: &mut Program,
+        program: &mut Proto,
         compile_context: &mut CompileContext,
     ) -> Result<(), Error> {
         match self {
@@ -70,6 +71,7 @@ impl<'a> ExpDesc<'a> {
             ExpDesc::Binop(_, _, _) => self.discharge_binop(dst, program, compile_context),
             ExpDesc::Local(_) => self.discharge_local(dst, program, compile_context),
             ExpDesc::Global(_) => self.discharge_global(dst, program, compile_context),
+            ExpDesc::Upvalue(_) => self.discharge_upvalue(dst, program, compile_context),
             ExpDesc::Table(_) => self.discharge_table(dst, program, compile_context),
             ExpDesc::TableAccess {
                 table: _,
@@ -101,7 +103,7 @@ impl<'a> ExpDesc<'a> {
         }
     }
 
-    fn discharge_nil(&self, dst: &ExpDesc<'a>, program: &mut Program) -> Result<(), Error> {
+    fn discharge_nil(&self, dst: &ExpDesc<'a>, program: &mut Proto) -> Result<(), Error> {
         let ExpDesc::Nil = &self else {
             unreachable!("Should never be anything other than Nil");
         };
@@ -118,7 +120,7 @@ impl<'a> ExpDesc<'a> {
         }
     }
 
-    fn discharge_boolean(&self, dst: &ExpDesc<'a>, program: &mut Program) -> Result<(), Error> {
+    fn discharge_boolean(&self, dst: &ExpDesc<'a>, program: &mut Proto) -> Result<(), Error> {
         let ExpDesc::Boolean(boolean) = &self else {
             unreachable!("Should never be anything other than Boolean");
         };
@@ -143,7 +145,7 @@ impl<'a> ExpDesc<'a> {
     fn discharge_integer(
         &self,
         dst: &ExpDesc<'a>,
-        program: &mut Program,
+        program: &mut Proto,
         compile_context: &mut CompileContext,
     ) -> Result<(), Error> {
         let ExpDesc::Integer(integer) = &self else {
@@ -240,7 +242,7 @@ impl<'a> ExpDesc<'a> {
         }
     }
 
-    fn discharge_float(&self, dst: &ExpDesc<'a>, program: &mut Program) -> Result<(), Error> {
+    fn discharge_float(&self, dst: &ExpDesc<'a>, program: &mut Proto) -> Result<(), Error> {
         let ExpDesc::Float(float) = &self else {
             unreachable!("Should never be anything other than Float");
         };
@@ -271,7 +273,7 @@ impl<'a> ExpDesc<'a> {
     fn discharge_string(
         &self,
         dst: &ExpDesc<'a>,
-        program: &mut Program,
+        program: &mut Proto,
         compile_context: &mut CompileContext,
     ) -> Result<(), Error> {
         let ExpDesc::String(string) = &self else {
@@ -370,7 +372,7 @@ impl<'a> ExpDesc<'a> {
     fn discharge_name(
         &self,
         dst: &ExpDesc<'a>,
-        program: &mut Program,
+        program: &mut Proto,
         compile_context: &mut CompileContext,
     ) -> Result<(), Error> {
         let ExpDesc::Name(name) = &self else {
@@ -402,13 +404,17 @@ impl<'a> ExpDesc<'a> {
                             .byte_codes
                             .push(Bytecode::move_bytecode(dst, u8::try_from(pos)?));
                     }
-                    Some(_) => unreachable!("Local will always be a `Local`."),
+                    Some(other) => {
+                        unreachable!("Local will always be a `Local`, but was {:?}.", other)
+                    }
                     None => {
+                        let upvalue = program.push_upvalue("_ENV")?;
                         let constant = program.push_constant(*name)?;
+
                         if name.len() > 32 {
                             let name_loc = dst + 1;
 
-                            program.byte_codes.push(Bytecode::get_upvalue(dst, 0));
+                            program.byte_codes.push(Bytecode::get_upvalue(dst, upvalue));
                             program
                                 .byte_codes
                                 .push(Bytecode::load_constant(name_loc, constant));
@@ -418,7 +424,7 @@ impl<'a> ExpDesc<'a> {
                         } else {
                             program.byte_codes.push(Bytecode::get_uptable(
                                 dst,
-                                0,
+                                upvalue,
                                 u8::try_from(constant)?,
                             ));
                         }
@@ -436,8 +442,18 @@ impl<'a> ExpDesc<'a> {
                     local.discharge(table_exp, program, compile_context)?;
                     Ok(())
                 }
+                Some(upvalue @ ExpDesc::Upvalue(_)) => {
+                    let (_, stack_top) = compile_context.reserve_stack_top();
+                    upvalue.discharge(&stack_top, program, compile_context)?;
+
+                    stack_top.discharge(table_exp, program, compile_context)?;
+
+                    compile_context.stack_top -= 1;
+
+                    Ok(())
+                }
                 Some(other) => unreachable!(
-                    "CompileContenxt::find_name only returns Local, but was {:?}.",
+                    "CompileContenxt::find_name should be Local or Upvalue, but was {:?}.",
                     other
                 ),
                 None => {
@@ -498,7 +514,7 @@ impl<'a> ExpDesc<'a> {
     fn discharge_unop(
         &self,
         dst: &ExpDesc<'a>,
-        program: &mut Program,
+        program: &mut Proto,
         compile_context: &mut CompileContext,
     ) -> Result<(), Error> {
         let ExpDesc::Unop(unop, exp) = &self else {
@@ -551,7 +567,7 @@ impl<'a> ExpDesc<'a> {
     fn discharge_binop_add(
         &self,
         dst: &ExpDesc<'a>,
-        program: &mut Program,
+        program: &mut Proto,
         compile_context: &mut CompileContext,
     ) -> Result<(), Error> {
         let ExpDesc::Binop(Binop::Add, lhs, rhs) = self else {
@@ -612,7 +628,7 @@ impl<'a> ExpDesc<'a> {
     fn discharge_binop_sub(
         &self,
         dst: &ExpDesc<'a>,
-        program: &mut Program,
+        program: &mut Proto,
         compile_context: &mut CompileContext,
     ) -> Result<(), Error> {
         let ExpDesc::Binop(Binop::Sub, lhs, rhs) = self else {
@@ -673,7 +689,7 @@ impl<'a> ExpDesc<'a> {
     fn discharge_binop_concat(
         &self,
         dst: &ExpDesc<'a>,
-        program: &mut Program,
+        program: &mut Proto,
         compile_context: &mut CompileContext,
     ) -> Result<(), Error> {
         let ExpDesc::Binop(Binop::Concat, lhs, rhs) = &self else {
@@ -696,7 +712,7 @@ impl<'a> ExpDesc<'a> {
                     .is_some()
                 {
                     let Some(concat) = program.byte_codes.pop() else {
-                        unreachable!("Program bytecodes should not be empty.");
+                        unreachable!("Proto bytecodes should not be empty.");
                     };
                     let (_, count, _, _) = concat.decode_abck();
                     program.byte_codes.push(Bytecode::concat(dst, count + 1));
@@ -720,7 +736,7 @@ impl<'a> ExpDesc<'a> {
     fn discharge_binop(
         &self,
         dst: &ExpDesc<'a>,
-        program: &mut Program,
+        program: &mut Proto,
         compile_context: &mut CompileContext,
     ) -> Result<(), Error> {
         let ExpDesc::Binop(_, _, _) = &self else {
@@ -732,7 +748,7 @@ impl<'a> ExpDesc<'a> {
             lhs: &ExpDesc,
             constant: u8,
             dst: u8,
-            program: &mut Program,
+            program: &mut Proto,
             compile_context: &mut CompileContext,
         ) -> Result<(), Error> {
             let lhs_loc = if let name @ ExpDesc::Name(_) = lhs {
@@ -753,7 +769,7 @@ impl<'a> ExpDesc<'a> {
             rhs: &ExpDesc,
             dst: u8,
             test: bool,
-            program: &mut Program,
+            program: &mut Proto,
             compile_context: &mut CompileContext,
         ) -> Result<(), Error> {
             let (lhs_loc, used_dst) = if let name @ ExpDesc::Name(_) = lhs {
@@ -1303,7 +1319,7 @@ impl<'a> ExpDesc<'a> {
     fn discharge_local(
         &self,
         dst: &ExpDesc<'a>,
-        program: &mut Program,
+        program: &mut Proto,
         compile_context: &mut CompileContext,
     ) -> Result<(), Error> {
         let ExpDesc::Local(src) = &self else {
@@ -1474,7 +1490,7 @@ impl<'a> ExpDesc<'a> {
     fn discharge_global(
         &self,
         dst: &ExpDesc<'a>,
-        program: &mut Program,
+        program: &mut Proto,
         compile_context: &mut CompileContext,
     ) -> Result<(), Error> {
         let ExpDesc::Global(key) = &self else {
@@ -1526,7 +1542,7 @@ impl<'a> ExpDesc<'a> {
     fn discharge_upvalue(
         &self,
         dst: &ExpDesc<'a>,
-        program: &mut Program,
+        program: &mut Proto,
         _compile_context: &mut CompileContext,
     ) -> Result<(), Error> {
         let ExpDesc::Upvalue(upvalue) = &self else {
@@ -1550,7 +1566,7 @@ impl<'a> ExpDesc<'a> {
     fn discharge_table(
         &self,
         dst: &ExpDesc<'a>,
-        program: &mut Program,
+        program: &mut Proto,
         compile_context: &mut CompileContext,
     ) -> Result<(), Error> {
         let ExpDesc::Table(fields) = &self else {
@@ -1641,7 +1657,7 @@ impl<'a> ExpDesc<'a> {
                             .is_some()
                     {
                         let Some(variadic) = program.byte_codes.pop() else {
-                            unreachable!("Program bytecodes should not be empty.");
+                            unreachable!("Proto bytecodes should not be empty.");
                         };
                         let (register, _, _, _) = variadic.decode_abck();
                         program
@@ -1685,7 +1701,7 @@ impl<'a> ExpDesc<'a> {
     fn discharge_general_table_access(
         &self,
         dst: &ExpDesc<'a>,
-        program: &mut Program,
+        program: &mut Proto,
         compile_context: &mut CompileContext,
     ) -> Result<(), Error> {
         let ExpDesc::TableAccess {
@@ -1768,7 +1784,7 @@ impl<'a> ExpDesc<'a> {
     fn discharge_record_table_access(
         &self,
         dst: &ExpDesc<'a>,
-        program: &mut Program,
+        program: &mut Proto,
         compile_context: &mut CompileContext,
     ) -> Result<(), Error> {
         let ExpDesc::TableAccess {
@@ -1859,7 +1875,7 @@ impl<'a> ExpDesc<'a> {
         }
     }
 
-    fn discharge_closure(&self, dst: &ExpDesc<'a>, program: &mut Program) -> Result<(), Error> {
+    fn discharge_closure(&self, dst: &ExpDesc<'a>, program: &mut Proto) -> Result<(), Error> {
         let ExpDesc::Closure(index) = &self else {
             unreachable!("Should never be anything other than TableAccess");
         };
@@ -1881,7 +1897,7 @@ impl<'a> ExpDesc<'a> {
     fn discharge_function_call(
         &self,
         dst: &ExpDesc<'a>,
-        program: &mut Program,
+        program: &mut Proto,
         compile_context: &mut CompileContext,
     ) -> Result<(), Error> {
         let ExpDesc::FunctionCall(func, args) = &self else {
@@ -2021,7 +2037,7 @@ impl<'a> ExpDesc<'a> {
     fn discharge_method_call(
         &self,
         dst: &ExpDesc<'a>,
-        program: &mut Program,
+        program: &mut Proto,
         compile_context: &mut CompileContext,
     ) -> Result<(), Error> {
         let ExpDesc::MethodCall(prefix, name, args) = self else {
@@ -2067,7 +2083,7 @@ impl<'a> ExpDesc<'a> {
     fn discharge_variable_arguments(
         &self,
         dst: &ExpDesc<'a>,
-        program: &mut Program,
+        program: &mut Proto,
         _compile_context: &mut CompileContext,
     ) -> Result<(), Error> {
         match dst {
@@ -2090,7 +2106,7 @@ impl<'a> ExpDesc<'a> {
         lhs: &ExpDesc,
         rhs: &ExpDesc,
         dst: u8,
-        program: &mut Program,
+        program: &mut Proto,
         compile_context: &mut CompileContext,
     ) -> Result<(), Error> {
         let (lhs_loc, used_dst) = if let name @ ExpDesc::Name(_) = lhs {
@@ -2128,7 +2144,7 @@ impl<'a> ExpDesc<'a> {
         lhs: &ExpDesc,
         integer: i8,
         dst: u8,
-        program: &mut Program,
+        program: &mut Proto,
         compile_context: &mut CompileContext,
     ) -> Result<(), Error> {
         let lhs_loc = if let name @ ExpDesc::Name(_) = lhs {
@@ -2144,7 +2160,7 @@ impl<'a> ExpDesc<'a> {
     }
 
     fn push_value_to_global(
-        program: &mut Program,
+        program: &mut Proto,
         key: usize,
         value: impl Into<Value>,
     ) -> Result<(), Error> {
@@ -2160,7 +2176,7 @@ impl<'a> ExpDesc<'a> {
 
     pub fn get_local_or_discharge_at_location(
         &self,
-        program: &mut Program,
+        program: &mut Proto,
         location: u8,
         compile_context: &mut CompileContext,
     ) -> Result<u8, Error> {
@@ -2228,6 +2244,7 @@ impl<'a> ExpDesc<'a> {
             Self::Binop(_, _, _) => "binop",
             Self::Local(_) => "local",
             Self::Global(_) => "global",
+            Self::Upvalue(_) => "upvalue",
             Self::Table(_) => "table",
             Self::TableAccess {
                 table: _,

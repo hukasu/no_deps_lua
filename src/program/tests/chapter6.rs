@@ -3,6 +3,7 @@ use crate::{bytecode::Bytecode, Program};
 #[test]
 fn if_statement() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
+
     let program = Program::parse(
         r#"
 if a then
@@ -17,17 +18,9 @@ print (a) -- should be nil
 "#,
     )
     .unwrap();
-    assert_eq!(
-        &program.constants,
-        &[
-            "a".into(),
-            "print".into(),
-            "skip this".into(),
-            "I am true".into(),
-        ]
-    );
-    assert_eq!(
-        &program.byte_codes,
+
+    super::compare_program(
+        &program,
         &[
             Bytecode::variadic_arguments_prepare(0),
             // if a then
@@ -56,14 +49,24 @@ print (a) -- should be nil
             Bytecode::call(0, 2, 1),
             // EOF
             Bytecode::return_bytecode(0, 1, 1),
-        ]
+        ],
+        &[
+            "a".into(),
+            "print".into(),
+            "skip this".into(),
+            "I am true".into(),
+        ],
+        &["_ENV".into()],
+        0,
     );
-    crate::Lua::execute(&program).expect("Should run");
+
+    crate::Lua::run_program(program).expect("Should run");
 }
 
 #[test]
 fn if_else() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
+
     let program = Program::parse(
         r#"
 local a,b = 123
@@ -89,17 +92,9 @@ end
 "#,
     )
     .unwrap();
-    assert_eq!(
-        &program.constants,
-        &[
-            "print".into(),
-            "not here".into(),
-            "g".into(),
-            "yes, here".into(),
-        ]
-    );
-    assert_eq!(
-        &program.byte_codes,
+
+    super::compare_program(
+        &program,
         &[
             Bytecode::variadic_arguments_prepare(0),
             // local a,b = 123
@@ -160,14 +155,24 @@ end
             // end
             // EOF
             Bytecode::return_bytecode(2, 1, 1),
-        ]
+        ],
+        &[
+            "print".into(),
+            "not here".into(),
+            "g".into(),
+            "yes, here".into(),
+        ],
+        &["_ENV".into()],
+        0,
     );
-    crate::Lua::execute(&program).expect("Should run");
+
+    crate::Lua::run_program(program).expect("Should run");
 }
 
 #[test]
 fn while_statement() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
+
     let program = Program::parse(
         r#"
 local a = 123
@@ -178,9 +183,9 @@ end
 "#,
     )
     .unwrap();
-    assert_eq!(&program.constants, &["print".into(),]);
-    assert_eq!(
-        &program.byte_codes,
+
+    super::compare_program(
+        &program,
         &[
             Bytecode::variadic_arguments_prepare(0),
             // local a = 123
@@ -198,14 +203,19 @@ end
             Bytecode::jump(-7),
             // EOF
             Bytecode::return_bytecode(1, 1, 1),
-        ]
+        ],
+        &["print".into()],
+        &["_ENV".into()],
+        0,
     );
-    crate::Lua::execute(&program).expect("Should run");
+
+    crate::Lua::run_program(program).expect("Should run");
 }
 
 #[test]
 fn break_statement() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
+
     let program = Program::parse(
         r#"
 local z = 1
@@ -223,18 +233,9 @@ end
 "#,
     )
     .unwrap();
-    assert_eq!(
-        &program.constants,
-        &[
-            "print".into(),
-            "break inner".into(),
-            "unreachable inner".into(),
-            "break outer".into(),
-            "unreachable outer".into(),
-        ]
-    );
-    assert_eq!(
-        &program.byte_codes,
+
+    super::compare_program(
+        &program,
         &[
             Bytecode::variadic_arguments_prepare(0),
             // local z = 1
@@ -271,14 +272,25 @@ end
             Bytecode::jump(-20),
             // EOF
             Bytecode::return_bytecode(1, 1, 1),
-        ]
+        ],
+        &[
+            "print".into(),
+            "break inner".into(),
+            "unreachable inner".into(),
+            "break outer".into(),
+            "unreachable outer".into(),
+        ],
+        &["_ENV".into()],
+        0,
     );
-    crate::Lua::execute(&program).expect("Should run");
+
+    crate::Lua::run_program(program).expect("Should run");
 }
 
 #[test]
 fn repeat() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
+
     let program = Program::parse(
         r#"
 local a = false
@@ -289,9 +301,9 @@ until a
 "#,
     )
     .unwrap();
-    assert_eq!(&program.constants, &["print".into(),]);
-    assert_eq!(
-        &program.byte_codes,
+
+    super::compare_program(
+        &program,
         &[
             Bytecode::variadic_arguments_prepare(0),
             // local a = false
@@ -308,14 +320,19 @@ until a
             Bytecode::jump(-6),
             // EOF
             Bytecode::return_bytecode(1, 1, 1),
-        ]
+        ],
+        &["print".into()],
+        &["_ENV".into()],
+        0,
     );
-    crate::Lua::execute(&program).expect("Should run");
+
+    crate::Lua::run_program(program).expect("Should run");
 }
 
 #[test]
 fn for_statement() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
+
     let program = Program::parse(
         r#"
 -- 1~3
@@ -346,17 +363,9 @@ end
 "#,
     )
     .unwrap();
-    assert_eq!(
-        &program.constants,
-        &[
-            "print".into(),
-            3.2f64.into(),
-            9223372036854775807i64.into(),
-            10.0f64.into()
-        ]
-    );
-    assert_eq!(
-        &program.byte_codes,
+
+    super::compare_program(
+        &program,
         &[
             Bytecode::variadic_arguments_prepare(0),
             // for i = 1, 3, 1 do
@@ -418,14 +427,23 @@ end
             Bytecode::for_loop(1, 4),
             // EOF
             Bytecode::return_bytecode(1, 1, 1),
-        ]
+        ],
+        &[
+            "print".into(),
+            3.2f64.into(),
+            9223372036854775807i64.into(),
+            10.0f64.into(),
+        ],
+        &["_ENV".into()],
+        0,
     );
-    crate::Lua::execute(&program).expect("Should run");
+    crate::Lua::run_program(program).expect("Should run");
 }
 
 #[test]
 fn goto() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
+
     let program = Program::parse(
         r#"
 ::label1::
@@ -453,19 +471,9 @@ end
 "#,
     )
     .unwrap();
-    assert_eq!(
-        &program.constants,
-        &[
-            "print".into(),
-            "block: 1".into(),
-            "block: 3".into(),
-            "block: 2".into(),
-            "block: 4".into(),
-            "local var".into(),
-        ]
-    );
-    assert_eq!(
-        &program.byte_codes,
+
+    super::compare_program(
+        &program,
         &[
             Bytecode::variadic_arguments_prepare(0),
             // print("block: 1")
@@ -500,7 +508,18 @@ end
             // end
             // EOF
             Bytecode::return_bytecode(0, 1, 1),
-        ]
+        ],
+        &[
+            "print".into(),
+            "block: 1".into(),
+            "block: 3".into(),
+            "block: 2".into(),
+            "block: 4".into(),
+            "local var".into(),
+        ],
+        &["_ENV".into()],
+        0,
     );
-    crate::Lua::execute(&program).expect("Should run");
+
+    crate::Lua::run_program(program).expect("Should run");
 }

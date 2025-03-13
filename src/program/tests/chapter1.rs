@@ -3,6 +3,7 @@ use crate::bytecode::Bytecode;
 #[test]
 fn hello_world() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
+
     let program = crate::Program::parse(
         r#"
 print "hello, world!"
@@ -10,16 +11,9 @@ print "hello, again!"
 "#,
     )
     .unwrap();
-    assert_eq!(
-        &program.constants,
-        &[
-            "print".into(),
-            "hello, world!".into(),
-            "hello, again!".into()
-        ]
-    );
-    assert_eq!(
-        &program.byte_codes,
+
+    super::compare_program(
+        &program,
         &[
             Bytecode::variadic_arguments_prepare(0),
             // print "hello, world!"
@@ -32,7 +26,15 @@ print "hello, again!"
             Bytecode::call(0, 2, 1),
             // EOF
             Bytecode::return_bytecode(0, 1, 1),
-        ]
+        ],
+        &[
+            "print".into(),
+            "hello, world!".into(),
+            "hello, again!".into(),
+        ],
+        &["_ENV".into()],
+        0,
     );
-    crate::Lua::execute(&program).unwrap();
+
+    crate::Lua::run_program(program).unwrap();
 }

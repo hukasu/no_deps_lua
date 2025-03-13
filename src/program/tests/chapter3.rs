@@ -5,6 +5,7 @@ use crate::{bytecode::Bytecode, ext::Unescape, Program};
 #[test]
 fn escape() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
+
     let program = Program::parse(
         r#"
 print "tab:\thi" -- tab
@@ -15,29 +16,9 @@ print "null: \0." -- '\0'
 "#,
     )
     .unwrap();
-    assert_eq!(
-        &program.constants,
-        &[
-            "print".into(),
-            "tab:\thi".into(),
-            String::from_utf8_lossy(b"\xE4\xBD\xA0\xE5\xA5\xBD")
-                .as_ref()
-                .unescape()
-                .unwrap()
-                .as_str()
-                .into(),
-            String::from_utf8_lossy(b"\xE4\xBD")
-                .as_ref()
-                .unescape()
-                .unwrap()
-                .as_str()
-                .into(),
-            "Hello".into(),
-            "null: \0.".into(),
-        ]
-    );
-    assert_eq!(
-        &program.byte_codes,
+
+    super::compare_program(
+        &program,
         &[
             Bytecode::variadic_arguments_prepare(0),
             // print "tab:\thi" -- tab
@@ -62,14 +43,36 @@ print "null: \0." -- '\0'
             Bytecode::call(0, 2, 1),
             // EOF
             Bytecode::return_bytecode(0, 1, 1),
-        ]
+        ],
+        &[
+            "print".into(),
+            "tab:\thi".into(),
+            String::from_utf8_lossy(b"\xE4\xBD\xA0\xE5\xA5\xBD")
+                .as_ref()
+                .unescape()
+                .unwrap()
+                .as_str()
+                .into(),
+            String::from_utf8_lossy(b"\xE4\xBD")
+                .as_ref()
+                .unescape()
+                .unwrap()
+                .as_str()
+                .into(),
+            "Hello".into(),
+            "null: \0.".into(),
+        ],
+        &["_ENV".into()],
+        0,
     );
-    crate::Lua::execute(&program).unwrap();
+
+    crate::Lua::run_program(program).unwrap();
 }
 
 #[test]
 fn strings() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
+
     let program = Program::parse(
         r#"
 local s = "hello_world"
@@ -88,20 +91,9 @@ print(long_string_long_string_long_string_long_string_long_string)
 "#,
     )
     .unwrap();
-    assert_eq!(
-        &program.constants,
-        &[
-            "hello_world".into(),
-            "middle_string_middle_string".into(),
-            "long_string_long_string_long_string_long_string_long_string".into(),
-            "print".into(),
-            12i64.into(),
-            345i64.into(),
-            6789i64.into(),
-        ]
-    );
-    assert_eq!(
-        &program.byte_codes,
+
+    super::compare_program(
+        &program,
         &[
             Bytecode::variadic_arguments_prepare(0),
             // local s = "hello_world"
@@ -145,8 +137,20 @@ print(long_string_long_string_long_string_long_string_long_string)
             Bytecode::get_table(4, 4, 5),
             Bytecode::call(3, 2, 1),
             // EOF
-            Bytecode::return_bytecode(3, 1, 1)
-        ]
+            Bytecode::return_bytecode(3, 1, 1),
+        ],
+        &[
+            "hello_world".into(),
+            "middle_string_middle_string".into(),
+            "long_string_long_string_long_string_long_string_long_string".into(),
+            "print".into(),
+            12i64.into(),
+            345i64.into(),
+            6789i64.into(),
+        ],
+        &["_ENV".into()],
+        0,
     );
-    crate::Lua::execute(&program).unwrap();
+
+    crate::Lua::run_program(program).unwrap();
 }

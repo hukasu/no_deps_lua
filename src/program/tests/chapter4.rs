@@ -3,6 +3,7 @@ use crate::{bytecode::Bytecode, Program};
 #[test]
 fn table() {
     let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
+
     let program = Program::parse(
         r#"
 local k = "key"
@@ -18,20 +19,9 @@ print(t)
 "#,
     )
     .unwrap();
-    assert_eq!(
-        &program.constants,
-        &[
-            "key".into(),
-            "x".into(),
-            "hello".into(),
-            "y".into(),
-            "world".into(),
-            "val".into(),
-            "print".into(),
-        ]
-    );
-    assert_eq!(
-        &program.byte_codes,
+
+    super::compare_program(
+        &program,
         &[
             Bytecode::variadic_arguments_prepare(0),
             // local key = "key"
@@ -67,9 +57,21 @@ print(t)
             Bytecode::call(2, 2, 1),
             // EOF
             Bytecode::return_bytecode(2, 1, 1),
-        ]
+        ],
+        &[
+            "key".into(),
+            "x".into(),
+            "hello".into(),
+            "y".into(),
+            "world".into(),
+            "val".into(),
+            "print".into(),
+        ],
+        &["_ENV".into()],
+        0,
     );
-    crate::Lua::execute(&program).unwrap();
+
+    crate::Lua::run_program(program).unwrap();
 }
 
 #[test]
@@ -89,21 +91,8 @@ t.f(t[1000])
 "#,
     )
     .unwrap();
-    assert_eq!(
-        &program.constants,
-        &[
-            "t".into(),
-            "k".into(),
-            300i64.into(),
-            "z".into(),
-            400i64.into(),
-            "x".into(),
-            "f".into(),
-            "print".into(),
-        ]
-    );
-    assert_eq!(
-        &program.byte_codes,
+    super::compare_program(
+        &program,
         &[
             Bytecode::variadic_arguments_prepare(0),
             // local a,b = 100,200
@@ -161,7 +150,20 @@ t.f(t[1000])
             Bytecode::call(2, 2, 1),
             // EOF
             Bytecode::return_bytecode(2, 1, 1),
-        ]
+        ],
+        &[
+            "t".into(),
+            "k".into(),
+            300i64.into(),
+            "z".into(),
+            400i64.into(),
+            "x".into(),
+            "f".into(),
+            "print".into(),
+        ],
+        &["_ENV".into()],
+        0,
     );
-    crate::Lua::execute(&program).unwrap();
+
+    crate::Lua::run_program(program).unwrap();
 }

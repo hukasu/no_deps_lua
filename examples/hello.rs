@@ -10,5 +10,5 @@ fn main() {
     SimpleLogger::init(log::LevelFilter::Info, Config::default()).unwrap();
 
     let program = Program::parse(PROGRAM).unwrap();
-    Lua::execute(&program).unwrap();
+    Lua::run_program(program).unwrap();
 }

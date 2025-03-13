@@ -1,6 +1,7 @@
 #![no_std]
 
 mod bytecode;
+mod closure;
 mod error;
 mod ext;
 mod function;
@@ -15,63 +16,60 @@ mod value;
 
 extern crate alloc;
 
-use core::{cell::RefCell, cmp::Ordering};
-
 use alloc::{rc::Rc, vec::Vec};
-use stack_frame::FunctionIndex;
-use table::Table;
-use value::ValueKey;
+use core::{
+    cell::RefCell,
+    cmp::Ordering,
+    ops::{Deref, DerefMut},
+};
 
-use self::{bytecode::Bytecode, stack_frame::StackFrame, value::Value};
+use self::{
+    bytecode::Bytecode,
+    closure::{Closure, Upvalue},
+    function::Function,
+    stack_frame::StackFrame,
+    table::Table,
+    value::{Value, ValueKey},
+};
 pub use self::{error::Error, program::Program};
 
 #[derive(Debug, Default)]
 pub struct Lua {
-    upvalues: Vec<(Value, Value)>,
     stack: Vec<Value>,
     /// Stack frames
     stack_frame: Vec<StackFrame>,
 }
 
 impl Lua {
-    fn new() -> Self {
+    /// Runs program with default environment
+    pub fn run_program(main_program: Program) -> Result<(), Error> {
         let mut table = Table::new(0, 2);
-        table.table.extend([
-            (
-                ValueKey("print".into()),
-                Value::NativeFunction(std::lib_print),
-            ),
-            (
-                ValueKey("type".into()),
-                Value::NativeFunction(std::lib_type),
-            ),
-        ]);
 
-        let upvalues = Vec::from([("_ENV".into(), Value::Table(Rc::new(RefCell::new(table))))]);
+        table.table.extend([(
+            ValueKey("print".into()),
+            Value::from(std::lib_print as fn(&mut Lua) -> i32),
+        )]);
 
-        Self {
-            upvalues,
-            ..Default::default()
-        }
+        Self::run_program_with_env(main_program, Rc::new(RefCell::new(table)))
     }
 
-    pub fn execute(program: &Program) -> Result<(), Error> {
-        Self::new().run_program(program)
-    }
-
-    fn run_program(&mut self, main_program: &Program) -> Result<(), Error> {
+    /// Runs program with given environment
+    pub fn run_program_with_env(
+        main_program: Program,
+        env: Rc<RefCell<Table>>,
+    ) -> Result<(), Error> {
         log::trace!("Running program");
 
-        self.stack_frame.push(StackFrame {
-            function_index: FunctionIndex::Main,
-            program_counter: 0,
-            stack_frame: 0,
-            variadic_arguments: 0,
-            out_params: 0,
-        });
+        let mut vm = Lua::default();
 
-        while let Some(code) = self.read_bytecode(main_program) {
-            code.execute(self, main_program)?;
+        vm.stack.push(Value::Closure(Rc::new(Closure::new_lua(
+            Rc::new(Function::new(main_program, 0, true)),
+            Vec::from_iter([Rc::new(RefCell::new(Upvalue::Closed(Value::Table(env))))]),
+        ))));
+        vm.prepare_new_stack_frame(0, 0, 0, 0);
+
+        while let Some(code) = vm.read_bytecode() {
+            code.execute(&mut vm)?;
         }
 
         Ok(())
@@ -89,19 +87,24 @@ impl Lua {
         }
     }
 
-    fn prepare_new_function_stack(
+    fn prepare_new_stack_frame(
         &mut self,
         func_index: usize,
         args: usize,
         out_params: usize,
         variadic_arguments: usize,
     ) {
-        let top_stack = self.get_stack_frame();
-        let last_stack = top_stack.stack_frame;
-        let last_variadics = top_stack.variadic_arguments;
+        let (last_stack, last_variadics) = if !self.stack_frame.is_empty() {
+            let top_stack = self.get_stack_frame();
+            let last_stack = top_stack.stack_frame;
+            let last_variadics = top_stack.variadic_arguments;
+            (last_stack, last_variadics)
+        } else {
+            (0, 0)
+        };
 
         let new_stack = StackFrame {
-            function_index: FunctionIndex::Closure(func_index),
+            function_index: func_index,
             program_counter: 0,
             stack_frame: last_stack + last_variadics + func_index + 1,
             variadic_arguments,
@@ -126,10 +129,11 @@ impl Lua {
             .drain(start..(start + returns))
             .collect::<Vec<_>>();
 
-        if let FunctionIndex::Closure(func_index) = popped_stack.function_index {
+        if !self.stack_frame.is_empty() {
             let top_stack = self.get_stack_frame();
-            self.stack
-                .truncate(top_stack.stack_frame + top_stack.variadic_arguments + func_index);
+            self.stack.truncate(
+                top_stack.stack_frame + top_stack.variadic_arguments + popped_stack.function_index,
+            );
         } else {
             self.stack.clear();
         }
@@ -201,11 +205,37 @@ impl Lua {
         last
     }
 
-    fn get_up_table(&self, uptable: usize) -> Option<&Value> {
-        self.upvalues.get(uptable).map(|(_, value)| value)
+    fn get_upvalue(&self, upvalue: usize) -> Result<Value, Error> {
+        let Some(closure) = self.get_running_closure() else {
+            unreachable!("Must have closure while executing bytecode.");
+        };
+        let upvalue = closure.upvalue(upvalue)?;
+        let upvalue_borrow = upvalue.as_ref().borrow();
+        match upvalue_borrow.deref() {
+            Upvalue::Open(register) => self.get_stack(u8::try_from(*register)?).cloned(),
+            Upvalue::Closed(value) => Ok(value).cloned(),
+        }
     }
 
-    fn read_bytecode(&mut self, main_program: &Program) -> Option<Bytecode> {
+    fn set_upvalue(&mut self, upvalue: usize, value: impl Into<Value>) -> Result<(), Error> {
+        let Some(closure) = self.get_running_closure() else {
+            unreachable!("Must have closure while executing bytecode.");
+        };
+        let upvalue = closure.upvalue(upvalue)?;
+        let value = value.into();
+
+        match upvalue.as_ref().borrow_mut().deref_mut() {
+            Upvalue::Open(dst) => {
+                self.set_stack(u8::try_from(*dst)?, value)?;
+            }
+            Upvalue::Closed(upvalue) => {
+                *upvalue = value;
+            }
+        }
+        Ok(())
+    }
+
+    fn read_bytecode(&mut self) -> Option<Bytecode> {
         if self.stack_frame.is_empty() {
             return None;
         }
@@ -216,22 +246,34 @@ impl Lua {
         let old = *pc;
         *pc += 1;
 
-        self.get_running_closure(main_program).read_bytecode(old)
+        let Some(closure) = self.get_running_closure() else {
+            unreachable!("Must have closure if stack frame is not empty.");
+        };
+
+        let program = closure.program();
+        program.read_bytecode(old)
     }
 
-    fn get_running_closure<'a>(&'a self, main_program: &'a Program) -> &'a Program {
+    fn get_running_closure(&self) -> Option<&Closure> {
         let stack_frame = self.get_stack_frame();
+        let func_index = stack_frame.stack_frame - 1;
 
-        if let FunctionIndex::Closure(_) = stack_frame.function_index {
-            match &self.stack[stack_frame.stack_frame - 1] {
-                Value::Function(func) => func.program(),
-                other => unreachable!(
-                    "Value at {} should be a closure, but was {:?}",
-                    stack_frame.stack_frame, other
-                ),
-            }
-        } else {
-            main_program
+        match &self.stack[func_index] {
+            Value::Closure(closure) => Some(closure),
+            other => unreachable!(
+                "Value at {} should be a closure, but was {:?}",
+                func_index, other
+            ),
         }
+    }
+
+    fn find_upvalue(&self, upvalue: &str) -> Result<Rc<RefCell<Upvalue>>, Error> {
+        // for now only global environment
+        let Value::Closure(main_program) = &self.stack[0] else {
+            unreachable!("Main program was not a closure");
+        };
+        assert_eq!(upvalue, "_ENV");
+
+        main_program.upvalue(0)
     }
 }

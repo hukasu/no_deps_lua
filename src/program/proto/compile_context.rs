@@ -7,6 +7,7 @@ use super::{exp_desc::ExpDesc, Error};
 #[derive(Debug, Default)]
 pub struct CompileContext<'a> {
     pub stack_top: u8,
+    pub previous_context: Option<&'a CompileContext<'a>>,
     pub var_args: Option<bool>,
     pub locals: Vec<Value>,
     pub breaks: Option<Vec<usize>>,
@@ -47,11 +48,29 @@ impl<'a> CompileContext<'a> {
     }
 
     pub fn find_name(&self, name: &'a str) -> Option<ExpDesc<'a>> {
-        let name: Value = name.into();
-        self.locals
+        let name_value: Value = name.into();
+        if let Some(pos) = self.locals.iter().rposition(|local| local == &name_value) {
+            Some(ExpDesc::Local(pos))
+        } else {
+            self.previous_context
+                .and_then(|context| context.find_upvalue(name))
+        }
+    }
+
+    fn find_upvalue(&self, name: &'a str) -> Option<ExpDesc<'a>> {
+        let name_value: Value = name.into();
+        if let Some(pos) = self.locals.iter().rposition(|local| local == &name_value) {
+            Some(ExpDesc::Upvalue(pos))
+        } else if let Some(pos) = self
+            .locals
             .iter()
-            .rposition(|local| local == &name)
-            .map(ExpDesc::Local)
+            .rposition(|local| local == &Value::from("_ENV"))
+        {
+            Some(ExpDesc::Upvalue(pos))
+        } else {
+            self.previous_context
+                .and_then(|context| context.find_upvalue(name))
+        }
     }
 }
 

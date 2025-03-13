@@ -27,6 +27,8 @@ pub enum Error {
     StackOverflow,
     InvalidJump,
     UpvalueDoesNotExist,
+    ConstantDoesNotExist(usize, usize),
+    FunctionDoesNotExist(usize, usize),
 }
 
 impl Display for Error {
@@ -40,16 +42,16 @@ impl Display for Error {
             Self::InvalidNegOperand => write!(f, "Neg can only operate over Integers and Floats."),
             Self::InvalidBitNotOperand => write!(f, "BitNot can only operate over Integers."),
             Self::ArithmeticOperand(op, lhs, rhs) => {
-                write!(f, "Can't '{}' '{}' with '{}'.", op, lhs, rhs)
+                write!(f, "Can't {} {} with {}.", op, lhs, rhs)
             }
             Self::BitwiseOperand(op, lhs, rhs) => {
-                write!(f, "Can't '{}' '{}' with '{}'.", op, lhs, rhs)
+                write!(f, "Can't {} {} with {}.", op, lhs, rhs)
             }
             Self::RelationalOperand(lhs, rhs) => {
                 write!(f, "Can't compare {} with {}", lhs, rhs)
             }
-            Self::ConcatOperand(lhs) => {
-                write!(f, "Can't use {} in concatenation.", lhs)
+            Self::ConcatOperand(operand) => {
+                write!(f, "Can't use {} in concatenation.", operand)
             }
             Self::TryFloatConversion => write!(f, "Failed to convert Value to Value::Float."),
             Self::IntegerConversion => write!(
@@ -60,6 +62,16 @@ impl Display for Error {
             Self::StackOverflow => write!(f, "Vm's stack has overflown."),
             Self::InvalidJump => write!(f, "Vm's program counter became invalid."),
             Self::UpvalueDoesNotExist => write!(f, "Upvalue does not exist."),
+            Self::ConstantDoesNotExist(constant, len) => write!(
+                f,
+                "Program does not have constant at position '{}', it has '{}' constants.",
+                constant, len
+            ),
+            Self::FunctionDoesNotExist(constant, len) => write!(
+                f,
+                "Program does not have function at position '{}', it has '{}' functions.",
+                constant, len
+            ),
         }
     }
 }
