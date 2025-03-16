@@ -64,11 +64,10 @@ impl Proto {
         u32::try_from(new_position).map_err(Error::from)
     }
 
-    fn push_function(&mut self, function: Function) -> Result<u8, Error> {
+    fn push_function(&mut self, function: Function) -> usize {
         let new_position = self.functions.len();
         self.functions.push(Rc::new(function));
-
-        u8::try_from(new_position).map_err(Error::from)
+        new_position
     }
 
     fn push_upvalue(&mut self, upvalue: &str) -> Result<u8, Error> {
@@ -96,8 +95,11 @@ impl Proto {
         let jump_to_end_count = compile_context.jumps_to_end.len();
 
         let cond = self.exp(exp, compile_context)?;
-        let test = !matches!(cond, ExpDesc::Name(_));
-        cond.discharge(&ExpDesc::Condition(test), self, compile_context)?;
+        ExpDesc::Condition {
+            jump_to_end: true,
+            if_condition: false,
+        }
+        .discharge(&cond, self, compile_context)?;
 
         let start_of_block = self.byte_codes.len() - 1;
         for jump in compile_context.jumps_to_block.drain(jump_to_block_count..) {
@@ -363,7 +365,7 @@ impl Proto {
                 };
 
                 for (var, exp) in varlist.iter().zip(explist.iter()) {
-                    exp.discharge(var, self, compile_context)?;
+                    var.discharge(exp, self, compile_context)?;
                 }
 
                 if explist.len() < varlist.len() {
@@ -389,7 +391,7 @@ impl Proto {
 
                         let remaining = varlist.len() - explist.len();
                         let (return_start, stack_top) = compile_context.reserve_stack_top();
-                        last_call.discharge(&stack_top, self, compile_context)?;
+                        stack_top.discharge(&last_call, self, compile_context)?;
 
                         if self
                             .byte_codes
@@ -413,13 +415,13 @@ impl Proto {
                             .rev()
                             .zip(varlist[explist.len()..].iter().rev())
                         {
-                            { ExpDesc::Local(return_loc) }.discharge(var, self, compile_context)?;
+                            var.discharge(&ExpDesc::Local(return_loc), self, compile_context)?;
                         }
 
                         compile_context.stack_top -= 1;
                     } else {
                         for var in &varlist[explist.len()..] {
-                            { ExpDesc::Nil }.discharge(var, self, compile_context)?;
+                            var.discharge(&ExpDesc::Nil, self, compile_context)?;
                         }
                     }
                 }
@@ -431,7 +433,7 @@ impl Proto {
                 let function_call = self.functioncall(functioncall, compile_context)?;
 
                 let (_, stack_top) = compile_context.reserve_stack_top();
-                function_call.discharge(&stack_top, self, compile_context)?;
+                stack_top.discharge(&function_call, self, compile_context)?;
                 compile_context.stack_top -= 1;
 
                 Ok(())
@@ -487,7 +489,11 @@ impl Proto {
 
                 let start_of_cond = self.byte_codes.len();
                 let cond = self.exp(exp, compile_context)?;
-                cond.discharge(&ExpDesc::Condition(false), self, compile_context)?;
+                ExpDesc::Condition {
+                    jump_to_end: true,
+                    if_condition: false,
+                }
+                .discharge(&cond, self, compile_context)?;
 
                 let end_of_cond = self.byte_codes.len();
                 for jump in compile_context.jumps_to_block.drain(jump_to_block_count..) {
@@ -553,7 +559,11 @@ impl Proto {
 
                 let cond = self.exp(exp, compile_context)?;
 
-                cond.discharge(&ExpDesc::Condition(false), self, compile_context)?;
+                ExpDesc::Condition {
+                    jump_to_end: true,
+                    if_condition: false,
+                }
+                .discharge(&cond, self, compile_context)?;
 
                 compile_context.locals.truncate(locals);
 
@@ -602,15 +612,15 @@ impl Proto {
 
                 let start = self.exp(start, compile_context)?;
                 let (for_stack, start_stack) = compile_context.reserve_stack_top();
-                start.discharge(&start_stack, self, compile_context)?;
+                start_stack.discharge(&start, self, compile_context)?;
 
                 let end = self.exp(end, compile_context)?;
                 let (_, end_stack) = compile_context.reserve_stack_top();
-                end.discharge(&end_stack, self, compile_context)?;
+                end_stack.discharge(&end, self, compile_context)?;
 
                 let step = self.stat_forexp(stat_forexp, compile_context)?;
                 let (_, step_stack) = compile_context.reserve_stack_top();
-                step.discharge(&step_stack, self, compile_context)?;
+                step_stack.discharge(&step, self, compile_context)?;
 
                 // Reserve 1 slot for counter
                 compile_context.stack_top += 1;
@@ -685,12 +695,15 @@ impl Proto {
                         };
 
                     for table_key in &head[1..] {
-                        ExpDesc::TableAccess {
-                            table: Box::new(ExpDesc::Local(usize::from(table_loc))),
-                            key: Box::new(self.name(table_key)),
-                            record: true,
-                        }
-                        .discharge(&stack_top, self, compile_context)?;
+                        stack_top.discharge(
+                            &ExpDesc::TableAccess {
+                                table: Box::new(ExpDesc::Local(usize::from(table_loc))),
+                                key: Box::new(self.name(table_key)),
+                                record: true,
+                            },
+                            self,
+                            compile_context,
+                        )?;
 
                         used_stack_top = true;
                         table_loc = stack_loc;
@@ -712,9 +725,9 @@ impl Proto {
                 let (_, funcbody_stack) = compile_context.reserve_stack_top();
                 stacks_used += 1;
 
-                funcbody.discharge(&funcbody_stack, self, compile_context)?;
+                funcbody_stack.discharge(&funcbody, self, compile_context)?;
 
-                funcbody_stack.discharge(&final_dst, self, compile_context)?;
+                final_dst.discharge(&funcbody_stack, self, compile_context)?;
 
                 compile_context.stack_top -= stacks_used;
 
@@ -731,7 +744,7 @@ impl Proto {
                 let funcbody = self.funcbody(funcbody, false, compile_context)?;
 
                 let (_, function_body) = compile_context.reserve_stack_top();
-                funcbody.discharge(&function_body, self, compile_context)?;
+                function_body.discharge(&funcbody, self, compile_context)?;
 
                 Ok(())
             }
@@ -745,7 +758,7 @@ impl Proto {
 
                 for exp in explist.iter() {
                     let (_, stack_top) = compile_context.reserve_stack_top();
-                    exp.discharge(&stack_top, self, compile_context)?;
+                    stack_top.discharge(exp, self, compile_context)?;
                 }
 
                 if explist.len() < namelist.len() {
@@ -768,7 +781,7 @@ impl Proto {
                     } else {
                         for _ in 0..remaining {
                             let (_, stack_top) = compile_context.reserve_stack_top();
-                            { ExpDesc::Nil }.discharge(&stack_top, self, compile_context)?;
+                            stack_top.discharge(&ExpDesc::Nil, self, compile_context)?;
                         }
                     }
                 }
@@ -991,7 +1004,7 @@ impl Proto {
 
                             self.byte_codes.push(Bytecode::one_return(dst))
                         } else {
-                            last.discharge(&stack_top, self, compile_context)?;
+                            stack_top.discharge(last, self, compile_context)?;
 
                             if let ExpDesc::FunctionCall(_, _) = last {
                                 let Some(call) = self.byte_codes.pop() else {
@@ -1014,7 +1027,7 @@ impl Proto {
                         let return_start = compile_context.stack_top;
                         for exp in explist.iter() {
                             let (_, stack_top) = compile_context.reserve_stack_top();
-                            exp.discharge(&stack_top, self, compile_context)?;
+                            stack_top.discharge(exp, self, compile_context)?;
                         }
                         compile_context.stack_top -= u8::try_from(explist.len())?;
 
@@ -1607,7 +1620,7 @@ impl Proto {
                     func_program.into(),
                     parlist_name_count + (needs_self as usize),
                     parlist.variadic_args,
-                ))?;
+                ));
 
                 Ok(ExpDesc::Closure(closure_position))
             }

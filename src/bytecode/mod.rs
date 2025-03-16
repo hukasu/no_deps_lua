@@ -1,3 +1,4 @@
+pub mod ext;
 mod opcode;
 
 use core::{
@@ -197,10 +198,10 @@ impl Bytecode {
     ///
     /// `dst`: Location on the stack to store the table's value  
     /// `table`: Location of the table on the stack  
-    /// `src`: Location of the name on the stack  
-    pub const fn get_table(dst: u8, table: u8, src: u8) -> Bytecode {
+    /// `key`: Location of the name on the stack  
+    pub const fn get_table(dst: u8, table: u8, key: u8) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::GetTable, dst, table, src, 0),
+            bytecode: Self::encode_abck(OpCode::GetTable, dst, table, key, 0),
             function: Self::execute_get_table,
         }
     }
@@ -280,9 +281,9 @@ impl Bytecode {
     /// `dst`: Location on the stack to store the table  
     /// `array_len`: Amount of items to allocate on the list  
     /// `table_len`: Amount of items to allocate for the map
-    pub const fn new_table(dst: u8, array_len: u8, table_len: u8) -> Bytecode {
+    pub const fn new_table(dst: u8, table_len: u8, array_len: u8) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::NewTable, dst, array_len, table_len, 0),
+            bytecode: Self::encode_abck(OpCode::NewTable, dst, table_len, array_len, 0),
             function: Self::execute_new_table,
         }
     }
@@ -772,7 +773,7 @@ impl Bytecode {
     ///
     /// `register`: First destination of variable arguments  
     /// `count`: Count of variable arguments, `0` means use all, other values
-    /// are subtracted by `2`
+    /// are subtracted by `1`, i.e. the range is (register..(register + count - 1))
     pub const fn variadic_arguments(register: u8, count: u8) -> Bytecode {
         Bytecode {
             bytecode: Self::encode_abck(OpCode::VariadicArguments, register, 0, count, 0),

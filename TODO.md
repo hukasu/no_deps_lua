@@ -4,6 +4,9 @@
 * Implement decoding of long strings
 * Implement scientific notation numerals
 
+# Parsing
+* Improve `ExpDesc::VariadicArguments`
+
 # VM
 * Improve concat results
 * Concat bytecode only has 2 values
