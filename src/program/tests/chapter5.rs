@@ -226,3 +226,46 @@ print('hello' .. a) -- panic
         Ok(_) => panic!("Last print should fail"),
     }
 }
+
+#[test]
+fn multi_concat() {
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
+
+    let program = Program::parse(
+        r#"
+print(('hello, '..'world').." "..("3." .. 14 .. 15))
+"#,
+    )
+    .unwrap();
+
+    super::compare_program(
+        &program,
+        &[
+            Bytecode::variadic_arguments_prepare(0),
+            // print(('hello, '..'world').." "..("3." .. 14 .. 15))
+            Bytecode::get_uptable(0, 0, 0),
+            Bytecode::load_constant(1, 1),
+            Bytecode::load_constant(2, 2),
+            Bytecode::concat(1, 2),
+            Bytecode::load_constant(2, 3),
+            Bytecode::load_constant(3, 4),
+            Bytecode::load_integer(4, 14),
+            Bytecode::load_integer(5, 15),
+            Bytecode::concat(1, 5),
+            Bytecode::call(0, 2, 1),
+            // EOF
+            Bytecode::return_bytecode(0, 1, 1),
+        ],
+        &[
+            "print".into(),
+            "hello, ".into(),
+            "world".into(),
+            " ".into(),
+            "3.".into(),
+        ],
+        &["_ENV".into()],
+        0,
+    );
+
+    crate::Lua::run_program(program).expect("Should work");
+}

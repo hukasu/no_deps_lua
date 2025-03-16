@@ -431,14 +431,46 @@ impl<'a> ExpDesc<'a> {
                 }
                 (
                     Binop::Concat,
-                    lhs @ (Self::String(_) | Self::Integer(_) | Self::Float(_) | Self::Local(_)),
-                    rhs @ (Self::String(_) | Self::Integer(_) | Self::Float(_) | Self::Local(_)),
+                    lhs @ (Self::Integer(_)
+                    | Self::Float(_)
+                    | Self::String(_)
+                    | Self::Binop(_, _, _)),
+                    _,
                 ) => {
                     self.discharge(lhs, program, compile_context)?;
                     let (_, stack_top) = compile_context.reserve_stack_top();
-                    stack_top.discharge(rhs, program, compile_context)?;
-                    program.byte_codes.push(Bytecode::concat(dst, 2));
+                    stack_top.discharge(
+                        &Self::Binop(*op, Box::new(self.clone()), rhs.clone()),
+                        program,
+                        compile_context,
+                    )?;
                     compile_context.stack_top -= 1;
+                    Ok(())
+                }
+                (
+                    Binop::Concat,
+                    Self::Local(lhs),
+                    rhs @ (Self::Integer(_) | Self::String(_) | Self::Local(_)),
+                ) => {
+                    self.discharge(rhs, program, compile_context)?;
+                    program
+                        .byte_codes
+                        .push(Bytecode::concat(u8::try_from(*lhs)?, 2));
+
+                    Ok(())
+                }
+                (Binop::Concat, Self::Local(lhs), rhs @ Self::Binop(Binop::Concat, _, _)) => {
+                    self.discharge(rhs, program, compile_context)?;
+
+                    let Some(last_bytecode) = program.byte_codes.last_mut() else {
+                        unreachable!(
+                            "Bytecodes should not be empty after discharging concatenation."
+                        );
+                    };
+                    assert_eq!(last_bytecode.get_opcode(), OpCode::Concat);
+                    let (_, b, _, _) = last_bytecode.decode_abck();
+                    *last_bytecode = Bytecode::concat(u8::try_from(*lhs)?, b + 1);
+
                     Ok(())
                 }
                 (Binop::Or, lhs, rhs) => {
