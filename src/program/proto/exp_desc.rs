@@ -98,17 +98,7 @@ impl<'a> ExpDesc<'a> {
             );
         };
 
-        let name = match compile_context.find_name(name) {
-            Some(local_or_upvalue) => local_or_upvalue,
-            None => {
-                if name.len() > SHORT_STRING_LEN {
-                    Self::LongName(name)
-                } else {
-                    Self::Global(usize::try_from(program.push_constant(*name)?)?)
-                }
-            }
-        };
-
+        let name = Self::find_name(name, program, compile_context)?;
         name.discharge(src, program, compile_context)
     }
 
@@ -125,10 +115,10 @@ impl<'a> ExpDesc<'a> {
             );
         };
 
-        let env = program.push_upvalue("_ENV")?;
+        let env = program.push_upvalue("_ENV");
 
         let (_, env_top) = compile_context.reserve_stack_top();
-        env_top.discharge(&Self::Upvalue(usize::from(env)), program, compile_context)?;
+        env_top.discharge(&Self::Upvalue(env), program, compile_context)?;
 
         let (_, key_top) = compile_context.reserve_stack_top();
         key_top.discharge(&Self::String(long_name), program, compile_context)?;
@@ -207,23 +197,14 @@ impl<'a> ExpDesc<'a> {
                 Ok(())
             }
             Self::Name(name) => {
-                let name = match compile_context.find_name(name) {
-                    Some(local_or_upvalue) => local_or_upvalue,
-                    None => {
-                        if name.len() > SHORT_STRING_LEN {
-                            Self::LongName(name)
-                        } else {
-                            Self::Global(usize::try_from(program.push_constant(*name)?)?)
-                        }
-                    }
-                };
+                let name = Self::find_name(name, program, compile_context)?;
                 self.discharge(&name, program, compile_context)
             }
             Self::LongName(long_name) => {
                 // Reaching here already means that it is a global
-                let env = program.push_upvalue("_ENV")?;
+                let env = program.push_upvalue("_ENV");
 
-                self.discharge(&Self::Upvalue(usize::from(env)), program, compile_context)?;
+                self.discharge(&Self::Upvalue(env), program, compile_context)?;
                 let (_, stack_top) = compile_context.reserve_stack_top();
                 stack_top.discharge(&Self::String(long_name), program, compile_context)?;
                 self.discharge(
@@ -615,10 +596,12 @@ impl<'a> ExpDesc<'a> {
                 Ok(())
             }
             Self::Global(global) => {
-                let env = program.push_upvalue("_ENV")?;
-                program
-                    .byte_codes
-                    .push(Bytecode::get_uptable(dst, env, u8::try_from(*global)?));
+                let env = program.push_upvalue("_ENV");
+                program.byte_codes.push(Bytecode::get_uptable(
+                    dst,
+                    u8::try_from(env)?,
+                    u8::try_from(*global)?,
+                ));
                 Ok(())
             }
             Self::Upvalue(upvalue) => {
@@ -717,16 +700,7 @@ impl<'a> ExpDesc<'a> {
                 record: false,
             } => match (table.as_ref(), key.as_ref()) {
                 (Self::Name(table), _) => {
-                    let table = match compile_context.find_name(table) {
-                        Some(local_or_upvalue) => local_or_upvalue,
-                        None => {
-                            if table.len() > SHORT_STRING_LEN {
-                                Self::LongName(table)
-                            } else {
-                                Self::Global(usize::try_from(program.push_constant(*table)?)?)
-                            }
-                        }
-                    };
+                    let table = Self::find_name(table, program, compile_context)?;
                     self.discharge(
                         &Self::TableAccess {
                             table: Box::new(table),
@@ -929,10 +903,10 @@ impl<'a> ExpDesc<'a> {
 
         match src {
             Self::Integer(integer) => {
-                let env = program.push_upvalue("_ENV")?;
+                let env = program.push_upvalue("_ENV");
                 let constant = program.push_constant(*integer)?;
                 program.byte_codes.push(Bytecode::set_uptable(
-                    env,
+                    u8::try_from(env)?,
                     global,
                     u8::try_from(constant)?,
                     1,
@@ -940,10 +914,10 @@ impl<'a> ExpDesc<'a> {
                 Ok(())
             }
             Self::String(string) => {
-                let env = program.push_upvalue("_ENV")?;
+                let env = program.push_upvalue("_ENV");
                 let constant = program.push_constant(*string)?;
                 program.byte_codes.push(Bytecode::set_uptable(
-                    env,
+                    u8::try_from(env)?,
                     global,
                     u8::try_from(constant)?,
                     1,
@@ -951,17 +925,14 @@ impl<'a> ExpDesc<'a> {
                 Ok(())
             }
             Self::Name(name) => {
-                let name = match compile_context.find_name(name) {
-                    Some(local_or_upvalue) => local_or_upvalue,
-                    None => Self::Global(usize::try_from(program.push_constant(*name)?)?),
-                };
+                let name = Self::find_name(name, program, compile_context)?;
 
                 self.discharge(&name, program, compile_context)
             }
             Self::Local(local) => {
-                let env = program.push_upvalue("_ENV")?;
+                let env = program.push_upvalue("_ENV");
                 program.byte_codes.push(Bytecode::set_uptable(
-                    env,
+                    u8::try_from(env)?,
                     global,
                     u8::try_from(*local)?,
                     0,
@@ -1396,9 +1367,12 @@ impl<'a> ExpDesc<'a> {
         compile_context: &mut CompileContext<'a>,
     ) -> Result<ExpDesc<'a>, Error> {
         match compile_context.find_name(name) {
-            Some(local_or_upvalue) => Ok(local_or_upvalue),
+            Some(local) => Ok(ExpDesc::Local(local)),
             None => {
-                if name.len() > SHORT_STRING_LEN {
+                if compile_context.exists_in_upvalue(name) {
+                    let upvalue = program.push_upvalue(name);
+                    Ok(Self::Upvalue(upvalue))
+                } else if name.len() > SHORT_STRING_LEN {
                     Ok(Self::LongName(name))
                 } else {
                     Ok(Self::Global(usize::try_from(program.push_constant(name)?)?))
@@ -1415,11 +1389,7 @@ impl<'a> ExpDesc<'a> {
     ) -> Result<u8, Error> {
         match self {
             ExpDesc::Name(table_name) => match compile_context.find_name(table_name) {
-                Some(ExpDesc::Local(pos)) => u8::try_from(pos).map_err(Error::from),
-                Some(other) => unreachable!(
-                    "CompileContext::find_name should always return ExpDesc::Local, but returned {:?}.",
-                    other
-                ),
+                Some(pos) => u8::try_from(pos).map_err(Error::from),
                 None => {
                     self.discharge(
                         &ExpDesc::Local(usize::from(location)),
@@ -1429,7 +1399,10 @@ impl<'a> ExpDesc<'a> {
                     Ok(location)
                 }
             },
-            other => unreachable!("Should always be called with a ExpDesc::Name, but was called with {:?}.", other),
+            other => unreachable!(
+                "Should always be called with a ExpDesc::Name, but was called with {:?}.",
+                other
+            ),
         }
     }
 

@@ -70,18 +70,15 @@ impl Proto {
         new_position
     }
 
-    fn push_upvalue(&mut self, upvalue: &str) -> Result<u8, Error> {
+    fn push_upvalue(&mut self, upvalue: &str) -> usize {
         let value = upvalue.into();
-
-        let new_position = self
-            .upvalues
+        self.upvalues
             .iter()
             .position(|v| v == &value)
             .unwrap_or_else(|| {
                 self.upvalues.push(value);
                 self.upvalues.len() - 1
-            });
-        u8::try_from(new_position).map_err(Error::from)
+            })
     }
 
     fn make_if<'a>(
@@ -187,7 +184,7 @@ impl Proto {
     ) -> Result<(), Error> {
         match chunk.tokens.as_slice() {
             make_deconstruct!(block(TokenType::Block)) => {
-                self.push_upvalue("_ENV")?;
+                self.push_upvalue("_ENV");
 
                 self.block(block, compile_context, true)?;
                 self.fix_up_last_return(0, compile_context)?;
@@ -680,19 +677,18 @@ impl Proto {
                     let (stack_loc, stack_top) = compile_context.reserve_stack_top();
                     let mut used_stack_top = false;
 
-                    let mut table_loc =
-                        if let Some(ExpDesc::Local(local)) = compile_context.find_name(head[0]) {
-                            u8::try_from(local)?
-                        } else {
-                            used_stack_top = true;
-                            let constant = self.push_constant(head[0])?;
-                            self.byte_codes.push(Bytecode::get_uptable(
-                                stack_loc,
-                                0,
-                                u8::try_from(constant)?,
-                            ));
-                            stack_loc
-                        };
+                    let mut table_loc = if let Some(local) = compile_context.find_name(head[0]) {
+                        u8::try_from(local)?
+                    } else {
+                        used_stack_top = true;
+                        let constant = self.push_constant(head[0])?;
+                        self.byte_codes.push(Bytecode::get_uptable(
+                            stack_loc,
+                            0,
+                            u8::try_from(constant)?,
+                        ));
+                        stack_loc
+                    };
 
                     for table_key in &head[1..] {
                         stack_top.discharge(

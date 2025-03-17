@@ -46,29 +46,23 @@ impl<'a> CompileContext<'a> {
         }
     }
 
-    pub fn find_name(&self, name: &'a str) -> Option<ExpDesc<'a>> {
+    pub fn find_name(&self, name: &'a str) -> Option<usize> {
         let name_value: Value = name.into();
-        if let Some(pos) = self.locals.iter().rposition(|local| local == &name_value) {
-            Some(ExpDesc::Local(pos))
-        } else {
-            self.previous_context
-                .and_then(|context| context.find_upvalue(name))
-        }
+        self.locals.iter().rposition(|local| local == &name_value)
     }
 
-    fn find_upvalue(&self, name: &'a str) -> Option<ExpDesc<'a>> {
+    pub fn exists_in_upvalue(&self, name: &'a str) -> bool {
         let name_value: Value = name.into();
-        if let Some(pos) = self.locals.iter().rposition(|local| local == &name_value) {
-            Some(ExpDesc::Upvalue(pos))
-        } else if let Some(pos) = self
+        if self
             .locals
             .iter()
-            .rposition(|local| local == &Value::from("_ENV"))
+            .any(|local| local == &name_value || local == &Value::from("_ENV"))
         {
-            Some(ExpDesc::Upvalue(pos))
+            true
         } else {
             self.previous_context
-                .and_then(|context| context.find_upvalue(name))
+                .filter(|context| context.exists_in_upvalue(name))
+                .is_some()
         }
     }
 }
