@@ -962,17 +962,26 @@ impl<'a> ExpDesc<'a> {
         program: &mut Proto,
         compile_context: &mut CompileContext<'a>,
     ) -> Result<(), Error> {
-        let Self::Upvalue(_) = self else {
+        let Self::Upvalue(upvalue) = self else {
             unreachable!(
                 "Destination of `discharge_into_upvalue` must be `ExpDesc::Upvalue`, but was {:?}.",
                 self
             );
         };
 
-        let (_, stack_top) = compile_context.reserve_stack_top();
-        stack_top.discharge(src, program, compile_context)?;
-        self.discharge(&stack_top, program, compile_context)?;
-        compile_context.stack_top -= 1;
+        if let Self::Local(local) = src {
+            program.byte_codes.push(Bytecode::set_upvalue(
+                u8::try_from(*upvalue)?,
+                u8::try_from(*local)?,
+            ));
+        } else {
+            let (stack_loc, stack_top) = compile_context.reserve_stack_top();
+            stack_top.discharge(src, program, compile_context)?;
+            program
+                .byte_codes
+                .push(Bytecode::set_upvalue(u8::try_from(*upvalue)?, stack_loc));
+            compile_context.stack_top -= 1;
+        }
         Ok(())
     }
 
@@ -994,6 +1003,21 @@ impl<'a> ExpDesc<'a> {
                 if explist.len() == 1 && src_explist.len() == 1 {
                     explist[0].discharge(&src_explist[0], program, compile_context)
                 } else {
+                    for lhs_exp in explist.iter() {
+                        if let Self::Name(name) = lhs_exp {
+                            match Self::find_name(name, program, compile_context)? {
+                                Self::Local(_) => (),
+                                Self::Global(_) => {
+                                    program.push_constant(*name)?;
+                                }
+                                Self::Upvalue(_) => (),
+                                _ => unreachable!(
+                                    "ExpDesc::find_name can only return Local, Global, or Upvalue."
+                                ),
+                            }
+                        }
+                    }
+
                     let mut used_stack = 0;
                     let mut reverse_sets = Vec::new();
 
@@ -1001,16 +1025,21 @@ impl<'a> ExpDesc<'a> {
                     for (dst, src) in explist.iter().zip(src_explist.iter()) {
                         match dst {
                             ExpDesc::Name(name) => {
-                                let name = Self::find_name(name, program, compile_context)?;
-                                let global_dst = matches!(name, Self::Global(_));
-                                if global_dst && (first || matches!(src, Self::FunctionCall(_, _)))
+                                let dst_name = Self::find_name(name, program, compile_context)?;
+                                let src = if let Self::Name(src) = src {
+                                    Self::find_name(src, program, compile_context)?
+                                } else {
+                                    src.clone()
+                                };
+
+                                if  first || matches!(src, Self::Upvalue(_) | Self::FunctionCall(_, _)) || matches!(dst_name, Self::Upvalue(_))
                                 {
                                     let (_, stack_top) = compile_context.reserve_stack_top();
-                                    stack_top.discharge(src, program, compile_context)?;
-                                    reverse_sets.push((name.clone(), stack_top));
+                                    stack_top.discharge(&src, program, compile_context)?;
+                                    reverse_sets.push((dst_name.clone(), stack_top));
                                     used_stack += 1;
                                 } else {
-                                    dst.discharge(src, program, compile_context)?;
+                                    dst_name.discharge(&src, program, compile_context)?;
                                 }
                             }
                             ExpDesc::TableAccess {
@@ -1025,14 +1054,7 @@ impl<'a> ExpDesc<'a> {
 
                     if let Some(ExpDesc::FunctionCall(_, _)) = src_explist.last() {
                         for remaining in explist[src_explist.len()..].iter() {
-                            if let Self::Name(name) = remaining {
-                                match Self::find_name(name, program, compile_context)? {
-                                    Self::Local(_) => (),
-                                    Self::Global(_) => {program.push_constant(*name)?;},
-                                    Self::Upvalue(_) => (),
-                                    _ => unreachable!("ExpDesc::find_name can only return Local, Global, or Upvalue.")
-                                }
-
+                            if let Self::Name(_) = remaining {
                                 let (_, stack_top) = compile_context.reserve_stack_top();
                                 reverse_sets.push((remaining.clone(), stack_top));
                                 used_stack += 1;

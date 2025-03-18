@@ -20,6 +20,10 @@ impl Local {
         &self.name
     }
 
+    pub fn active(&self, program_counter: usize) -> bool {
+        (self.scope_start..self.scope_end).contains(&program_counter)
+    }
+
     pub(crate) fn new_no_end(name: Box<str>, scope_start: usize) -> Self {
         Self {
             name,

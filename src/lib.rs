@@ -210,7 +210,7 @@ impl Lua {
         let upvalue = closure.upvalue(upvalue)?;
         let upvalue_borrow = upvalue.as_ref().borrow();
         match upvalue_borrow.deref() {
-            Upvalue::Open(register) => self.get_stack(u8::try_from(*register)?).cloned(),
+            Upvalue::Open(register) => Ok(self.stack[*register].clone()),
             Upvalue::Closed(value) => Ok(value).cloned(),
         }
     }
@@ -222,7 +222,7 @@ impl Lua {
 
         match upvalue.as_ref().borrow_mut().deref_mut() {
             Upvalue::Open(dst) => {
-                self.set_stack(u8::try_from(*dst)?, value)?;
+                self.stack[*dst] = value;
             }
             Upvalue::Closed(upvalue) => {
                 *upvalue = value;
@@ -264,13 +264,34 @@ impl Lua {
         }
     }
 
-    fn find_upvalue(&self, upvalue: &str) -> Result<Rc<RefCell<Upvalue>>, Error> {
-        // for now only global environment
-        let Value::Closure(main_program) = &self.stack[0] else {
-            unreachable!("Main program was not a closure");
-        };
-        assert_eq!(upvalue, "_ENV");
+    fn find_upvalue(&mut self, upvalue: &str) -> Result<Rc<RefCell<Upvalue>>, Error> {
+        let mut upvalue_opt = None;
+        for stack_frame in self.stack_frame.iter().rev() {
+            let closure = self.get_running_closure_of_stack_frame(stack_frame);
+            if let Some(local) = closure
+                .program()
+                .locals
+                .iter()
+                .filter(|closure_local| closure_local.active(stack_frame.program_counter))
+                .enumerate()
+                .filter(|(_, closure_local)| closure_local.name() == upvalue)
+                .last()
+                .map(|(i, _)| i)
+            {
+                upvalue_opt = Some(Rc::new(RefCell::new(Upvalue::Open(
+                    stack_frame.stack_frame + local,
+                ))));
+                break;
+            }
+        }
 
-        main_program.upvalue(0)
+        if let Some(upvalue) = upvalue_opt {
+            Ok(upvalue)
+        } else if upvalue == "_ENV" {
+            self.get_running_closure_of_stack_frame(&self.stack_frame[0])
+                .upvalue(0)
+        } else {
+            Err(Error::UpvalueDoesNotExist)
+        }
     }
 }

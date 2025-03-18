@@ -14,7 +14,7 @@ mod chapter5;
 mod chapter6;
 mod chapter7;
 mod chapter8;
-// mod chapter9;
+mod chapter9;
 
 fn compare_program(
     program: &Program,
