@@ -206,9 +206,7 @@ impl Lua {
     }
 
     fn get_upvalue(&self, upvalue: usize) -> Result<Value, Error> {
-        let Some(closure) = self.get_running_closure() else {
-            unreachable!("Must have closure while executing bytecode.");
-        };
+        let closure = self.get_running_closure();
         let upvalue = closure.upvalue(upvalue)?;
         let upvalue_borrow = upvalue.as_ref().borrow();
         match upvalue_borrow.deref() {
@@ -218,9 +216,7 @@ impl Lua {
     }
 
     fn set_upvalue(&mut self, upvalue: usize, value: impl Into<Value>) -> Result<(), Error> {
-        let Some(closure) = self.get_running_closure() else {
-            unreachable!("Must have closure while executing bytecode.");
-        };
+        let closure = self.get_running_closure();
         let upvalue = closure.upvalue(upvalue)?;
         let value = value.into();
 
@@ -246,20 +242,21 @@ impl Lua {
         let old = *pc;
         *pc += 1;
 
-        let Some(closure) = self.get_running_closure() else {
-            unreachable!("Must have closure if stack frame is not empty.");
-        };
+        let closure = self.get_running_closure();
 
         let program = closure.program();
         program.read_bytecode(old)
     }
 
-    fn get_running_closure(&self) -> Option<&Closure> {
-        let stack_frame = self.get_stack_frame();
+    fn get_running_closure(&self) -> &Closure {
+        self.get_running_closure_of_stack_frame(self.get_stack_frame())
+    }
+
+    fn get_running_closure_of_stack_frame(&self, stack_frame: &StackFrame) -> &Closure {
         let func_index = stack_frame.stack_frame - 1;
 
         match &self.stack[func_index] {
-            Value::Closure(closure) => Some(closure),
+            Value::Closure(closure) => closure,
             other => unreachable!(
                 "Value at {} should be a closure, but was {:?}",
                 func_index, other

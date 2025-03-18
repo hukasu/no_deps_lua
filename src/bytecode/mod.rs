@@ -54,8 +54,6 @@ const I8_OFFSET: u8 = u8::MAX >> 1;
 const I17_OFFSET: u32 = BX_MAX >> 1;
 const I25_OFFSET: u32 = J_MAX >> 1;
 
-const NO_CLOSURE: &str = "Must have a program while executing bytecode.";
-
 impl Bytecode {
     pub fn execute(&self, vm: &mut Lua) -> Result<(), Error> {
         (self.function)(self, vm)
@@ -811,9 +809,7 @@ impl Bytecode {
     fn execute_load_constant(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, constant) = self.decode_abx();
 
-        let Some(closure) = vm.get_running_closure() else {
-            unreachable!("{NO_CLOSURE}");
-        };
+        let closure = vm.get_running_closure();
         let value = closure.constant(usize::try_from(constant)?)?;
         vm.set_stack(dst, value)
     }
@@ -865,9 +861,7 @@ impl Bytecode {
             return Err(Error::ExpectedTable);
         };
 
-        let Some(closure) = vm.get_running_closure() else {
-            unreachable!("{NO_CLOSURE}");
-        };
+        let closure = vm.get_running_closure();
         let key = closure.constant(usize::from(key))?;
         let value = upvalue.deref().borrow().get(ValueKey(key.clone())).clone();
 
@@ -925,9 +919,7 @@ impl Bytecode {
         let (dst, table, key, _) = self.decode_abck();
 
         if let Value::Table(table) = vm.get_stack(table)?.clone() {
-            let Some(closure) = vm.get_running_closure() else {
-                unreachable!("{NO_CLOSURE}");
-            };
+            let closure = vm.get_running_closure();
             let key = ValueKey::from(closure.constant(usize::from(key))?);
             let bin_search = (*table)
                 .borrow()
@@ -947,9 +939,7 @@ impl Bytecode {
     fn execute_set_uptable(&self, vm: &mut Lua) -> Result<(), Error> {
         let (upvalue, key, src, constant) = self.decode_abck();
 
-        let Some(running_program) = vm.get_running_closure() else {
-            unreachable!("{NO_CLOSURE}");
-        };
+        let running_program = vm.get_running_closure();
         let key = running_program.constant(usize::from(key))?;
         let value = if constant == 1 {
             running_program.constant(usize::from(src))?
@@ -967,9 +957,7 @@ impl Bytecode {
         let (table, key, src, constant) = self.decode_abck();
 
         if let Value::Table(table) = vm.get_stack(table)?.clone() {
-            let Some(program) = vm.get_running_closure() else {
-                unreachable!("{NO_CLOSURE}");
-            };
+            let program = vm.get_running_closure();
             let key = ValueKey::from(vm.get_stack(key)?.clone());
             let value = if constant == 1 {
                 program.constant(usize::from(src))?
@@ -1001,9 +989,7 @@ impl Bytecode {
         let (table, key, src, constant) = self.decode_abck();
 
         if let Value::Table(table) = vm.get_stack(table)?.clone() {
-            let Some(running_program) = vm.get_running_closure() else {
-                unreachable!("{NO_CLOSURE}");
-            };
+            let running_program = vm.get_running_closure();
             let key = ValueKey::from(running_program.constant(usize::from(key))?);
             let value = if constant == 1 {
                 running_program.constant(usize::from(src))?
@@ -1049,9 +1035,7 @@ impl Bytecode {
         if let Value::Table(table) = vm.get_stack(table).cloned()? {
             vm.set_stack(dst + 1, Value::Table(table.clone()))?;
 
-            let Some(program) = vm.get_running_closure() else {
-                unreachable!("{NO_CLOSURE}");
-            };
+            let program = vm.get_running_closure();
             let key = ValueKey::from(program.constant(usize::from(key))?);
             let bin_search = (*table)
                 .borrow()
@@ -1088,9 +1072,7 @@ impl Bytecode {
     fn execute_add_constant(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, lhs, constant, _) = self.decode_abck();
 
-        let Some(program) = vm.get_running_closure() else {
-            unreachable!("{NO_CLOSURE}");
-        };
+        let program = vm.get_running_closure();
 
         let res = match (
             &vm.get_stack(lhs)?,
@@ -1114,9 +1096,7 @@ impl Bytecode {
     fn execute_mul_constant(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, lhs, constant, _) = self.decode_abck();
 
-        let Some(program) = vm.get_running_closure() else {
-            unreachable!("{NO_CLOSURE}");
-        };
+        let program = vm.get_running_closure();
 
         let res = match (
             &vm.get_stack(lhs)?,
@@ -1458,9 +1438,7 @@ impl Bytecode {
     fn execute_equal_constant(&self, vm: &mut Lua) -> Result<(), Error> {
         let (register, constant, _, test) = self.decode_abck();
 
-        let Some(program) = vm.get_running_closure() else {
-            unreachable!("{NO_CLOSURE}");
-        };
+        let program = vm.get_running_closure();
 
         let lhs = vm.get_stack(register)?;
         let rhs = &program.constant(usize::from(constant))?;
@@ -1713,9 +1691,7 @@ impl Bytecode {
     fn execute_closure(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, func_id) = self.decode_abx();
 
-        let Some(program) = vm.get_running_closure() else {
-            unreachable!("{NO_CLOSURE}");
-        };
+        let program = vm.get_running_closure();
 
         let func = program.function(usize::try_from(func_id)?)?;
 
