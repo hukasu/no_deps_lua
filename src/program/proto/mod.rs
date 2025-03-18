@@ -5,7 +5,7 @@ mod exp_desc;
 mod helper_types;
 mod unops;
 
-use alloc::{boxed::Box, rc::Rc, vec::Vec};
+use alloc::{boxed::Box, rc::Rc, vec, vec::Vec};
 
 use crate::{
     bytecode::{Bytecode, OpCode},
@@ -1437,18 +1437,9 @@ impl Proto {
             ) => self.args_explist(args_explist, compile_context),
             make_deconstruct!(tableconstructor(TokenType::Tableconstructor)) => {
                 let table = self.tableconstructor(tableconstructor, compile_context)?;
-
-                let mut explist = ExpList::new();
-                explist.push(table);
-
-                Ok(explist)
+                Ok(vec![table])
             }
-            make_deconstruct!(_string(TokenType::String(string))) => {
-                let mut explist = ExpList::new();
-                explist.push(self.string(string));
-
-                Ok(explist)
-            }
+            make_deconstruct!(_string(TokenType::String(string))) => Ok(vec![self.string(string)]),
             _ => {
                 unreachable!(
                     "Args did not match any of the productions. Had {:#?}.",
