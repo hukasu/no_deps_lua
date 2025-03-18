@@ -18,7 +18,7 @@ pub use self::error::Error;
 use self::{
     compile_context::{CompileContext, GotoLabel},
     exp_desc::ExpDesc,
-    helper_types::{ExpList, FunctionNameList, NameList, ParList, TableFields, TableKey, VarList},
+    helper_types::{FunctionNameList, NameList, ParList, TableFields, TableKey},
 };
 
 macro_rules! make_deconstruct {
@@ -29,6 +29,8 @@ macro_rules! make_deconstruct {
         },)+]
     };
 }
+
+type ExpList<'a> = Vec<ExpDesc<'a>>;
 
 #[derive(Debug, Default)]
 pub struct Proto {
@@ -349,82 +351,13 @@ impl Proto {
                 explist(TokenType::Explist)
             ) => {
                 let varlist = self.varlist(varlist, compile_context)?;
-                let mut explist = self.explist(explist, compile_context)?;
+                let explist = self.explist(explist, compile_context)?;
 
-                let last_call = if explist
-                    .last()
-                    .filter(|last| matches!(last, ExpDesc::FunctionCall(_, _)))
-                    .is_some()
-                {
-                    explist.pop()
-                } else {
-                    None
-                };
-
-                for (var, exp) in varlist.iter().zip(explist.iter()) {
-                    var.discharge(exp, self, compile_context)?;
-                }
-
-                if explist.len() < varlist.len() {
-                    if let Some(last_call) = last_call {
-                        for var in varlist[explist.len()..].iter() {
-                            match var {
-                                ExpDesc::Name(name) => {
-                                    self.push_constant(*name)?;
-                                }
-                                ExpDesc::TableAccess {
-                                    table: _,
-                                    key: _,
-                                    record: _,
-                                } => (),
-                                other => {
-                                    unreachable!(
-                                        "Variable is always a Name or TableAccess, but was {:?}.",
-                                        other
-                                    )
-                                }
-                            }
-                        }
-
-                        let remaining = varlist.len() - explist.len();
-                        let (return_start, stack_top) = compile_context.reserve_stack_top();
-                        stack_top.discharge(&last_call, self, compile_context)?;
-
-                        if self
-                            .byte_codes
-                            .last_mut()
-                            .filter(|bytecode| bytecode.get_opcode() == OpCode::Call)
-                            .is_some()
-                        {
-                            let Some(call) = self.byte_codes.pop() else {
-                                unreachable!();
-                            };
-                            let (a, b, _, _) = call.decode_abck();
-                            self.byte_codes
-                                .push(Bytecode::call(a, b, u8::try_from(remaining)? + 1))
-                        } else {
-                            unreachable!("Last bytecode was not Call.");
-                        }
-
-                        let return_start = usize::from(return_start);
-
-                        for (return_loc, var) in (return_start..(return_start + remaining))
-                            .rev()
-                            .zip(varlist[explist.len()..].iter().rev())
-                        {
-                            var.discharge(&ExpDesc::Local(return_loc), self, compile_context)?;
-                        }
-
-                        compile_context.stack_top -= 1;
-                    } else {
-                        for var in &varlist[explist.len()..] {
-                            var.discharge(&ExpDesc::Nil, self, compile_context)?;
-                        }
-                    }
-                }
-                explist.resize(varlist.len(), ExpDesc::Nil);
-
-                Ok(())
+                ExpDesc::ExpList(varlist).discharge(
+                    &ExpDesc::ExpList(explist),
+                    self,
+                    compile_context,
+                )
             }
             make_deconstruct!(functioncall(TokenType::Functioncall)) => {
                 let function_call = self.functioncall(functioncall, compile_context)?;
@@ -871,7 +804,7 @@ impl Proto {
         compile_context: &mut CompileContext<'a>,
     ) -> Result<ExpList<'a>, Error> {
         match stat_attexplist.tokens.as_slice() {
-            [] => Ok(ExpList::default()),
+            [] => Ok(ExpList::new()),
             make_deconstruct!(_assign(TokenType::Assign), explist(TokenType::Explist)) => {
                 self.explist(explist, compile_context)
             }
@@ -1058,7 +991,7 @@ impl Proto {
         compile_context: &mut CompileContext<'a>,
     ) -> Result<ExpList<'a>, Error> {
         match retstat_explist.tokens.as_slice() {
-            [] => Ok(ExpList::default()),
+            [] => Ok(ExpList::new()),
             make_deconstruct!(explist(TokenType::Explist)) => {
                 self.explist(explist, compile_context)
             }
@@ -1211,10 +1144,10 @@ impl Proto {
         &mut self,
         varlist: &Token<'a>,
         compile_context: &mut CompileContext<'a>,
-    ) -> Result<VarList<'a>, Error> {
+    ) -> Result<ExpList<'a>, Error> {
         match varlist.tokens.as_slice() {
             make_deconstruct!(var(TokenType::Var), varlist_cont(TokenType::VarlistCont)) => {
-                let mut varlist = VarList::default();
+                let mut varlist = ExpList::new();
 
                 let var = self.var(var, compile_context)?;
                 varlist.push(var);
@@ -1239,7 +1172,7 @@ impl Proto {
     fn varlist_cont<'a>(
         &mut self,
         varlist_cont: &Token<'a>,
-        varlist: &mut VarList<'a>,
+        varlist: &mut Vec<ExpDesc<'a>>,
         compile_context: &mut CompileContext<'a>,
     ) -> Result<(), Error> {
         match varlist_cont.tokens.as_slice() {
@@ -1319,7 +1252,7 @@ impl Proto {
     ) -> Result<ExpList<'a>, Error> {
         match explist.tokens.as_slice() {
             make_deconstruct!(exp(TokenType::Exp), explist_cont(TokenType::ExplistCont)) => {
-                let mut explist = ExpList::default();
+                let mut explist = ExpList::new();
 
                 let exp = self.exp(exp, compile_context)?;
                 explist.push(exp);
@@ -1343,7 +1276,7 @@ impl Proto {
     fn explist_cont<'a>(
         &mut self,
         explist_cont: &Token<'a>,
-        explist: &mut ExpList<'a>,
+        explist: &mut Vec<ExpDesc<'a>>,
         compile_context: &mut CompileContext<'a>,
     ) -> Result<(), Error> {
         match explist_cont.tokens.as_slice() {
@@ -1505,13 +1438,13 @@ impl Proto {
             make_deconstruct!(tableconstructor(TokenType::Tableconstructor)) => {
                 let table = self.tableconstructor(tableconstructor, compile_context)?;
 
-                let mut explist = ExpList::default();
+                let mut explist = ExpList::new();
                 explist.push(table);
 
                 Ok(explist)
             }
             make_deconstruct!(_string(TokenType::String(string))) => {
-                let mut explist = ExpList::default();
+                let mut explist = ExpList::new();
                 explist.push(self.string(string));
 
                 Ok(explist)
@@ -1534,7 +1467,7 @@ impl Proto {
         compile_context: &mut CompileContext<'a>,
     ) -> Result<ExpList<'a>, Error> {
         match args_explist.tokens.as_slice() {
-            [] => Ok(ExpList::default()),
+            [] => Ok(ExpList::new()),
             make_deconstruct!(explist(TokenType::Explist)) => {
                 self.explist(explist, compile_context)
             }

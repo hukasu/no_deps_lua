@@ -8,8 +8,8 @@ use crate::{
 use super::{
     binops::Binop,
     compile_context::CompileContext,
-    helper_types::{ExpList, TableFields, TableKey},
-    Bytecode, Error, Proto,
+    helper_types::{TableFields, TableKey},
+    Bytecode, Error, ExpList, Proto,
 };
 
 const SHORT_STRING_LEN: usize = 32;
@@ -28,6 +28,7 @@ pub enum ExpDesc<'a> {
     Local(usize),
     Global(usize),
     Upvalue(usize),
+    ExpList(Vec<ExpDesc<'a>>),
     Table(TableFields<'a>),
     /// Access to a table
     ///
@@ -66,6 +67,8 @@ impl<'a> ExpDesc<'a> {
             Self::LongName(_) => self.discharge_into_long_name(src, program, compile_context),
             Self::Local(_) => self.discharge_into_local(src, program, compile_context),
             Self::Global(_) => self.discharge_into_global(src, program, compile_context),
+            Self::Upvalue(_) => self.discharge_into_upvalue(src, program, compile_context),
+            Self::ExpList(_) => self.discharge_into_explist(src, program, compile_context),
             Self::TableAccess {
                 table: _,
                 key: _,
@@ -926,7 +929,6 @@ impl<'a> ExpDesc<'a> {
             }
             Self::Name(name) => {
                 let name = Self::find_name(name, program, compile_context)?;
-
                 self.discharge(&name, program, compile_context)
             }
             Self::Local(local) => {
@@ -939,23 +941,140 @@ impl<'a> ExpDesc<'a> {
                 ));
                 Ok(())
             }
-            src_global @ Self::Global(_) => {
+            exp @ (Self::Global(_)
+            | Self::Upvalue(_)
+            | Self::Table(_)
+            | Self::FunctionCall(_, _)) => {
                 let (_, stack_top) = compile_context.reserve_stack_top();
-                stack_top.discharge(src_global, program, compile_context)?;
-                self.discharge(&stack_top, program, compile_context)?;
-                compile_context.stack_top -= 1;
-
-                Ok(())
-            }
-            table @ Self::Table(_) => {
-                let (_, stack_top) = compile_context.reserve_stack_top();
-                stack_top.discharge(table, program, compile_context)?;
+                stack_top.discharge(exp, program, compile_context)?;
                 self.discharge(&stack_top, program, compile_context)?;
                 compile_context.stack_top -= 1;
 
                 Ok(())
             }
             other => unreachable!("Can't discharge {:?} into Global.", other),
+        }
+    }
+
+    fn discharge_into_upvalue(
+        &self,
+        src: &ExpDesc<'a>,
+        program: &mut Proto,
+        compile_context: &mut CompileContext<'a>,
+    ) -> Result<(), Error> {
+        let Self::Upvalue(_) = self else {
+            unreachable!(
+                "Destination of `discharge_into_upvalue` must be `ExpDesc::Upvalue`, but was {:?}.",
+                self
+            );
+        };
+
+        let (_, stack_top) = compile_context.reserve_stack_top();
+        stack_top.discharge(src, program, compile_context)?;
+        self.discharge(&stack_top, program, compile_context)?;
+        compile_context.stack_top -= 1;
+        Ok(())
+    }
+
+    fn discharge_into_explist(
+        &self,
+        src: &ExpDesc<'a>,
+        program: &mut Proto,
+        compile_context: &mut CompileContext<'a>,
+    ) -> Result<(), Error> {
+        let Self::ExpList(explist) = self else {
+            unreachable!(
+                "Destination of `discharge_into_explist` must be `ExpDesc::Explist`, but was {:?}.",
+                self
+            );
+        };
+
+        match src {
+            Self::ExpList(src_explist) => {
+                if explist.len() == 1 && src_explist.len() == 1 {
+                    explist[0].discharge(&src_explist[0], program, compile_context)
+                } else {
+                    let mut used_stack = 0;
+                    let mut reverse_sets = Vec::new();
+
+                    let mut first = true;
+                    for (dst, src) in explist.iter().zip(src_explist.iter()) {
+                        match dst {
+                            ExpDesc::Name(name) => {
+                                let name = Self::find_name(name, program, compile_context)?;
+                                let global_dst = matches!(name, Self::Global(_));
+                                if global_dst && (first || matches!(src, Self::FunctionCall(_, _)))
+                                {
+                                    let (_, stack_top) = compile_context.reserve_stack_top();
+                                    stack_top.discharge(src, program, compile_context)?;
+                                    reverse_sets.push((name.clone(), stack_top));
+                                    used_stack += 1;
+                                } else {
+                                    dst.discharge(src, program, compile_context)?;
+                                }
+                            }
+                            ExpDesc::TableAccess {
+                                table: _,
+                                key: _,
+                                record: _,
+                            } => dst.discharge(src, program, compile_context)?,
+                            _ => unreachable!("Varlist expressions should always be Name or TableAccess, but was {:?}.", dst),
+                        }
+                        first = false;
+                    }
+
+                    if let Some(ExpDesc::FunctionCall(_, _)) = src_explist.last() {
+                        for remaining in explist[src_explist.len()..].iter() {
+                            if let Self::Name(name) = remaining {
+                                match Self::find_name(name, program, compile_context)? {
+                                    Self::Local(_) => (),
+                                    Self::Global(_) => {program.push_constant(*name)?;},
+                                    Self::Upvalue(_) => (),
+                                    _ => unreachable!("ExpDesc::find_name can only return Local, Global, or Upvalue.")
+                                }
+
+                                let (_, stack_top) = compile_context.reserve_stack_top();
+                                reverse_sets.push((remaining.clone(), stack_top));
+                                used_stack += 1;
+                            }
+                        }
+
+                        let Some(last_bytecode) = program.byte_codes.last_mut() else {
+                            unreachable!("Bytecodes should not be empty while discharging.");
+                        };
+                        assert_eq!(last_bytecode.get_opcode(), OpCode::Call);
+
+                        let (function, in_params, _, _) = last_bytecode.decode_abck();
+                        *last_bytecode = Bytecode::call(
+                            function,
+                            in_params,
+                            u8::try_from(explist.len() - src_explist.len() + 2)?,
+                        );
+                    } else {
+                        for dst in explist[src_explist.len()..].iter() {
+                            if matches!(dst, Self::Global(_)) {
+                                let (_, stack_top) = compile_context.reserve_stack_top();
+                                stack_top.discharge(&ExpDesc::Nil, program, compile_context)?;
+                                reverse_sets.push((dst.clone(), stack_top));
+                                used_stack += 1;
+                            } else {
+                                dst.discharge(&ExpDesc::Nil, program, compile_context)?;
+                            }
+                        }
+                    }
+
+                    for (dst, src) in reverse_sets.into_iter().rev() {
+                        dst.discharge(&src, program, compile_context)?;
+                    }
+
+                    compile_context.stack_top -= used_stack;
+                    Ok(())
+                }
+            }
+            _ => unimplemented!(
+                "Can only discharge into an explist another explist, but was {:?}.",
+                src
+            ),
         }
     }
 
