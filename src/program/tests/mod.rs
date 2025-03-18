@@ -4,7 +4,7 @@ use alloc::boxed::Box;
 
 use crate::{bytecode::Bytecode, value::Value};
 
-use super::Program;
+use super::{Local, Program};
 
 mod chapter1;
 mod chapter2;
@@ -20,11 +20,13 @@ fn compare_program(
     program: &Program,
     bytecodes: &[Bytecode],
     constants: &[Value],
+    locals: &[Local],
     upvalues: &[Box<str>],
     function_count: usize,
 ) {
     assert_eq!(program.byte_codes.as_ref(), bytecodes);
     assert_eq!(program.constants.as_ref(), constants);
+    assert_eq!(program.locals.as_ref(), locals);
     assert_eq!(program.upvalues.as_ref(), upvalues);
     assert_eq!(program.functions.len(), function_count);
 }

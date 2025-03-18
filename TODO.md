@@ -11,3 +11,6 @@
 * Improve concat results
 * Concat bytecode only has 2 values
 * Properly implement Call bytecode
+
+# Tests
+* Update tests of programs that use still unimplemented bytecodes (i.e. `EXTRAARG`, `MMBIN`)

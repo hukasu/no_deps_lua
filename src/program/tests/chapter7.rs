@@ -1,4 +1,4 @@
-use crate::{bytecode::Bytecode, Error, Program};
+use crate::{bytecode::Bytecode, program::Local, Error, Program};
 
 #[test]
 fn and_or() {
@@ -120,6 +120,7 @@ end
             "g4".into(),
             "test 4 times and fail".into(),
         ],
+        &[],
         &["_ENV".into()],
         0,
     );
@@ -210,6 +211,7 @@ print( (g3 or g1) and (g2 and g4))
             "g3".into(),
             "g4".into(),
         ],
+        &[],
         &["_ENV".into()],
         0,
     );
@@ -318,6 +320,7 @@ print (a>=b)
             "world".into(),
             1000i64.into(),
         ],
+        &[Local::new("a".into(), 4, 53), Local::new("b".into(), 4, 53)],
         &["_ENV".into()],
         0,
     );

@@ -1,4 +1,4 @@
-use crate::{bytecode::Bytecode, Program};
+use crate::{bytecode::Bytecode, program::Local, Program};
 
 #[test]
 fn table() {
@@ -28,6 +28,7 @@ print(t)
             Bytecode::load_constant(0, 0),
             // local t = {...}
             Bytecode::new_table(1, 3, 3),
+            // TODO EXTRAARG
             // 100, 200, 300;
             Bytecode::load_integer(2, 100),
             Bytecode::load_integer(3, 200),
@@ -67,6 +68,11 @@ print(t)
             "val".into(),
             "print".into(),
         ],
+        &[
+            // TODO update when implementing `EXTRAARG` bytecode
+            Local::new("k".into(), 3, 24),
+            Local::new("t".into(), 11, 24),
+        ],
         &["_ENV".into()],
         0,
     );
@@ -100,6 +106,7 @@ t.f(t[1000])
             Bytecode::load_integer(1, 200),
             // t = {...}
             Bytecode::new_table(2, 2, 3),
+            // TODO EXTRAARG
             // k=300
             Bytecode::set_field(2, 1, 2, 1),
             // z=a
@@ -160,6 +167,11 @@ t.f(t[1000])
             "x".into(),
             "f".into(),
             "print".into(),
+        ],
+        &[
+            // TODO update when implementing EXTRAARG
+            Local::new("a".into(), 4, 43),
+            Local::new("b".into(), 4, 43),
         ],
         &["_ENV".into()],
         0,

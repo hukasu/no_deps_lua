@@ -1,4 +1,4 @@
-use crate::{bytecode::Bytecode, Program};
+use crate::{bytecode::Bytecode, program::Local, Program};
 
 #[test]
 fn types() {
@@ -43,6 +43,7 @@ print(123456.0)
             Bytecode::return_bytecode(0, 1, 1),
         ],
         &["print".into(), 123456i64.into(), 123456.0.into()],
+        &[],
         &["_ENV".into()],
         0,
     );
@@ -95,6 +96,11 @@ print "I'm local-print!"  -- call local function
             "hello, local!".into(),
             "print".into(),
             "I'm local-print!".into(),
+        ],
+        &[
+            Local::new("a".into(), 3, 15),
+            Local::new("b".into(), 4, 15),
+            Local::new("print".into(), 11, 15),
         ],
         &["_ENV".into()],
         0,
@@ -172,6 +178,7 @@ print(g)
             Bytecode::return_bytecode(1, 1, 1),
         ],
         &["print".into(), "g".into(), 123i64.into(), "g2".into()],
+        &[Local::new("a".into(), 3, 28)],
         &["_ENV".into()],
         0,
     );

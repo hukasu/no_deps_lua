@@ -1,4 +1,4 @@
-use crate::{bytecode::Bytecode, Program};
+use crate::{bytecode::Bytecode, program::Local, Program};
 
 #[test]
 fn if_statement() {
@@ -56,6 +56,7 @@ print (a) -- should be nil
             "skip this".into(),
             "I am true".into(),
         ],
+        &[Local::new("a".into(), 12, 15)],
         &["_ENV".into()],
         0,
     );
@@ -162,6 +163,7 @@ end
             "g".into(),
             "yes, here".into(),
         ],
+        &[Local::new("a".into(), 4, 41), Local::new("b".into(), 4, 41)],
         &["_ENV".into()],
         0,
     );
@@ -205,6 +207,7 @@ end
             Bytecode::return_bytecode(1, 1, 1),
         ],
         &["print".into()],
+        &[Local::new("a".into(), 3, 11)],
         &["_ENV".into()],
         0,
     );
@@ -280,6 +283,7 @@ end
             "break outer".into(),
             "unreachable outer".into(),
         ],
+        &[Local::new("z".into(), 3, 24)],
         &["_ENV".into()],
         0,
     );
@@ -322,6 +326,7 @@ until a
             Bytecode::return_bytecode(1, 1, 1),
         ],
         &["print".into()],
+        &[Local::new("a".into(), 3, 10)],
         &["_ENV".into()],
         0,
     );
@@ -331,7 +336,7 @@ until a
 
 #[test]
 fn for_statement() {
-    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
 
     let program = Program::parse(
         r#"
@@ -417,6 +422,7 @@ end
             // for i = max, max*10.0, -1 do
             Bytecode::move_bytecode(1, 0),
             Bytecode::mul_constant(2, 0, 3),
+            // TODO MMBINK
             Bytecode::load_integer(3, -1),
             Bytecode::for_prepare(1, 3),
             //     print (i)
@@ -433,6 +439,30 @@ end
             3.2f64.into(),
             9223372036854775807i64.into(),
             10.0f64.into(),
+        ],
+        &[
+            // TODO update when implementing MMBINK
+            Local::new("?for_start".into(), 5, 10),
+            Local::new("?for_end".into(), 5, 10),
+            Local::new("?for_step".into(), 5, 10),
+            Local::new("i".into(), 6, 9),
+            Local::new("?for_start".into(), 13, 18),
+            Local::new("?for_end".into(), 13, 18),
+            Local::new("?for_step".into(), 13, 18),
+            Local::new("i".into(), 14, 17),
+            Local::new("?for_start".into(), 21, 26),
+            Local::new("?for_end".into(), 21, 26),
+            Local::new("?for_step".into(), 21, 26),
+            Local::new("i".into(), 22, 25),
+            Local::new("?for_start".into(), 29, 34),
+            Local::new("?for_end".into(), 29, 34),
+            Local::new("?for_step".into(), 29, 34),
+            Local::new("i".into(), 30, 33),
+            Local::new("max".into(), 35, 44),
+            Local::new("?for_start".into(), 38, 43),
+            Local::new("?for_end".into(), 38, 43),
+            Local::new("?for_step".into(), 38, 43),
+            Local::new("i".into(), 39, 42),
         ],
         &["_ENV".into()],
         0,
@@ -517,6 +547,7 @@ end
             "block: 4".into(),
             "local var".into(),
         ],
+        &[Local::new("a".into(), 19, 19)],
         &["_ENV".into()],
         0,
     );

@@ -1,3 +1,4 @@
+mod locals;
 mod proto;
 #[cfg(test)]
 mod tests;
@@ -8,14 +9,16 @@ use crate::{bytecode::Bytecode, function::Function};
 
 use super::value::Value;
 
+pub use locals::Local;
 use proto::Proto;
 
 #[derive(Debug, Default, Clone)]
 pub struct Program {
     pub(super) byte_codes: Rc<[Bytecode]>,
     pub(super) constants: Rc<[Value]>,
-    pub(super) functions: Rc<[Rc<Function>]>,
+    pub(super) locals: Rc<[Local]>,
     pub(super) upvalues: Rc<[Box<str>]>,
+    pub(super) functions: Rc<[Rc<Function>]>,
 }
 
 impl Program {
@@ -33,8 +36,9 @@ impl From<Proto> for Program {
         Self {
             byte_codes: proto.byte_codes.into(),
             constants: proto.constants.into(),
-            functions: proto.functions.into(),
+            locals: proto.locals.into(),
             upvalues: proto.upvalues.into(),
+            functions: proto.functions.into(),
         }
     }
 }

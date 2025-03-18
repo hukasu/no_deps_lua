@@ -1,6 +1,6 @@
 use alloc::string::String;
 
-use crate::{bytecode::Bytecode, ext::Unescape, Program};
+use crate::{bytecode::Bytecode, ext::Unescape, program::Local, Program};
 
 #[test]
 fn escape() {
@@ -62,6 +62,7 @@ print "null: \0." -- '\0'
             "Hello".into(),
             "null: \0.".into(),
         ],
+        &[],
         &["_ENV".into()],
         0,
     );
@@ -147,6 +148,11 @@ print(long_string_long_string_long_string_long_string_long_string)
             12i64.into(),
             345i64.into(),
             6789i64.into(),
+        ],
+        &[
+            Local::new("s".into(), 3, 31),
+            Local::new("m".into(), 4, 31),
+            Local::new("l".into(), 5, 31),
         ],
         &["_ENV".into()],
         0,

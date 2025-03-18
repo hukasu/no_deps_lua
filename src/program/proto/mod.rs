@@ -18,8 +18,10 @@ pub use self::error::Error;
 use self::{
     compile_context::{CompileContext, GotoLabel},
     exp_desc::ExpDesc,
-    helper_types::{FunctionNameList, NameList, ParList, TableFields, TableKey},
+    helper_types::{FunctionNameList, ParList, TableFields, TableKey},
 };
+
+use super::Local;
 
 macro_rules! make_deconstruct {
     ($($name:ident($token:pat$(,)?)),+$(,)?) => {
@@ -31,13 +33,15 @@ macro_rules! make_deconstruct {
 }
 
 type ExpList<'a> = Vec<ExpDesc<'a>>;
+type NameList<'a> = Vec<Box<str>>;
 
 #[derive(Debug, Default)]
 pub struct Proto {
-    pub(super) byte_codes: Vec<Bytecode>,
-    pub(super) constants: Vec<Value>,
-    pub(super) functions: Vec<Rc<Function>>,
-    pub(super) upvalues: Vec<Box<str>>,
+    pub byte_codes: Vec<Bytecode>,
+    pub constants: Vec<Value>,
+    pub locals: Vec<Local>,
+    pub upvalues: Vec<Box<str>>,
+    pub functions: Vec<Rc<Function>>,
 }
 
 impl Proto {
@@ -114,7 +118,7 @@ impl Proto {
         compile_context.var_args = cache_var_args;
         compile_context.stack_top -= u8::try_from(compile_context.locals.len() - locals)
             .inspect_err(|_| log::error!("Failed to rewind stack top after `if`s block."))?;
-        compile_context.locals.truncate(locals);
+        self.close_locals(locals, compile_context);
 
         let jump_out_of_if = self.byte_codes.len();
         self.byte_codes.push(Bytecode::jump(0));
@@ -178,6 +182,38 @@ impl Proto {
         Ok(())
     }
 
+    fn open_local(&mut self, name: &str) {
+        self.locals
+            .push(Local::new_no_end(name.into(), self.byte_codes.len() + 1));
+    }
+
+    fn close_locals(
+        &mut self,
+        first_local_of_scope: usize,
+        compile_context: &mut CompileContext<'_>,
+    ) {
+        let scope_end = self.byte_codes.len() + 1;
+        let mut closed_on_this_call = Vec::new();
+        for local in compile_context.locals.drain(first_local_of_scope..).rev() {
+            let Some((i, local)) =
+                self.locals
+                    .iter_mut()
+                    .enumerate()
+                    .rev()
+                    .find(|(i, proto_local)| {
+                        proto_local.name() == local.as_ref() && !closed_on_this_call.contains(i)
+                    })
+            else {
+                unreachable!(
+                    "The local '{}' on the compile context must exist on the proto function.",
+                    local
+                );
+            };
+            closed_on_this_call.push(i);
+            local.update_scope_end(scope_end);
+        }
+    }
+
     // Non-terminals
     fn chunk<'a>(
         &mut self,
@@ -190,6 +226,8 @@ impl Proto {
 
                 self.block(block, compile_context, true)?;
                 self.fix_up_last_return(0, compile_context)?;
+
+                self.close_locals(0, compile_context);
 
                 if compile_context.gotos.is_empty() {
                     Ok(())
@@ -230,11 +268,11 @@ impl Proto {
             ) => {
                 let gotos = compile_context.gotos.len();
                 let labels = compile_context.labels.len();
-                let locals = u8::try_from(compile_context.locals.len())?;
+                let locals = compile_context.locals.len();
 
                 if compile_context.var_args.unwrap_or(false) {
                     self.byte_codes
-                        .push(Bytecode::variadic_arguments_prepare(locals));
+                        .push(Bytecode::variadic_arguments_prepare(u8::try_from(locals)?));
                 }
 
                 self.block_stat(block_stat, compile_context)?;
@@ -270,7 +308,6 @@ impl Proto {
                     })
                     .collect::<Result<Vec<_>, Error>>()?;
                 compile_context.gotos.extend(unmatched);
-
                 compile_context.labels.truncate(labels);
 
                 if function_body {
@@ -401,7 +438,7 @@ impl Proto {
                 self.block(block, compile_context, false)?;
 
                 compile_context.var_args = cache_var_args;
-                compile_context.locals.truncate(locals);
+                self.close_locals(locals, compile_context);
 
                 Ok(())
             }
@@ -437,7 +474,7 @@ impl Proto {
                 self.block(block, compile_context, false)?;
 
                 compile_context.var_args = cache_var_args;
-                compile_context.locals.truncate(locals);
+                self.close_locals(locals, compile_context);
                 compile_context.stack_top -= u8::try_from(compile_context.locals.len() - locals)
                     .inspect_err(|_| {
                         log::error!("Failed to rewind stack top after `while`s block.")
@@ -494,8 +531,7 @@ impl Proto {
                     if_condition: false,
                 }
                 .discharge(&cond, self, compile_context)?;
-
-                compile_context.locals.truncate(locals);
+                self.close_locals(locals, compile_context);
 
                 core::mem::swap(&mut compile_context.jumps_to_end, &mut jump_cache);
                 assert_eq!(
@@ -534,12 +570,6 @@ impl Proto {
             ) => {
                 let locals = compile_context.locals.len();
 
-                // Names can't start with `?`, so using it for internal symbols
-                compile_context.locals.push("?start".into());
-                compile_context.locals.push("?end".into());
-                compile_context.locals.push("?step".into());
-                compile_context.locals.push((*name).into());
-
                 let start = self.exp(start, compile_context)?;
                 let (for_stack, start_stack) = compile_context.reserve_stack_top();
                 start_stack.discharge(&start, self, compile_context)?;
@@ -552,15 +582,27 @@ impl Proto {
                 let (_, step_stack) = compile_context.reserve_stack_top();
                 step_stack.discharge(&step, self, compile_context)?;
 
+                // Names can't start with `?`, so using it for internal symbols
+                for for_var in ["?for_start", "?for_end", "?for_step"] {
+                    compile_context.locals.push(for_var.into());
+                    self.open_local(for_var);
+                }
+
                 // Reserve 1 slot for counter
                 compile_context.stack_top += 1;
 
                 let counter_bytecode = self.byte_codes.len();
                 self.byte_codes.push(Bytecode::for_prepare(for_stack, 0));
 
+                compile_context.locals.push((*name).into());
+                self.open_local(name);
+
                 let cache_var_args = compile_context.var_args.take();
                 self.block(block, compile_context, false)?;
                 compile_context.var_args = cache_var_args;
+
+                // Close just the for variable
+                self.close_locals(locals + 3, compile_context);
 
                 let end_bytecode = self.byte_codes.len();
                 self.byte_codes.push(Bytecode::for_loop(
@@ -573,7 +615,8 @@ impl Proto {
                 );
 
                 compile_context.stack_top = for_stack;
-                compile_context.locals.truncate(locals);
+                // Close for states
+                self.close_locals(locals, compile_context);
 
                 Ok(())
             }
@@ -668,12 +711,13 @@ impl Proto {
                 _name(TokenType::Name(name)),
                 funcbody(TokenType::Funcbody)
             ) => {
-                compile_context.locals.push((*name).into());
-
                 let funcbody = self.funcbody(funcbody, false, compile_context)?;
 
                 let (_, function_body) = compile_context.reserve_stack_top();
                 function_body.discharge(&funcbody, self, compile_context)?;
+
+                compile_context.locals.push((*name).into());
+                self.open_local(name);
 
                 Ok(())
             }
@@ -718,7 +762,10 @@ impl Proto {
                 // Adding the new names into `locals` to prevent
                 // referencing the new name when you could be trying to shadow a
                 // global or another local
-                compile_context.locals.extend(namelist);
+                for local in namelist {
+                    compile_context.locals.push(local.clone());
+                    self.open_local(local.as_ref());
+                }
                 Ok(())
             }
             _ => {
@@ -758,7 +805,7 @@ impl Proto {
                     .inspect_err(|_| {
                         log::error!("Failed to rewind stack top after `else`s block.")
                     })?;
-                compile_context.locals.truncate(locals);
+                self.close_locals(locals, compile_context);
 
                 Ok(())
             }
@@ -1521,9 +1568,14 @@ impl Proto {
                 func_compile_context.previous_context = Some(compile_context);
 
                 if needs_self {
+                    func_program.open_local("self");
                     func_compile_context.locals.push("self".into());
                 }
-                func_compile_context.locals.extend(parlist.names);
+                for name in parlist.names {
+                    func_program.open_local(name.as_ref());
+                    func_compile_context.locals.push(name);
+                }
+
                 func_compile_context.stack_top =
                     u8::try_from(parlist_name_count)? + (needs_self as u8);
 
@@ -1535,6 +1587,8 @@ impl Proto {
                         &func_compile_context,
                     )?;
                 }
+
+                func_program.close_locals(0, &mut func_compile_context);
 
                 let closure_position = self.push_function(Function::new(
                     func_program.into(),

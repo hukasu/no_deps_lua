@@ -1,6 +1,4 @@
-use alloc::vec::Vec;
-
-use crate::value::Value;
+use alloc::{boxed::Box, vec::Vec};
 
 use super::{exp_desc::ExpDesc, Error};
 
@@ -9,7 +7,7 @@ pub struct CompileContext<'a> {
     pub stack_top: u8,
     pub previous_context: Option<&'a CompileContext<'a>>,
     pub var_args: Option<bool>,
-    pub locals: Vec<Value>,
+    pub locals: Vec<Box<str>>,
     pub breaks: Option<Vec<usize>>,
     pub gotos: Vec<GotoLabel<'a>>,
     pub labels: Vec<GotoLabel<'a>>,
@@ -47,16 +45,14 @@ impl<'a> CompileContext<'a> {
     }
 
     pub fn find_name(&self, name: &'a str) -> Option<usize> {
-        let name_value: Value = name.into();
-        self.locals.iter().rposition(|local| local == &name_value)
+        self.locals.iter().rposition(|local| local.as_ref() == name)
     }
 
     pub fn exists_in_upvalue(&self, name: &'a str) -> bool {
-        let name_value: Value = name.into();
         if self
             .locals
             .iter()
-            .any(|local| local == &name_value || local == &Value::from("_ENV"))
+            .any(|local| local.as_ref() == name || local.as_ref() == "_ENV")
         {
             true
         } else {

@@ -1,4 +1,4 @@
-use crate::{bytecode::Bytecode, Error, Program};
+use crate::{bytecode::Bytecode, program::Local, Error, Program};
 
 #[test]
 fn unops() {
@@ -87,6 +87,7 @@ print(not print)
             #[allow(clippy::approx_constant)]
             (-3.14f64).into(),
         ],
+        &[Local::new("i".into(), 3, 38), Local::new("f".into(), 4, 38)],
         &["_ENV".into()],
         0,
     );
@@ -126,30 +127,40 @@ print(100>>a) -- panic
             Bytecode::get_uptable(3, 0, 3),
             Bytecode::get_uptable(4, 0, 0),
             Bytecode::add_integer(4, 4, 100),
+            // TODO MMBINI
             Bytecode::call(3, 2, 1),
             // print(a-1)
             Bytecode::get_uptable(3, 0, 3),
             Bytecode::add_integer(4, 0, -1),
+            // TODO MMBINI
             Bytecode::call(3, 2, 1),
             // print(100/c) -- result is float
             Bytecode::get_uptable(3, 0, 3),
             Bytecode::load_integer(4, 100),
             Bytecode::div(4, 4, 2),
+            // TODO MMBINI
             Bytecode::call(3, 2, 1),
             // print(100>>b) -- 2.0 will be convert to int 2
             Bytecode::get_uptable(3, 0, 3),
             Bytecode::load_integer(4, 100),
             Bytecode::shift_right(4, 4, 1),
+            // TODO MMBINI
             Bytecode::call(3, 2, 1),
             // print(100>>a) -- panic
             Bytecode::get_uptable(3, 0, 3),
             Bytecode::load_integer(4, 100),
             Bytecode::shift_right(4, 4, 0),
+            // TODO MMBINI
             Bytecode::call(3, 2, 1),
             // EOF
             Bytecode::return_bytecode(3, 1, 1),
         ],
         &["g".into(), 10i64.into(), 1.1f64.into(), "print".into()],
+        &[
+            Local::new("a".into(), 6, 26),
+            Local::new("b".into(), 6, 26),
+            Local::new("c".into(), 6, 26),
+        ],
         &["_ENV".into()],
         0,
     );
@@ -216,6 +227,7 @@ print('hello' .. a) -- panic
             3.14f64.into(),
             "hello".into(),
         ],
+        &[Local::new("a".into(), 18, 24)],
         &["_ENV".into()],
         0,
     );
@@ -263,6 +275,7 @@ print(('hello, '..'world').." "..("3." .. 14 .. 15))
             " ".into(),
             "3.".into(),
         ],
+        &[],
         &["_ENV".into()],
         0,
     );

@@ -32,6 +32,7 @@ print "hello, again!"
             "hello, world!".into(),
             "hello, again!".into(),
         ],
+        &[],
         &["_ENV".into()],
         0,
     );

@@ -4,6 +4,7 @@ use alloc::rc::Rc;
 
 use crate::{
     bytecode::Bytecode,
+    program::Local,
     table::Table,
     value::{Value, ValueKey},
     Error, Program,
@@ -43,6 +44,11 @@ hello()
             Bytecode::return_bytecode(3, 1, 1),
         ],
         &[],
+        &[
+            Local::new("a".into(), 4, 8),
+            Local::new("b".into(), 4, 8),
+            Local::new("hello".into(), 5, 8),
+        ],
         &["_ENV".into()],
         1,
     );
@@ -62,6 +68,7 @@ hello()
             Bytecode::zero_return(),
         ],
         &["print".into()],
+        &[Local::new("a".into(), 2, 6)],
         &["_ENV".into()],
         0,
     );
@@ -97,6 +104,7 @@ hello()
             Bytecode::return_bytecode(1, 1, 1),
         ],
         &[],
+        &[Local::new("hello".into(), 3, 6)],
         &["_ENV".into()],
         1,
     );
@@ -114,6 +122,7 @@ hello()
             Bytecode::zero_return(),
         ],
         &["print".into(), "hello, function!".into()],
+        &[],
         &["_ENV".into()],
         0,
     );
@@ -150,6 +159,7 @@ print(hello)
             Bytecode::return_bytecode(1, 1, 1),
         ],
         &["print".into()],
+        &[Local::new("hello".into(), 3, 7)],
         &["_ENV".into()],
         1,
     );
@@ -167,6 +177,7 @@ print(hello)
             Bytecode::zero_return(),
         ],
         &["print".into(), "hello, function!".into()],
+        &[],
         &["_ENV".into()],
         0,
     );
@@ -204,6 +215,7 @@ print (f1)
             Bytecode::return_bytecode(1, 1, 1),
         ],
         &["print".into()],
+        &[Local::new("f1".into(), 3, 7)],
         &["_ENV".into()],
         1,
     );
@@ -223,6 +235,7 @@ print (f1)
             Bytecode::zero_return(),
         ],
         &["print".into()],
+        &[Local::new("f2".into(), 2, 6)],
         &["_ENV".into()],
         1,
     );
@@ -240,6 +253,7 @@ print (f1)
             Bytecode::zero_return(),
         ],
         &["print".into(), "internal".into()],
+        &[],
         &["_ENV".into()],
         0,
     );
@@ -266,6 +280,7 @@ print(t.f)
             Bytecode::variadic_arguments_prepare(0),
             // local t = {}
             Bytecode::new_table(0, 0, 0),
+            // TODO EXTRAARG
             // function t.f() print "hello" end
             Bytecode::closure(1, 0),
             Bytecode::set_field(0, 0, 1, 0),
@@ -277,6 +292,10 @@ print(t.f)
             Bytecode::return_bytecode(1, 1, 1),
         ],
         &["f".into(), "print".into()],
+        &[
+            // TODO update when implementing EXTRAARG
+            Local::new("t".into(), 3, 9),
+        ],
         &["_ENV".into()],
         1,
     );
@@ -294,6 +313,7 @@ print(t.f)
             Bytecode::zero_return(),
         ],
         &["print".into(), "hello".into()],
+        &[],
         &["_ENV".into()],
         0,
     );
@@ -349,6 +369,7 @@ f(1)
             Bytecode::return_bytecode(1, 1, 1),
         ],
         &[],
+        &[Local::new("f".into(), 3, 20)],
         &["_ENV".into()],
         1,
     );
@@ -361,11 +382,17 @@ f(1)
             // print(a+b)
             Bytecode::get_uptable(2, 0, 0),
             Bytecode::add(3, 0, 1),
+            // TODO MMBIN
             Bytecode::call(2, 2, 1),
             // end
             Bytecode::zero_return(),
         ],
         &["print".into()],
+        &[
+            // TODO update when implementing MMBIN
+            Local::new("a".into(), 1, 5),
+            Local::new("b".into(), 1, 5),
+        ],
         &["_ENV".into()],
         0,
     );
@@ -417,6 +444,7 @@ print(f(100,200))
             Bytecode::return_bytecode(1, 1, 1),
         ],
         &["print".into()],
+        &[Local::new("f".into(), 3, 16)],
         &["_ENV".into()],
         1,
     );
@@ -428,11 +456,17 @@ print(f(100,200))
             // local function f(a, b)
             //     return a+b
             Bytecode::add(2, 0, 1),
+            // TODO MMBIN
             Bytecode::one_return(2),
             // end
             Bytecode::zero_return(),
         ],
         &[],
+        &[
+            // TODO update when implementing MMBIN
+            Local::new("a".into(), 1, 4),
+            Local::new("b".into(), 1, 4),
+        ],
         &[],
         0,
     );
@@ -500,12 +534,13 @@ print(type(function()end))
             Bytecode::return_bytecode(0, 1, 1),
         ],
         &["print".into(), "type".into(), 123.123.into(), "123".into()],
+        &[],
         &["_ENV".into()],
         1,
     );
 
     let closure = super::get_closure_program(&program, 0);
-    super::compare_program(closure, &[Bytecode::zero_return()], &[], &[], 0);
+    super::compare_program(closure, &[Bytecode::zero_return()], &[], &[], &[], 0);
 
     pub fn lib_type(vm: &mut crate::Lua) -> i32 {
         let type_name = vm.get_stack(0).unwrap();
@@ -563,6 +598,7 @@ print(f(0))
             Bytecode::return_bytecode(0, 1, 1),
         ],
         &["f".into(), "print".into()],
+        &[],
         &["_ENV".into()],
         1,
     );
@@ -580,12 +616,17 @@ print(f(0))
             //     return f(n+1)
             Bytecode::get_uptable(1, 0, 0),
             Bytecode::add_integer(2, 0, 1),
+            // TODO MMBINI
             Bytecode::tail_call(1, 2, 0),
             Bytecode::return_bytecode(1, 0, 0),
             // end
             Bytecode::zero_return(),
         ],
         &["f".into()],
+        &[
+            // TODO update when implementing MMBINI
+            Local::new("n".into(), 1, 10),
+        ],
         &["_ENV".into()],
         0,
     );
@@ -631,6 +672,7 @@ f(100,200,"hello")
             Bytecode::return_bytecode(0, 1, 1),
         ],
         &["print".into(), "f".into(), "hello".into()],
+        &[],
         &["_ENV".into()],
         1,
     );
@@ -651,6 +693,7 @@ f(100,200,"hello")
             Bytecode::return_bytecode(0, 1, 1),
         ],
         &["print".into()],
+        &[],
         &["_ENV".into()],
         0,
     );
@@ -732,6 +775,7 @@ f3('x', 1,2,3,4)
             Bytecode::return_bytecode(0, 1, 1),
         ],
         &["f".into(), "f2".into(), "f3".into(), "x".into()],
+        &[],
         &["_ENV".into()],
         3,
     );
@@ -764,6 +808,12 @@ f3('x', 1,2,3,4)
             Bytecode::return_bytecode(4, 1, 2),
         ],
         &["print".into()],
+        &[
+            Local::new("x".into(), 1, 16),
+            Local::new("a".into(), 3, 16),
+            Local::new("b".into(), 3, 16),
+            Local::new("c".into(), 3, 16),
+        ],
         &["_ENV".into()],
         0,
     );
@@ -783,6 +833,7 @@ f3('x', 1,2,3,4)
             Bytecode::return_bytecode(1, 1, 2),
         ],
         &["f".into()],
+        &[Local::new("x".into(), 1, 7)],
         &["_ENV".into()],
         0,
     );
@@ -802,6 +853,7 @@ f3('x', 1,2,3,4)
             Bytecode::return_bytecode(1, 1, 2),
         ],
         &["f".into()],
+        &[Local::new("x".into(), 1, 7)],
         &["_ENV".into()],
         0,
     );
@@ -851,6 +903,7 @@ foo(1,2,100,200,300)
             Bytecode::return_bytecode(0, 1, 1),
         ],
         &["foo".into()],
+        &[],
         &["_ENV".into()],
         1,
     );
@@ -863,6 +916,7 @@ foo(1,2,100,200,300)
             Bytecode::variadic_arguments_prepare(2),
             //     local t = {a, ...}
             Bytecode::new_table(2, 0, 1),
+            // TODO EXTRAARG
             Bytecode::move_bytecode(3, 0),
             Bytecode::variadic_arguments(4, 0),
             Bytecode::set_list(2, 0, 0),
@@ -875,6 +929,7 @@ foo(1,2,100,200,300)
             Bytecode::call(3, 5, 1),
             //     local t = {a, ..., b}
             Bytecode::new_table(3, 0, 3),
+            // TODO EXTRAARG
             Bytecode::move_bytecode(4, 0),
             Bytecode::variadic_arguments(5, 2),
             Bytecode::move_bytecode(6, 1),
@@ -890,6 +945,13 @@ foo(1,2,100,200,300)
             Bytecode::return_bytecode(4, 1, 3),
         ],
         &["print".into()],
+        &[
+            // TODO update when implementing EXTRAARG
+            Local::new("a".into(), 1, 24),
+            Local::new("b".into(), 1, 24),
+            Local::new("t".into(), 6, 24),
+            Local::new("t".into(), 17, 24),
+        ],
         &["_ENV".into()],
         0,
     );
@@ -954,6 +1016,7 @@ print(y)
             "y".into(),
             "print".into(),
         ],
+        &[],
         &["_ENV".into()],
         2,
     );
@@ -965,12 +1028,19 @@ print(y)
             // function f1(a, b)
             //     return a+b, a-b
             Bytecode::add(2, 0, 1),
+            // TODO MMBIN
             Bytecode::sub(3, 0, 1),
+            // TODO MMBIN
             Bytecode::return_bytecode(2, 3, 0),
             // end
             Bytecode::zero_return(),
         ],
         &[],
+        &[
+            // TODO update when implementing MMBIN
+            Local::new("a".into(), 1, 5),
+            Local::new("b".into(), 1, 5),
+        ],
         &[],
         0,
     );
@@ -983,13 +1053,16 @@ print(y)
             //     return f1(a+b, a-b) -- return MULTRET
             Bytecode::get_uptable(2, 0, 0),
             Bytecode::add(3, 0, 1),
+            // TODO MMBIN
             Bytecode::sub(4, 0, 1),
+            // TODO MMBIN
             Bytecode::tail_call(2, 3, 0),
             Bytecode::return_bytecode(2, 0, 0),
             // end
             Bytecode::zero_return(),
         ],
         &["f1".into()],
+        &[Local::new("a".into(), 1, 7), Local::new("b".into(), 1, 7)],
         &["_ENV".into()],
         0,
     );
@@ -1024,10 +1097,12 @@ t.methods.bar(t, 100, 200)
             Bytecode::variadic_arguments_prepare(0),
             // local t = {11,12,13, ['methods']={7, 8, 9}}
             Bytecode::new_table(0, 1, 3),
+            // TODO EXTRAARG
             Bytecode::load_integer(1, 11),
             Bytecode::load_integer(2, 12),
             Bytecode::load_integer(3, 13),
             Bytecode::new_table(4, 0, 3),
+            // TODO EXTRAARG
             Bytecode::load_integer(5, 7),
             Bytecode::load_integer(6, 8),
             Bytecode::load_integer(7, 9),
@@ -1065,6 +1140,10 @@ t.methods.bar(t, 100, 200)
             Bytecode::return_bytecode(1, 1, 1),
         ],
         &["methods".into(), "foo".into(), "bar".into()],
+        &[
+            // TODO update when implementing EXTRAARG
+            Local::new("t".into(), 13, 36),
+        ],
         &["_ENV".into()],
         2,
     );
@@ -1077,11 +1156,17 @@ t.methods.bar(t, 100, 200)
             //     print(a+b)
             Bytecode::get_uptable(2, 0, 0),
             Bytecode::add(3, 0, 1),
+            // TODO MMBIN
             Bytecode::call(2, 2, 1),
             // end
             Bytecode::zero_return(),
         ],
         &["print".into()],
+        &[
+            // TODO update when implementing MMBIN
+            Local::new("a".into(), 1, 5),
+            Local::new("b".into(), 1, 5),
+        ],
         &["_ENV".into()],
         0,
     );
@@ -1096,13 +1181,22 @@ t.methods.bar(t, 100, 200)
             Bytecode::get_index(4, 0, 1),
             Bytecode::get_index(5, 0, 2),
             Bytecode::add(4, 4, 5),
+            // TODO MMBIN
             Bytecode::add(4, 4, 1),
+            // TODO MMBIN
             Bytecode::add(4, 4, 2),
+            // TODO MMBIN
             Bytecode::call(3, 2, 1),
             // end
             Bytecode::zero_return(),
         ],
         &["print".into()],
+        &[
+            // TODO update when implementing MMBIN
+            Local::new("self".into(), 1, 9),
+            Local::new("a".into(), 1, 9),
+            Local::new("b".into(), 1, 9),
+        ],
         &["_ENV".into()],
         0,
     );

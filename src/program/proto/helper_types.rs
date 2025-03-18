@@ -1,16 +1,13 @@
 use alloc::{boxed::Box, vec::Vec};
 
-use crate::value::Value;
-
 use super::exp_desc::ExpDesc;
 
-pub type NameList = Vec<Value>;
 pub type TableFields<'a> = Vec<(TableKey<'a>, ExpDesc<'a>)>;
 
 #[must_use = "Contains a list of names that need to be added to constants"]
 #[derive(Debug, Default)]
 pub struct ParList {
-    pub names: Vec<Value>,
+    pub names: Vec<Box<str>>,
     pub variadic_args: bool,
 }
 
