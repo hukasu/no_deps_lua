@@ -336,7 +336,7 @@ until a
 
 #[test]
 fn for_statement() {
-    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Trace, simplelog::Config::default());
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
 
     let program = Program::parse(
         r#"
