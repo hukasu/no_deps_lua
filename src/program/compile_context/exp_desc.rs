@@ -6,7 +6,7 @@ use crate::{
 };
 
 use super::{
-    binops::Binop, compile_context::CompileContext, helper_types::{TableFields, TableKey}, Bytecode, Error, ExpList
+    binops::Binop, CompileContext, helper_types::{TableFields, TableKey}, Bytecode, Error, ExpList
 };
 
 const SHORT_STRING_LEN: usize = 32;

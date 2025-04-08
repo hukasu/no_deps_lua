@@ -1,17 +1,21 @@
+mod binops;
+mod exp_desc;
+mod helper_types;
+mod proto;
+mod unops;
+
 use alloc::{boxed::Box, vec, vec::Vec};
+use exp_desc::ExpDesc;
+use helper_types::{FunctionNameList, ParList, TableFields, TableKey};
 
 use crate::{
     bytecode::{Bytecode, OpCode},
     function::Function,
-    parser::{Token, TokenType},
-    program::Local,
+    parser::{Parser, Token, TokenType},
+    program::{Error, Local},
 };
 
-use super::{
-    exp_desc::ExpDesc,
-    helper_types::{FunctionNameList, ParList, TableFields, TableKey},
-    unops, Error, ExpList, NameList, Proto,
-};
+pub use proto::Proto;
 
 macro_rules! make_deconstruct {
     ($($name:ident($token:pat$(,)?)),+$(,)?) => {
@@ -21,6 +25,9 @@ macro_rules! make_deconstruct {
         },)+]
     };
 }
+
+type ExpList<'a> = Vec<ExpDesc<'a>>;
+type NameList<'a> = Vec<Box<str>>;
 
 #[derive(Debug, Default)]
 pub struct CompileContext<'a> {
@@ -40,6 +47,15 @@ impl<'a> CompileContext<'a> {
     pub fn with_var_args(mut self, var_args: bool) -> Self {
         self.var_args = Some(var_args);
         self
+    }
+
+    pub fn parse(program: &str) -> Result<Proto, Error> {
+        let chunk = Parser::parse(program)?;
+
+        let mut compile_context = CompileContext::default().with_var_args(true);
+        compile_context.chunk(&chunk)?;
+
+        Ok(compile_context.proto)
     }
 
     // Non-terminals
