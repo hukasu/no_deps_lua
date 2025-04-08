@@ -629,7 +629,7 @@ impl<'a> ExpDesc<'a> {
                 let last_array_field_is_variadic = fields
                     .iter()
                     .filter(|(field_key, _)| matches!(field_key, TableKey::Array))
-                    .last()
+                    .next_back()
                     .filter(|(_, field)| matches!(field, Self::VariadicArguments))
                     .is_some();
 
