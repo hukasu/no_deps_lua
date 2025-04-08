@@ -6,10 +6,7 @@ use crate::{
 };
 
 use super::{
-    binops::Binop,
-    compile_context::CompileContext,
-    helper_types::{TableFields, TableKey},
-    Bytecode, Error, ExpList, Proto,
+    binops::Binop, compile_context::CompileContext, helper_types::{TableFields, TableKey}, Bytecode, Error, ExpList
 };
 
 const SHORT_STRING_LEN: usize = 32;
@@ -59,25 +56,24 @@ impl<'a> ExpDesc<'a> {
     pub fn discharge(
         &self,
         src: &ExpDesc<'a>,
-        program: &mut Proto,
         compile_context: &mut CompileContext<'a>,
     ) -> Result<(), Error> {
         match self {
-            Self::Name(_) => self.discharge_into_name(src, program, compile_context),
-            Self::LongName(_) => self.discharge_into_long_name(src, program, compile_context),
-            Self::Local(_) => self.discharge_into_local(src, program, compile_context),
-            Self::Global(_) => self.discharge_into_global(src, program, compile_context),
-            Self::Upvalue(_) => self.discharge_into_upvalue(src, program, compile_context),
-            Self::ExpList(_) => self.discharge_into_explist(src, program, compile_context),
+            Self::Name(_) => self.discharge_into_name(src,  compile_context),
+            Self::LongName(_) => self.discharge_into_long_name(src,  compile_context),
+            Self::Local(_) => self.discharge_into_local(src,  compile_context),
+            Self::Global(_) => self.discharge_into_global(src,  compile_context),
+            Self::Upvalue(_) => self.discharge_into_upvalue(src,  compile_context),
+            Self::ExpList(_) => self.discharge_into_explist(src,  compile_context),
             Self::TableAccess {
                 table: _,
                 key: _,
                 record: _,
-            } => self.discharge_into_table_access(src, program, compile_context),
+            } => self.discharge_into_table_access(src,  compile_context),
             Self::Condition {
                 jump_to_end: _,
                 if_condition: _,
-            } => self.discharge_into_condition(src, program, compile_context),
+            } => self.discharge_into_condition(src,  compile_context),
             _ => {
                 unimplemented!(
                     "Unimplemented discharge between Src({:?}) and Dst({:?})",
@@ -91,7 +87,6 @@ impl<'a> ExpDesc<'a> {
     fn discharge_into_name(
         &self,
         src: &ExpDesc<'a>,
-        program: &mut Proto,
         compile_context: &mut CompileContext<'a>,
     ) -> Result<(), Error> {
         let Self::Name(name) = self else {
@@ -101,14 +96,13 @@ impl<'a> ExpDesc<'a> {
             );
         };
 
-        let name = Self::find_name(name, program, compile_context)?;
-        name.discharge(src, program, compile_context)
+        let name = Self::find_name(name,  compile_context)?;
+        name.discharge(src,  compile_context)
     }
 
     fn discharge_into_long_name(
         &self,
         src: &ExpDesc<'a>,
-        program: &mut Proto,
         compile_context: &mut CompileContext<'a>,
     ) -> Result<(), Error> {
         let Self::LongName(long_name) = self else {
@@ -118,20 +112,20 @@ impl<'a> ExpDesc<'a> {
             );
         };
 
-        let env = program.push_upvalue("_ENV");
+        let env = compile_context.proto.push_upvalue("_ENV");
 
         let (_, env_top) = compile_context.reserve_stack_top();
-        env_top.discharge(&Self::Upvalue(env), program, compile_context)?;
+        env_top.discharge(&Self::Upvalue(env),  compile_context)?;
 
         let (_, key_top) = compile_context.reserve_stack_top();
-        key_top.discharge(&Self::String(long_name), program, compile_context)?;
+        key_top.discharge(&Self::String(long_name),  compile_context)?;
 
         let env_table = Self::TableAccess {
             table: Box::new(env_top),
             key: Box::new(key_top),
             record: false,
         };
-        env_table.discharge(src, program, compile_context)?;
+        env_table.discharge(src,  compile_context)?;
 
         compile_context.stack_top -= 2;
 
@@ -141,7 +135,6 @@ impl<'a> ExpDesc<'a> {
     fn discharge_into_local(
         &self,
         src: &ExpDesc<'a>,
-        program: &mut Proto,
         compile_context: &mut CompileContext<'a>,
     ) -> Result<(), Error> {
         let ExpDesc::Local(dst) = &self else {
@@ -154,7 +147,7 @@ impl<'a> ExpDesc<'a> {
 
         match src {
             Self::Nil => {
-                program.byte_codes.push(Bytecode::load_nil(dst, 0));
+                compile_context.proto.byte_codes.push(Bytecode::load_nil(dst, 0));
                 Ok(())
             }
             Self::Boolean(boolean) => {
@@ -163,17 +156,17 @@ impl<'a> ExpDesc<'a> {
                 } else {
                     Bytecode::load_false(dst)
                 };
-                program.byte_codes.push(bytecode);
+                compile_context.proto.byte_codes.push(bytecode);
                 Ok(())
             }
             Self::Integer(integer) => {
                 if let Some(integer) = integer.to_sbx() {
-                    program
+                    compile_context.proto
                         .byte_codes
                         .push(Bytecode::load_integer(dst, integer));
                 } else {
-                    let constant = program.push_constant(*integer)?;
-                    program
+                    let constant = compile_context.proto.push_constant(*integer)?;
+                    compile_context.proto
                         .byte_codes
                         .push(Bytecode::load_constant(dst, constant));
                 }
@@ -181,11 +174,11 @@ impl<'a> ExpDesc<'a> {
             }
             Self::Float(float) => {
                 if let Some(float) = float.to_sbx() {
-                    program.byte_codes.push(Bytecode::load_float(dst, float));
+                    compile_context.proto.byte_codes.push(Bytecode::load_float(dst, float));
                     Ok(())
                 } else {
-                    let constant = program.push_constant(*float)?;
-                    program
+                    let constant = compile_context.proto.push_constant(*float)?;
+                    compile_context.proto
                         .byte_codes
                         .push(Bytecode::load_constant(dst, constant));
                     Ok(())
@@ -193,30 +186,30 @@ impl<'a> ExpDesc<'a> {
             }
             Self::String(string) => {
                 let unescaped_string = string.unescape()?;
-                let constant = program.push_constant(unescaped_string.as_str())?;
-                program
+                let constant = compile_context.proto.push_constant(unescaped_string.as_str())?;
+                compile_context.proto
                     .byte_codes
                     .push(Bytecode::load_constant(dst, constant));
                 Ok(())
             }
             Self::Name(name) => {
-                let name = Self::find_name(name, program, compile_context)?;
-                self.discharge(&name, program, compile_context)
+                let name = Self::find_name(name,  compile_context)?;
+                self.discharge(&name,  compile_context)
             }
             Self::LongName(long_name) => {
                 // Reaching here already means that it is a global
-                let env = program.push_upvalue("_ENV");
+                let env = compile_context.proto.push_upvalue("_ENV");
 
-                self.discharge(&Self::Upvalue(env), program, compile_context)?;
+                self.discharge(&Self::Upvalue(env),  compile_context)?;
                 let (_, stack_top) = compile_context.reserve_stack_top();
-                stack_top.discharge(&Self::String(long_name), program, compile_context)?;
+                stack_top.discharge(&Self::String(long_name),  compile_context)?;
                 self.discharge(
                     &Self::TableAccess {
                         table: Box::new(self.clone()),
                         key: Box::new(stack_top),
                         record: false,
                     },
-                    program,
+                    
                     compile_context,
                 )?;
                 compile_context.stack_top -= 1;
@@ -225,18 +218,18 @@ impl<'a> ExpDesc<'a> {
             }
             Self::Unop(op, var) => match var.as_ref() {
                 Self::Name(name) => {
-                    let name = Self::find_name(name, program, compile_context)?;
-                    self.discharge(&Self::Unop(*op, Box::new(name)), program, compile_context)
+                    let name = Self::find_name(name,  compile_context)?;
+                    self.discharge(&Self::Unop(*op, Box::new(name)),  compile_context)
                 }
                 Self::Local(local) => {
-                    program.byte_codes.push(op(dst, u8::try_from(*local)?));
+                    compile_context.proto.byte_codes.push(op(dst, u8::try_from(*local)?));
                     Ok(())
                 }
                 global @ Self::Global(_) => {
-                    self.discharge(global, program, compile_context)?;
+                    self.discharge(global,  compile_context)?;
                     self.discharge(
                         &Self::Unop(*op, Box::new(self.clone())),
-                        program,
+                        
                         compile_context,
                     )
                 }
@@ -265,43 +258,43 @@ impl<'a> ExpDesc<'a> {
                     lhs @ Self::Integer(_),
                     _,
                 ) => {
-                    self.discharge(lhs, program, compile_context)?;
+                    self.discharge(lhs,  compile_context)?;
                     self.discharge(
                         &Self::Binop(*op, Box::new(self.clone()), rhs.clone()),
-                        program,
+                        
                         compile_context,
                     )
                 }
                 (_, Self::Name(name), _) => {
-                    let name = Self::find_name(name, program, compile_context)?;
+                    let name = Self::find_name(name,  compile_context)?;
                     self.discharge(
                         &Self::Binop(*op, Box::new(name), rhs.clone()),
-                        program,
+                        
                         compile_context,
                     )
                 }
                 (_, _, Self::Name(name)) => {
-                    let name = Self::find_name(name, program, compile_context)?;
+                    let name = Self::find_name(name,  compile_context)?;
                     self.discharge(
                         &Self::Binop(*op, lhs.clone(), Box::new(name)),
-                        program,
+                        
                         compile_context,
                     )
                 }
                 (_, upval @ Self::Upvalue(_), _) => {
-                    self.discharge(upval, program, compile_context)?;
+                    self.discharge(upval,  compile_context)?;
                     self.discharge(
                         &Self::Binop(*op, Box::new(self.clone()), rhs.clone()),
-                        program,
+                        
                         compile_context,
                     )
                 }
                 // TODO expand to other `Binop`s
                 (op, binop @ Self::Binop(Binop::Add, _, _), _) => {
-                    self.discharge(binop, program, compile_context)?;
+                    self.discharge(binop,  compile_context)?;
                     self.discharge(
                         &Self::Binop(*op, Box::new(self.clone()), rhs.clone()),
-                        program,
+                        
                         compile_context,
                     )
                 }
@@ -314,10 +307,10 @@ impl<'a> ExpDesc<'a> {
                     },
                     _,
                 ) => {
-                    self.discharge(table_access, program, compile_context)?;
+                    self.discharge(table_access,  compile_context)?;
                     self.discharge(
                         &Self::Binop(*op, Box::new(self.clone()), rhs.clone()),
-                        program,
+                        
                         compile_context,
                     )
                 }
@@ -331,26 +324,26 @@ impl<'a> ExpDesc<'a> {
                     },
                 ) => {
                     let (_, stack_top) = compile_context.reserve_stack_top();
-                    stack_top.discharge(table_access, program, compile_context)?;
+                    stack_top.discharge(table_access,  compile_context)?;
                     self.discharge(
                         &Self::Binop(*op, lhs.clone(), Box::new(stack_top)),
-                        program,
+                        
                         compile_context,
                     )?;
                     compile_context.stack_top -= 1;
                     Ok(())
                 }
                 (Binop::Add, Self::Integer(_), global @ Self::Global(_)) => {
-                    self.discharge(global, program, compile_context)?;
+                    self.discharge(global,  compile_context)?;
                     self.discharge(
                         &Self::Binop(*op, Box::new(self.clone()), lhs.clone()),
-                        program,
+                        
                         compile_context,
                     )
                 }
                 (Binop::Add, Self::Local(lhs), Self::Integer(rhs)) => {
                     if let Ok(rhs) = i8::try_from(*rhs) {
-                        program.byte_codes.push(Bytecode::add_integer(
+                        compile_context.proto.byte_codes.push(Bytecode::add_integer(
                             dst,
                             u8::try_from(*lhs)?,
                             rhs,
@@ -361,7 +354,7 @@ impl<'a> ExpDesc<'a> {
                     }
                 }
                 (Binop::Add, Self::Local(lhs), Self::Local(rhs)) => {
-                    program.byte_codes.push(Bytecode::add(
+                    compile_context.proto.byte_codes.push(Bytecode::add(
                         dst,
                         u8::try_from(*lhs)?,
                         u8::try_from(*rhs)?,
@@ -370,7 +363,7 @@ impl<'a> ExpDesc<'a> {
                 }
                 (Binop::Sub, Self::Local(lhs), Self::Integer(rhs)) => {
                     if let Ok(rhs) = i8::try_from(*rhs) {
-                        program.byte_codes.push(Bytecode::add_integer(
+                        compile_context.proto.byte_codes.push(Bytecode::add_integer(
                             dst,
                             u8::try_from(*lhs)?,
                             -rhs,
@@ -381,7 +374,7 @@ impl<'a> ExpDesc<'a> {
                     }
                 }
                 (Binop::Sub, Self::Local(lhs), Self::Local(rhs)) => {
-                    program.byte_codes.push(Bytecode::sub(
+                    compile_context.proto.byte_codes.push(Bytecode::sub(
                         dst,
                         u8::try_from(*lhs)?,
                         u8::try_from(*rhs)?,
@@ -389,8 +382,8 @@ impl<'a> ExpDesc<'a> {
                     Ok(())
                 }
                 (Binop::Mul, Self::Local(lhs), Self::Float(rhs)) => {
-                    let rhs = program.push_constant(*rhs)?;
-                    program.byte_codes.push(Bytecode::mul_constant(
+                    let rhs = compile_context.proto.push_constant(*rhs)?;
+                    compile_context.proto.byte_codes.push(Bytecode::mul_constant(
                         dst,
                         u8::try_from(*lhs)?,
                         u8::try_from(rhs)?,
@@ -398,7 +391,7 @@ impl<'a> ExpDesc<'a> {
                     Ok(())
                 }
                 (Binop::Div, Self::Local(lhs), Self::Local(rhs)) => {
-                    program.byte_codes.push(Bytecode::div(
+                    compile_context.proto.byte_codes.push(Bytecode::div(
                         dst,
                         u8::try_from(*lhs)?,
                         u8::try_from(*rhs)?,
@@ -406,7 +399,7 @@ impl<'a> ExpDesc<'a> {
                     Ok(())
                 }
                 (Binop::ShiftLeft, Self::Local(lhs), Self::Local(rhs)) => {
-                    program.byte_codes.push(Bytecode::shift_left(
+                    compile_context.proto.byte_codes.push(Bytecode::shift_left(
                         dst,
                         u8::try_from(*lhs)?,
                         u8::try_from(*rhs)?,
@@ -414,7 +407,7 @@ impl<'a> ExpDesc<'a> {
                     Ok(())
                 }
                 (Binop::ShiftRight, Self::Local(lhs), Self::Local(rhs)) => {
-                    program.byte_codes.push(Bytecode::shift_right(
+                    compile_context.proto.byte_codes.push(Bytecode::shift_right(
                         dst,
                         u8::try_from(*lhs)?,
                         u8::try_from(*rhs)?,
@@ -429,11 +422,11 @@ impl<'a> ExpDesc<'a> {
                     | Self::Binop(_, _, _)),
                     _,
                 ) => {
-                    self.discharge(lhs, program, compile_context)?;
+                    self.discharge(lhs,  compile_context)?;
                     let (_, stack_top) = compile_context.reserve_stack_top();
                     stack_top.discharge(
                         &Self::Binop(*op, Box::new(self.clone()), rhs.clone()),
-                        program,
+                        
                         compile_context,
                     )?;
                     compile_context.stack_top -= 1;
@@ -444,17 +437,17 @@ impl<'a> ExpDesc<'a> {
                     Self::Local(lhs),
                     rhs @ (Self::Integer(_) | Self::String(_) | Self::Local(_)),
                 ) => {
-                    self.discharge(rhs, program, compile_context)?;
-                    program
+                    self.discharge(rhs,  compile_context)?;
+                   compile_context.proto
                         .byte_codes
                         .push(Bytecode::concat(u8::try_from(*lhs)?, 2));
 
                     Ok(())
                 }
                 (Binop::Concat, Self::Local(lhs), rhs @ Self::Binop(Binop::Concat, _, _)) => {
-                    self.discharge(rhs, program, compile_context)?;
+                    self.discharge(rhs,  compile_context)?;
 
-                    let Some(last_bytecode) = program.byte_codes.last_mut() else {
+                    let Some(last_bytecode) = compile_context.proto.byte_codes.last_mut() else {
                         unreachable!(
                             "Bytecodes should not be empty after discharging concatenation."
                         );
@@ -466,13 +459,13 @@ impl<'a> ExpDesc<'a> {
                     Ok(())
                 }
                 (Binop::Or, lhs, rhs) => {
-                    self.discharge(lhs, program, compile_context)?;
-                    program.byte_codes.push(Bytecode::test(dst, 1));
-                    let shortcircuit = program.byte_codes.len();
-                    program.byte_codes.push(Bytecode::jump(0));
+                    self.discharge(lhs,  compile_context)?;
+                    compile_context.proto.byte_codes.push(Bytecode::test(dst, 1));
+                    let shortcircuit = compile_context.proto.byte_codes.len();
+                    compile_context.proto.byte_codes.push(Bytecode::jump(0));
                     compile_context.jumps_to_block.push(shortcircuit);
 
-                    self.discharge(rhs, program, compile_context)
+                    self.discharge(rhs,  compile_context)
                 }
                 (
                     Binop::And,
@@ -495,105 +488,105 @@ impl<'a> ExpDesc<'a> {
                         jump_to_end: false,
                         if_condition: false,
                     };
-                    lhs_cond.discharge(lhs, program, compile_context)?;
+                    lhs_cond.discharge(lhs,  compile_context)?;
 
                     let rhs_cond = Self::Condition {
                         jump_to_end: true,
                         if_condition: true,
                     };
-                    rhs_cond.discharge(rhs, program, compile_context)?;
+                    rhs_cond.discharge(rhs,  compile_context)?;
 
-                    Self::resolve_jumps_to_block(jumps_to_block, program, compile_context)?;
-                    program.byte_codes.push(Bytecode::load_false_skip(dst));
+                    Self::resolve_jumps_to_block(jumps_to_block,  compile_context)?;
+                    compile_context.proto.byte_codes.push(Bytecode::load_false_skip(dst));
 
-                    Self::resolve_jumps_to_end(jumps_to_end, program, compile_context)?;
-                    program.byte_codes.push(Bytecode::load_true(dst));
+                    Self::resolve_jumps_to_end(jumps_to_end,  compile_context)?;
+                    compile_context.proto.byte_codes.push(Bytecode::load_true(dst));
 
                     Ok(())
                 }
                 (Binop::And, lhs, rhs) => {
                     let jumps_to_block = compile_context.jumps_to_block.len();
 
-                    self.discharge(lhs, program, compile_context)?;
-                    program.byte_codes.push(Bytecode::test(dst, 0));
-                    let shortcircuit = program.byte_codes.len();
-                    program.byte_codes.push(Bytecode::jump(0));
+                    self.discharge(lhs,  compile_context)?;
+                    compile_context.proto.byte_codes.push(Bytecode::test(dst, 0));
+                    let shortcircuit = compile_context.proto.byte_codes.len();
+                    compile_context.proto.byte_codes.push(Bytecode::jump(0));
 
-                    Self::resolve_jumps_to_block(jumps_to_block, program, compile_context)?;
+                    Self::resolve_jumps_to_block(jumps_to_block,  compile_context)?;
                     compile_context.jumps_to_block.push(shortcircuit);
 
-                    self.discharge(rhs, program, compile_context)
+                    self.discharge(rhs,  compile_context)
                 }
                 (Binop::LessThan, Self::Local(lhs), Self::Local(rhs)) => {
-                    program.byte_codes.push(Bytecode::less_than(
+                    compile_context.proto.byte_codes.push(Bytecode::less_than(
                         u8::try_from(*lhs)?,
                         u8::try_from(*rhs)?,
                         1,
                     ));
-                    program.byte_codes.push(Bytecode::jump(1));
-                    program.byte_codes.push(Bytecode::load_false_skip(dst));
-                    program.byte_codes.push(Bytecode::load_true(dst));
+                    compile_context.proto.byte_codes.push(Bytecode::jump(1));
+                    compile_context.proto.byte_codes.push(Bytecode::load_false_skip(dst));
+                    compile_context.proto.byte_codes.push(Bytecode::load_true(dst));
 
                     Ok(())
                 }
                 (Binop::GreaterThan, Self::Local(lhs), Self::Integer(rhs)) => {
-                    program.byte_codes.push(Bytecode::greater_than_integer(
+                    compile_context.proto.byte_codes.push(Bytecode::greater_than_integer(
                         u8::try_from(*lhs)?,
                         i8::try_from(*rhs)?,
                         1,
                     ));
-                    program.byte_codes.push(Bytecode::jump(1));
-                    program.byte_codes.push(Bytecode::load_false_skip(dst));
-                    program.byte_codes.push(Bytecode::load_true(dst));
+                    compile_context.proto.byte_codes.push(Bytecode::jump(1));
+                    compile_context.proto.byte_codes.push(Bytecode::load_false_skip(dst));
+                    compile_context.proto.byte_codes.push(Bytecode::load_true(dst));
 
                     Ok(())
                 }
                 (Binop::GreaterThan, Self::Local(lhs), Self::Local(rhs)) => {
-                    program.byte_codes.push(Bytecode::less_than(
+                    compile_context.proto.byte_codes.push(Bytecode::less_than(
                         u8::try_from(*rhs)?,
                         u8::try_from(*lhs)?,
                         1,
                     ));
-                    program.byte_codes.push(Bytecode::jump(1));
-                    program.byte_codes.push(Bytecode::load_false_skip(dst));
-                    program.byte_codes.push(Bytecode::load_true(dst));
+                    compile_context.proto.byte_codes.push(Bytecode::jump(1));
+                    compile_context.proto.byte_codes.push(Bytecode::load_false_skip(dst));
+                    compile_context.proto.byte_codes.push(Bytecode::load_true(dst));
 
                     Ok(())
                 }
                 (Binop::LessEqual, Self::Local(lhs), Self::Local(rhs)) => {
-                    program.byte_codes.push(Bytecode::less_equal(
+                    compile_context.proto.byte_codes.push(Bytecode::less_equal(
                         u8::try_from(*lhs)?,
                         u8::try_from(*rhs)?,
                         1,
                     ));
-                    program.byte_codes.push(Bytecode::jump(1));
-                    program.byte_codes.push(Bytecode::load_false_skip(dst));
-                    program.byte_codes.push(Bytecode::load_true(dst));
+                    compile_context.proto.byte_codes.push(Bytecode::jump(1));
+                    compile_context.proto.byte_codes.push(Bytecode::load_false_skip(dst));
+                    compile_context.proto.byte_codes.push(Bytecode::load_true(dst));
 
                     Ok(())
                 }
                 (Binop::GreaterEqual, Self::Local(lhs), Self::Local(rhs)) => {
-                    program.byte_codes.push(Bytecode::less_equal(
+                    compile_context.proto.byte_codes.push(Bytecode::less_equal(
                         u8::try_from(*rhs)?,
                         u8::try_from(*lhs)?,
                         1,
                     ));
-                    program.byte_codes.push(Bytecode::jump(1));
-                    program.byte_codes.push(Bytecode::load_false_skip(dst));
-                    program.byte_codes.push(Bytecode::load_true(dst));
+                    compile_context.proto.byte_codes.push(Bytecode::jump(1));
+                    compile_context.proto.byte_codes.push(Bytecode::load_false_skip(dst));
+                    compile_context.proto.byte_codes.push(Bytecode::load_true(dst));
 
                     Ok(())
                 }
                 (Binop::Equal, Self::Local(lhs), Self::String(rhs)) => {
-                    let rhs = program.push_constant(*rhs)?;
-                    program.byte_codes.push(Bytecode::equal_constant(
+                    let rhs = compile_context.proto.push_constant(*rhs)?;
+                    compile_context.proto.byte_codes.push(Bytecode::equal_constant(
                         u8::try_from(*lhs)?,
                         u8::try_from(rhs)?,
                         1,
                     ));
-                    program.byte_codes.push(Bytecode::jump(1));
-                    program.byte_codes.push(Bytecode::load_false_skip(dst));
-                    program.byte_codes.push(Bytecode::load_true(dst));
+                    compile_context.proto.byte_codes.push(Bytecode::jump(1));
+                    compile_context.proto.byte_codes.push(Bytecode::load_false_skip(dst));
+                    compile_context.proto.byte_codes.push(Bytecode::load_true(dst));
 
                     Ok(())
                 }
@@ -602,13 +595,13 @@ impl<'a> ExpDesc<'a> {
             Self::Local(local) => {
                 let local = u8::try_from(*local)?;
                 if local != dst {
-                    program.byte_codes.push(Bytecode::move_bytecode(dst, local));
+                    compile_context.proto.byte_codes.push(Bytecode::move_bytecode(dst, local));
                 }
                 Ok(())
             }
             Self::Global(global) => {
-                let env = program.push_upvalue("_ENV");
-                program.byte_codes.push(Bytecode::get_uptable(
+                let env = compile_context.proto.push_upvalue("_ENV");
+                compile_context.proto.byte_codes.push(Bytecode::get_uptable(
                     dst,
                     u8::try_from(env)?,
                     u8::try_from(*global)?,
@@ -616,7 +609,7 @@ impl<'a> ExpDesc<'a> {
                 Ok(())
             }
             Self::Upvalue(upvalue) => {
-                program
+                compile_context.proto
                     .byte_codes
                     .push(Bytecode::get_upvalue(dst, u8::try_from(*upvalue)?));
                 Ok(())
@@ -633,7 +626,7 @@ impl<'a> ExpDesc<'a> {
                     .filter(|(_, field)| matches!(field, Self::VariadicArguments))
                     .is_some();
 
-                program.byte_codes.push(Bytecode::new_table(
+                compile_context.proto.byte_codes.push(Bytecode::new_table(
                     dst,
                     u8::try_from(fields.len() - array_count)?,
                     u8::try_from(array_count)? - (last_array_field_is_variadic as u8),
@@ -647,15 +640,15 @@ impl<'a> ExpDesc<'a> {
                         TableKey::Array => {
                             let (_, stack_top) = compile_context.reserve_stack_top();
                             used_stack += 1;
-                            stack_top.discharge(field, program, compile_context)?;
+                            stack_top.discharge(field,  compile_context)?;
 
-                            let Some(last_bytecode) = program.byte_codes.last_mut() else {
+                            let Some(last_bytecode) = compile_context.proto.byte_codes.last_mut() else {
                                 unreachable!("Bytecodes should never be empty while discharging table fields.");
                             };
                             if last_bytecode.get_opcode() == OpCode::VariadicArguments {
                                 let (a, _, _, _) = last_bytecode.decode_abck();
                                 *last_bytecode = Bytecode::variadic_arguments(a, 2);
-                                last_variadic_bytecode = program.byte_codes.len() - 1;
+                                last_variadic_bytecode = compile_context.proto.byte_codes.len() - 1;
                             }
                         }
                         TableKey::General(key) => {
@@ -666,7 +659,7 @@ impl<'a> ExpDesc<'a> {
                             }
                             .discharge(
                                 field,
-                                program,
+                                
                                 compile_context,
                             )?;
                         }
@@ -678,7 +671,7 @@ impl<'a> ExpDesc<'a> {
                             }
                             .discharge(
                                 field,
-                                program,
+                                
                                 compile_context,
                             )?;
                         }
@@ -686,8 +679,8 @@ impl<'a> ExpDesc<'a> {
                 }
 
                 let array_count = if last_array_field_is_variadic {
-                    let (a, _, _, _) = program.byte_codes[last_variadic_bytecode].decode_abck();
-                    program.byte_codes[last_variadic_bytecode] = Bytecode::variadic_arguments(a, 0);
+                    let (a, _, _, _) = compile_context.proto.byte_codes[last_variadic_bytecode].decode_abck();
+                    compile_context.proto.byte_codes[last_variadic_bytecode] = Bytecode::variadic_arguments(a, 0);
                     Some(0)
                 } else if array_count != 0 {
                     Some(u8::try_from(array_count)?)
@@ -696,7 +689,7 @@ impl<'a> ExpDesc<'a> {
                 };
 
                 if let Some(array_count) = array_count {
-                    program
+                    compile_context.proto
                         .byte_codes
                         .push(Bytecode::set_list(dst, array_count, 0));
                 }
@@ -711,20 +704,20 @@ impl<'a> ExpDesc<'a> {
                 record: false,
             } => match (table.as_ref(), key.as_ref()) {
                 (Self::Name(table), _) => {
-                    let table = Self::find_name(table, program, compile_context)?;
+                    let table = Self::find_name(table,  compile_context)?;
                     self.discharge(
                         &Self::TableAccess {
                             table: Box::new(table),
                             key: key.clone(),
                             record: false,
                         },
-                        program,
+                        
                         compile_context,
                     )
                 }
                 (Self::Local(local_table), Self::Integer(index)) => {
                     if let Ok(index) = u8::try_from(*index) {
-                        program.byte_codes.push(Bytecode::get_index(
+                        compile_context.proto.byte_codes.push(Bytecode::get_index(
                             dst,
                             u8::try_from(*local_table)?,
                             index,
@@ -732,14 +725,14 @@ impl<'a> ExpDesc<'a> {
                         Ok(())
                     } else {
                         let (_, stack_top) = compile_context.reserve_stack_top();
-                        stack_top.discharge(&Self::Integer(*index), program, compile_context)?;
+                        stack_top.discharge(&Self::Integer(*index),  compile_context)?;
                         self.discharge(
                             &Self::TableAccess {
                                 table: table.clone(),
                                 key: Box::new(stack_top),
                                 record: false,
                             },
-                            program,
+                            
                             compile_context,
                         )?;
                         compile_context.stack_top -= 1;
@@ -747,8 +740,8 @@ impl<'a> ExpDesc<'a> {
                     }
                 }
                 (Self::Local(table), Self::String(key)) => {
-                    let key = program.push_constant(*key)?;
-                    program.byte_codes.push(Bytecode::get_field(
+                    let key = compile_context.proto.push_constant(*key)?;
+                    compile_context.proto.byte_codes.push(Bytecode::get_field(
                         dst,
                         u8::try_from(*table)?,
                         u8::try_from(key)?,
@@ -756,7 +749,7 @@ impl<'a> ExpDesc<'a> {
                     Ok(())
                 }
                 (Self::Local(table), Self::Local(key)) => {
-                    program.byte_codes.push(Bytecode::get_table(
+                    compile_context.proto.byte_codes.push(Bytecode::get_table(
                         dst,
                         u8::try_from(*table)?,
                         u8::try_from(*key)?,
@@ -764,13 +757,13 @@ impl<'a> ExpDesc<'a> {
                     Ok(())
                 }
                 (table @ Self::Global(_), _) => {
-                    self.discharge(table, program, compile_context)?;
+                    self.discharge(table,  compile_context)?;
                     let table_access = Self::TableAccess {
                         table: Box::new(self.clone()),
                         key: key.clone(),
                         record: false,
                     };
-                    self.discharge(&table_access, program, compile_context)
+                    self.discharge(&table_access,  compile_context)
                 }
                 (
                     table @ Self::TableAccess {
@@ -780,13 +773,13 @@ impl<'a> ExpDesc<'a> {
                     },
                     _,
                 ) => {
-                    self.discharge(table, program, compile_context)?;
+                    self.discharge(table,  compile_context)?;
                     let table_access = Self::TableAccess {
                         table: Box::new(self.clone()),
                         key: key.clone(),
                         record: false,
                     };
-                    self.discharge(&table_access, program, compile_context)
+                    self.discharge(&table_access,  compile_context)
                 }
                 _ => unimplemented!("Can't access table with configuration {:?}.", src),
             },
@@ -808,25 +801,25 @@ impl<'a> ExpDesc<'a> {
                         key: Box::new(Self::String(key)),
                         record: false,
                     },
-                    program,
+                    
                     compile_context,
                 )
             }
             Self::Closure(closure) => {
-                program
+                compile_context.proto
                     .byte_codes
                     .push(Bytecode::closure(dst, u32::try_from(*closure)?));
                 Ok(())
             }
             Self::FunctionCall(function, args) => {
-                self.discharge(function, program, compile_context)?;
+                self.discharge(function,  compile_context)?;
 
                 let jumps_to_block = compile_context.jumps_to_block.len();
                 for arg in args.iter() {
                     let (_, stack_top) = compile_context.reserve_stack_top();
-                    stack_top.discharge(arg, program, compile_context)?;
+                    stack_top.discharge(arg,  compile_context)?;
 
-                    let Some(last_bytecode) = program.byte_codes.last_mut() else {
+                    let Some(last_bytecode) = compile_context.proto.byte_codes.last_mut() else {
                         unreachable!("Bytecodes should not be empty after discharging argument,");
                     };
                     if last_bytecode.get_opcode() == OpCode::VariadicArguments {
@@ -836,7 +829,7 @@ impl<'a> ExpDesc<'a> {
                 }
                 compile_context.stack_top -= u8::try_from(args.len())?;
 
-                let Some(last_bytecode) = program.byte_codes.last_mut() else {
+                let Some(last_bytecode) = compile_context.proto.byte_codes.last_mut() else {
                     unreachable!("Bytecodes should not be empty after discharging argument,");
                 };
                 let in_params = match last_bytecode.get_opcode() {
@@ -853,20 +846,20 @@ impl<'a> ExpDesc<'a> {
                     _ => u8::try_from(args.len())? + 1,
                 };
 
-                Self::resolve_jumps_to_block(jumps_to_block, program, compile_context)?;
+                Self::resolve_jumps_to_block(jumps_to_block,  compile_context)?;
 
-                program.byte_codes.push(Bytecode::call(dst, in_params, 1));
+                compile_context.proto.byte_codes.push(Bytecode::call(dst, in_params, 1));
 
                 Ok(())
             }
             Self::MethodCall(table, method_name, exp_list) => {
-                self.discharge(table, program, compile_context)?;
+                self.discharge(table,  compile_context)?;
 
                 let Self::Name(name) = method_name.as_ref() else {
                     unreachable!("Method name should be a Name, but was {:?}.", method_name);
                 };
-                let constant = program.push_constant(*name)?;
-                program
+                let constant = compile_context.proto.push_constant(*name)?;
+                compile_context.proto
                     .byte_codes
                     .push(Bytecode::table_self(dst, dst, u8::try_from(constant)?));
 
@@ -876,20 +869,20 @@ impl<'a> ExpDesc<'a> {
 
                 for exp in exp_list.iter() {
                     let (_, stack_top) = compile_context.reserve_stack_top();
-                    stack_top.discharge(exp, program, compile_context)?;
+                    stack_top.discharge(exp,  compile_context)?;
                     used_stack += 1;
                 }
 
                 compile_context.stack_top -= used_stack;
 
-                program
+                compile_context.proto
                     .byte_codes
                     .push(Bytecode::call(dst, used_stack + 1, 1));
 
                 Ok(())
             }
             Self::VariadicArguments => {
-                program
+                compile_context.proto
                     .byte_codes
                     .push(Bytecode::variadic_arguments(dst, 0));
                 Ok(())
@@ -901,7 +894,6 @@ impl<'a> ExpDesc<'a> {
     fn discharge_into_global(
         &self,
         src: &ExpDesc<'a>,
-        program: &mut Proto,
         compile_context: &mut CompileContext<'a>,
     ) -> Result<(), Error> {
         let Self::Global(global) = self else {
@@ -914,9 +906,9 @@ impl<'a> ExpDesc<'a> {
 
         match src {
             Self::Integer(integer) => {
-                let env = program.push_upvalue("_ENV");
-                let constant = program.push_constant(*integer)?;
-                program.byte_codes.push(Bytecode::set_uptable(
+                let env = compile_context.proto.push_upvalue("_ENV");
+                let constant = compile_context.proto.push_constant(*integer)?;
+                compile_context.proto.byte_codes.push(Bytecode::set_uptable(
                     u8::try_from(env)?,
                     global,
                     u8::try_from(constant)?,
@@ -925,9 +917,9 @@ impl<'a> ExpDesc<'a> {
                 Ok(())
             }
             Self::String(string) => {
-                let env = program.push_upvalue("_ENV");
-                let constant = program.push_constant(*string)?;
-                program.byte_codes.push(Bytecode::set_uptable(
+                let env = compile_context.proto.push_upvalue("_ENV");
+                let constant = compile_context.proto.push_constant(*string)?;
+                compile_context.proto.byte_codes.push(Bytecode::set_uptable(
                     u8::try_from(env)?,
                     global,
                     u8::try_from(constant)?,
@@ -936,12 +928,12 @@ impl<'a> ExpDesc<'a> {
                 Ok(())
             }
             Self::Name(name) => {
-                let name = Self::find_name(name, program, compile_context)?;
-                self.discharge(&name, program, compile_context)
+                let name = Self::find_name(name,  compile_context)?;
+                self.discharge(&name,  compile_context)
             }
             Self::Local(local) => {
-                let env = program.push_upvalue("_ENV");
-                program.byte_codes.push(Bytecode::set_uptable(
+                let env = compile_context.proto.push_upvalue("_ENV");
+                compile_context.proto.byte_codes.push(Bytecode::set_uptable(
                     u8::try_from(env)?,
                     global,
                     u8::try_from(*local)?,
@@ -954,8 +946,8 @@ impl<'a> ExpDesc<'a> {
             | Self::Table(_)
             | Self::FunctionCall(_, _)) => {
                 let (_, stack_top) = compile_context.reserve_stack_top();
-                stack_top.discharge(exp, program, compile_context)?;
-                self.discharge(&stack_top, program, compile_context)?;
+                stack_top.discharge(exp,  compile_context)?;
+                self.discharge(&stack_top,  compile_context)?;
                 compile_context.stack_top -= 1;
 
                 Ok(())
@@ -967,7 +959,6 @@ impl<'a> ExpDesc<'a> {
     fn discharge_into_upvalue(
         &self,
         src: &ExpDesc<'a>,
-        program: &mut Proto,
         compile_context: &mut CompileContext<'a>,
     ) -> Result<(), Error> {
         let Self::Upvalue(upvalue) = self else {
@@ -978,14 +969,14 @@ impl<'a> ExpDesc<'a> {
         };
 
         if let Self::Local(local) = src {
-            program.byte_codes.push(Bytecode::set_upvalue(
+            compile_context.proto.byte_codes.push(Bytecode::set_upvalue(
                 u8::try_from(*upvalue)?,
                 u8::try_from(*local)?,
             ));
         } else {
             let (stack_loc, stack_top) = compile_context.reserve_stack_top();
-            stack_top.discharge(src, program, compile_context)?;
-            program
+            stack_top.discharge(src,  compile_context)?;
+            compile_context.proto
                 .byte_codes
                 .push(Bytecode::set_upvalue(u8::try_from(*upvalue)?, stack_loc));
             compile_context.stack_top -= 1;
@@ -996,7 +987,6 @@ impl<'a> ExpDesc<'a> {
     fn discharge_into_explist(
         &self,
         src: &ExpDesc<'a>,
-        program: &mut Proto,
         compile_context: &mut CompileContext<'a>,
     ) -> Result<(), Error> {
         let Self::ExpList(explist) = self else {
@@ -1012,14 +1002,14 @@ impl<'a> ExpDesc<'a> {
                 let mut reverse_sets = Vec::new();
 
                 if explist.len() == 1 && src_explist.len() == 1 {
-                    explist[0].discharge(&src_explist[0], program, compile_context)?;
+                    explist[0].discharge(&src_explist[0],  compile_context)?;
                 } else {
                     for lhs_exp in explist.iter() {
                         if let Self::Name(name) = lhs_exp {
-                            match Self::find_name(name, program, compile_context)? {
+                            match Self::find_name(name,  compile_context)? {
                                 Self::Local(_) => (),
                                 Self::Global(_) => {
-                                    program.push_constant(*name)?;
+                                    compile_context.proto.push_constant(*name)?;
                                 }
                                 Self::Upvalue(_) => (),
                                 _ => unreachable!(
@@ -1033,9 +1023,9 @@ impl<'a> ExpDesc<'a> {
                     for (dst, src) in explist.iter().zip(src_explist.iter()) {
                         match dst {
                             ExpDesc::Name(name) => {
-                                let dst_name = Self::find_name(name, program, compile_context)?;
+                                let dst_name = Self::find_name(name,  compile_context)?;
                                 let src = if let Self::Name(src) = src {
-                                    Self::find_name(src, program, compile_context)?
+                                    Self::find_name(src,  compile_context)?
                                 } else {
                                     src.clone()
                                 };
@@ -1043,21 +1033,21 @@ impl<'a> ExpDesc<'a> {
                                 if  first || matches!(src, Self::Upvalue(_) | Self::FunctionCall(_, _)) || matches!(dst_name, Self::Upvalue(_))
                                 {
                                     let (_, stack_top) = compile_context.reserve_stack_top();
-                                    stack_top.discharge(&src, program, compile_context)?;
+                                    stack_top.discharge(&src,  compile_context)?;
                                     reverse_sets.push((dst_name.clone(), stack_top));
                                     used_stack += 1;
                                 } else {
-                                    dst_name.discharge(&src, program, compile_context)?;
+                                    dst_name.discharge(&src,  compile_context)?;
                                 }
                             }
                             local @ ExpDesc::Local(_) => {
-                                local.discharge(src, program, compile_context)?;
+                                local.discharge(src,  compile_context)?;
                             } 
                             ExpDesc::TableAccess {
                                 table: _,
                                 key: _,
                                 record: _,
-                            } => dst.discharge(src, program, compile_context)?,
+                            } => dst.discharge(src,  compile_context)?,
                             _ => unreachable!("Varlist expressions should always be Name or TableAccess, but was {:?}.", dst),
                         }
                         first = false;
@@ -1074,7 +1064,7 @@ impl<'a> ExpDesc<'a> {
                             }
                         }
 
-                        let Some(last_bytecode) = program.byte_codes.last_mut() else {
+                        let Some(last_bytecode) = compile_context.proto.byte_codes.last_mut() else {
                             unreachable!("Bytecodes should not be empty while discharging.");
                         };
                         assert_eq!(last_bytecode.get_opcode(), OpCode::Call);
@@ -1095,7 +1085,7 @@ impl<'a> ExpDesc<'a> {
                             }
                         }
 
-                        let Some(last_bytecode) = program.byte_codes.last_mut() else {
+                        let Some(last_bytecode) = compile_context.proto.byte_codes.last_mut() else {
                             unreachable!("Bytecodes should not be empty while discharging.");
                         };
                         assert_eq!(last_bytecode.get_opcode(), OpCode::VariadicArguments);
@@ -1110,11 +1100,11 @@ impl<'a> ExpDesc<'a> {
                         for dst in explist[src_explist.len()..].iter() {
                             if matches!(dst, Self::Global(_)) {
                                 let (_, stack_top) = compile_context.reserve_stack_top();
-                                stack_top.discharge(&ExpDesc::Nil, program, compile_context)?;
+                                stack_top.discharge(&ExpDesc::Nil,  compile_context)?;
                                 reverse_sets.push((dst.clone(), stack_top));
                                 used_stack += 1;
                             } else {
-                                dst.discharge(&ExpDesc::Nil, program, compile_context)?;
+                                dst.discharge(&ExpDesc::Nil,  compile_context)?;
                             }
                         }
                     }
@@ -1124,7 +1114,7 @@ impl<'a> ExpDesc<'a> {
                 }
 
                 for (dst, src) in reverse_sets.into_iter().rev() {
-                    dst.discharge(&src, program, compile_context)?;
+                    dst.discharge(&src,  compile_context)?;
                 }
 
                 compile_context.stack_top -= used_stack;
@@ -1140,7 +1130,6 @@ impl<'a> ExpDesc<'a> {
     fn discharge_into_table_access(
         &self,
         src: &ExpDesc<'a>,
-        program: &mut Proto,
         compile_context: &mut CompileContext<'a>,
     ) -> Result<(), Error> {
         let Self::TableAccess { table, key, record } = self else {
@@ -1158,7 +1147,7 @@ impl<'a> ExpDesc<'a> {
                     key: Box::new(ExpDesc::String(key)),
                     record: false,
                 };
-                table_access.discharge(src, program, compile_context)
+                table_access.discharge(src,  compile_context)
             }
             (_, key, true, _) => {
                 unreachable!(
@@ -1168,54 +1157,54 @@ impl<'a> ExpDesc<'a> {
             }
             (table @ Self::Global(_), _, false, _) => {
                 let (_, stack_top) = compile_context.reserve_stack_top();
-                stack_top.discharge(table, program, compile_context)?;
+                stack_top.discharge(table,  compile_context)?;
                 let table_access = Self::TableAccess {
                     table: Box::new(stack_top),
                     key: key.clone(),
                     record: false,
                 };
-                table_access.discharge(src, program, compile_context)?;
+                table_access.discharge(src,  compile_context)?;
                 compile_context.stack_top -= 1;
 
                 Ok(())
             }
             (Self::Name(table), _, false, _) => {
-                let table = Self::find_name(table, program, compile_context)?;
+                let table = Self::find_name(table,  compile_context)?;
                 let table_access = Self::TableAccess {
                     table: Box::new(table),
                     key: key.clone(),
                     record: false,
                 };
-                table_access.discharge(src, program, compile_context)
+                table_access.discharge(src,  compile_context)
             }
             (_, Self::Name(key), false, _) => {
-                let name = Self::find_name(key, program, compile_context)?;
+                let name = Self::find_name(key,  compile_context)?;
 
                 let table_access = Self::TableAccess {
                     table: table.clone(),
                     key: Box::new(name),
                     record: false,
                 };
-                table_access.discharge(src, program, compile_context)?;
+                table_access.discharge(src,  compile_context)?;
 
                 Ok(())
             }
             (_, Self::String(key), false, Self::Name(name)) => {
                 // Storing the key into constants early to match the ordering
                 // of the official compiler
-                let _ = program.push_constant(*key)?;
-                let name = Self::find_name(name, program, compile_context)?;
-                self.discharge(&name, program, compile_context)
+                let _ = compile_context.proto.push_constant(*key)?;
+                let name = Self::find_name(name,  compile_context)?;
+                self.discharge(&name,  compile_context)
             }
             (_, _, false, Self::Name(name)) => {
-                let name = Self::find_name(name, program, compile_context)?;
-                self.discharge(&name, program, compile_context)
+                let name = Self::find_name(name,  compile_context)?;
+                self.discharge(&name,  compile_context)
             }
             // local t, k
             // t[k] = 1
             (Self::Local(table), Self::Local(key), false, Self::Integer(integer)) => {
-                let constant = program.push_constant(*integer)?;
-                program.byte_codes.push(Bytecode::set_table(
+                let constant = compile_context.proto.push_constant(*integer)?;
+                compile_context.proto.byte_codes.push(Bytecode::set_table(
                     u8::try_from(*table)?,
                     u8::try_from(*key)?,
                     u8::try_from(constant)?,
@@ -1226,8 +1215,8 @@ impl<'a> ExpDesc<'a> {
             // local t, k
             // t[k] = "a"
             (Self::Local(table), Self::Local(key), false, Self::String(string)) => {
-                let constant = program.push_constant(*string)?;
-                program.byte_codes.push(Bytecode::set_table(
+                let constant = compile_context.proto.push_constant(*string)?;
+                compile_context.proto.byte_codes.push(Bytecode::set_table(
                     u8::try_from(*table)?,
                     u8::try_from(*key)?,
                     u8::try_from(constant)?,
@@ -1238,9 +1227,9 @@ impl<'a> ExpDesc<'a> {
             // local t
             // t["x"] = 1
             (Self::Local(table), Self::String(key), false, Self::Integer(integer)) => {
-                let key_constant = program.push_constant(*key)?;
-                let constant = program.push_constant(*integer)?;
-                program.byte_codes.push(Bytecode::set_field(
+                let key_constant = compile_context.proto.push_constant(*key)?;
+                let constant = compile_context.proto.push_constant(*integer)?;
+                compile_context.proto.byte_codes.push(Bytecode::set_field(
                     u8::try_from(*table)?,
                     u8::try_from(key_constant)?,
                     u8::try_from(constant)?,
@@ -1251,9 +1240,9 @@ impl<'a> ExpDesc<'a> {
             // local t
             // t["x"] = "y"
             (Self::Local(table), Self::String(key), false, Self::String(string)) => {
-                let key_constant = program.push_constant(*key)?;
-                let constant = program.push_constant(*string)?;
-                program.byte_codes.push(Bytecode::set_field(
+                let key_constant = compile_context.proto.push_constant(*key)?;
+                let constant = compile_context.proto.push_constant(*string)?;
+                compile_context.proto.byte_codes.push(Bytecode::set_field(
                     u8::try_from(*table)?,
                     u8::try_from(key_constant)?,
                     u8::try_from(constant)?,
@@ -1264,8 +1253,8 @@ impl<'a> ExpDesc<'a> {
             // local t, a
             // t["x"] = a
             (Self::Local(table), Self::String(key), false, Self::Local(src)) => {
-                let key_constant = program.push_constant(*key)?;
-                program.byte_codes.push(Bytecode::set_field(
+                let key_constant = compile_context.proto.push_constant(*key)?;
+                compile_context.proto.byte_codes.push(Bytecode::set_field(
                     u8::try_from(*table)?,
                     u8::try_from(key_constant)?,
                     u8::try_from(*src)?,
@@ -1278,16 +1267,16 @@ impl<'a> ExpDesc<'a> {
             (_, _, false, global @ Self::Global(_)) => {
                 let (_, stack_top) = compile_context.reserve_stack_top();
 
-                stack_top.discharge(global, program, compile_context)?;
-                self.discharge(&stack_top, program, compile_context)?;
+                stack_top.discharge(global,  compile_context)?;
+                self.discharge(&stack_top,  compile_context)?;
 
                 compile_context.stack_top -= 1;
                 Ok(())
             }
             (_, _, false, table @ Self::Table(_)) => {
                 let (_, stack_top) = compile_context.reserve_stack_top();
-                stack_top.discharge(table, program, compile_context)?;
-                self.discharge(&stack_top, program, compile_context)?;
+                stack_top.discharge(table,  compile_context)?;
+                self.discharge(&stack_top,  compile_context)?;
                 compile_context.stack_top -= 1;
 
                 Ok(())
@@ -1303,8 +1292,8 @@ impl<'a> ExpDesc<'a> {
                 },
             ) => {
                 let (_, stack_top) = compile_context.reserve_stack_top();
-                stack_top.discharge(table_access, program, compile_context)?;
-                self.discharge(&stack_top, program, compile_context)?;
+                stack_top.discharge(table_access,  compile_context)?;
+                self.discharge(&stack_top,  compile_context)?;
                 compile_context.stack_top -= 1;
 
                 Ok(())
@@ -1316,7 +1305,6 @@ impl<'a> ExpDesc<'a> {
     fn discharge_into_condition(
         &self,
         src: &ExpDesc<'a>,
-        program: &mut Proto,
         compile_context: &mut CompileContext<'a>,
     ) -> Result<(), Error> {
         let Self::Condition {
@@ -1332,20 +1320,20 @@ impl<'a> ExpDesc<'a> {
 
         match src {
             Self::Name(name) => {
-                let name = Self::find_name(name, program, compile_context)?;
-                self.discharge(&name, program, compile_context)
+                let name = Self::find_name(name,  compile_context)?;
+                self.discharge(&name,  compile_context)
             }
             Self::Binop(Binop::Or, lhs, rhs) => {
                 Self::Condition {
                     jump_to_end: false,
                     if_condition: true,
                 }
-                .discharge(lhs, program, compile_context)?;
+                .discharge(lhs,  compile_context)?;
                 Self::Condition {
                     jump_to_end: true,
                     if_condition: false,
                 }
-                .discharge(rhs, program, compile_context)?;
+                .discharge(rhs,  compile_context)?;
                 Ok(())
             }
             Self::Binop(Binop::And, lhs, rhs) => {
@@ -1354,15 +1342,15 @@ impl<'a> ExpDesc<'a> {
                     jump_to_end: true,
                     if_condition: false,
                 }
-                .discharge(lhs, program, compile_context)?;
+                .discharge(lhs,  compile_context)?;
 
-                Self::resolve_jumps_to_block(jumps_to_block, program, compile_context)?;
+                Self::resolve_jumps_to_block(jumps_to_block,  compile_context)?;
 
                 Self::Condition {
                     jump_to_end: true,
                     if_condition: false,
                 }
-                .discharge(rhs, program, compile_context)?;
+                .discharge(rhs,  compile_context)?;
                 Ok(())
             }
             Self::Binop(
@@ -1376,31 +1364,31 @@ impl<'a> ExpDesc<'a> {
                 rhs,
             ) => match (op, lhs.as_ref(), rhs.as_ref()) {
                 (_, Self::Name(name), _) => {
-                    let name = Self::find_name(name, program, compile_context)?;
+                    let name = Self::find_name(name,  compile_context)?;
                     self.discharge(
                         &Self::Binop(*op, Box::new(name), rhs.clone()),
-                        program,
+                        
                         compile_context,
                     )
                 }
                 (_, _, Self::Name(name)) => {
-                    let name = Self::find_name(name, program, compile_context)?;
+                    let name = Self::find_name(name,  compile_context)?;
                     self.discharge(
                         &Self::Binop(*op, lhs.clone(), Box::new(name)),
-                        program,
+                        
                         compile_context,
                     )
                 }
                 (Binop::GreaterThan, Self::Local(local), Self::Integer(integer)) => {
                     if let Ok(integer) = i8::try_from(*integer) {
-                        program.byte_codes.push(Bytecode::greater_equal_integer(
+                        compile_context.proto.byte_codes.push(Bytecode::greater_equal_integer(
                             u8::try_from(*local)?,
                             integer,
                             *if_condition as u8,
                         ));
 
-                        let jump = program.byte_codes.len();
-                        program.byte_codes.push(Bytecode::jump(0));
+                        let jump = compile_context.proto.byte_codes.len();
+                        compile_context.proto.byte_codes.push(Bytecode::jump(0));
                         if *jump_to_end {
                             compile_context.jumps_to_end.push(jump);
                         } else {
@@ -1410,10 +1398,10 @@ impl<'a> ExpDesc<'a> {
                         Ok(())
                     } else {
                         let (_, stack_top) = compile_context.reserve_stack_top();
-                        stack_top.discharge(rhs.as_ref(), program, compile_context)?;
+                        stack_top.discharge(rhs.as_ref(),  compile_context)?;
                         self.discharge(
                             &Self::Binop(*op, lhs.clone(), Box::new(stack_top)),
-                            program,
+                            
                             compile_context,
                         )?;
                         compile_context.stack_top -= 1;
@@ -1421,13 +1409,13 @@ impl<'a> ExpDesc<'a> {
                     }
                 }
                 (Binop::GreaterThan, Self::Local(lhs), Self::Local(rhs)) => {
-                    program.byte_codes.push(Bytecode::less_than(
+                    compile_context.proto.byte_codes.push(Bytecode::less_than(
                         u8::try_from(*rhs)?,
                         u8::try_from(*lhs)?,
                         *if_condition as u8,
                     ));
-                    let jump = program.byte_codes.len();
-                    program.byte_codes.push(Bytecode::jump(0));
+                    let jump = compile_context.proto.byte_codes.len();
+                    compile_context.proto.byte_codes.push(Bytecode::jump(0));
                     if *jump_to_end {
                         compile_context.jumps_to_end.push(jump);
                     } else {
@@ -1438,23 +1426,23 @@ impl<'a> ExpDesc<'a> {
                 }
                 (Binop::LessEqual, Self::Local(_), string @ Self::String(_)) => {
                     let (_, stack_top) = compile_context.reserve_stack_top();
-                    stack_top.discharge(string, program, compile_context)?;
+                    stack_top.discharge(string,  compile_context)?;
                     self.discharge(
                         &Self::Binop(*op, lhs.clone(), Box::new(stack_top)),
-                        program,
+                        
                         compile_context,
                     )?;
                     compile_context.stack_top -= 1;
                     Ok(())
                 }
                 (Binop::LessEqual, Self::Local(lhs), Self::Local(rhs)) => {
-                    program.byte_codes.push(Bytecode::less_equal(
+                    compile_context.proto.byte_codes.push(Bytecode::less_equal(
                         u8::try_from(*lhs)?,
                         u8::try_from(*rhs)?,
                         *if_condition as u8,
                     ));
-                    let jump = program.byte_codes.len();
-                    program.byte_codes.push(Bytecode::jump(0));
+                    let jump = compile_context.proto.byte_codes.len();
+                    compile_context.proto.byte_codes.push(Bytecode::jump(0));
                     if *jump_to_end {
                         compile_context.jumps_to_end.push(jump);
                     } else {
@@ -1464,13 +1452,13 @@ impl<'a> ExpDesc<'a> {
                     Ok(())
                 }
                 (Binop::GreaterEqual, Self::Local(lhs), Self::Integer(integer)) => {
-                    program.byte_codes.push(Bytecode::greater_equal_integer(
+                    compile_context.proto.byte_codes.push(Bytecode::greater_equal_integer(
                         u8::try_from(*lhs)?,
                         i8::try_from(*integer)?,
                         *if_condition as u8,
                     ));
-                    let jump = program.byte_codes.len();
-                    program.byte_codes.push(Bytecode::jump(0));
+                    let jump = compile_context.proto.byte_codes.len();
+                    compile_context.proto.byte_codes.push(Bytecode::jump(0));
                     if *jump_to_end {
                         compile_context.jumps_to_end.push(jump);
                     } else {
@@ -1480,14 +1468,14 @@ impl<'a> ExpDesc<'a> {
                     Ok(())
                 }
                 (Binop::Equal, Self::Local(lhs), Self::String(name)) => {
-                    let constant = program.push_constant(*name)?;
-                    program.byte_codes.push(Bytecode::equal_constant(
+                    let constant = compile_context.proto.push_constant(*name)?;
+                    compile_context.proto.byte_codes.push(Bytecode::equal_constant(
                         u8::try_from(*lhs)?,
                         u8::try_from(constant)?,
                         *if_condition as u8,
                     ));
-                    let jump = program.byte_codes.len();
-                    program.byte_codes.push(Bytecode::jump(0));
+                    let jump = compile_context.proto.byte_codes.len();
+                    compile_context.proto.byte_codes.push(Bytecode::jump(0));
                     if *jump_to_end {
                         compile_context.jumps_to_end.push(jump);
                     } else {
@@ -1497,14 +1485,14 @@ impl<'a> ExpDesc<'a> {
                     Ok(())
                 }
                 (Binop::Equal, Self::Local(lhs), Self::Integer(integer)) => {
-                    let constant = program.push_constant(*integer)?;
-                    program.byte_codes.push(Bytecode::equal_constant(
+                    let constant = compile_context.proto.push_constant(*integer)?;
+                    compile_context.proto.byte_codes.push(Bytecode::equal_constant(
                         u8::try_from(*lhs)?,
                         u8::try_from(constant)?,
                         *if_condition as u8,
                     ));
-                    let jump = program.byte_codes.len();
-                    program.byte_codes.push(Bytecode::jump(0));
+                    let jump = compile_context.proto.byte_codes.len();
+                    compile_context.proto.byte_codes.push(Bytecode::jump(0));
                     if *jump_to_end {
                         compile_context.jumps_to_end.push(jump);
                     } else {
@@ -1516,11 +1504,11 @@ impl<'a> ExpDesc<'a> {
                 _ => unimplemented!("Can't discharge binary operation {:?}.", src),
             },
             Self::Local(local) => {
-                program
+                compile_context.proto
                     .byte_codes
                     .push(Bytecode::test(u8::try_from(*local)?, *if_condition as u8));
-                let jump = program.byte_codes.len();
-                program.byte_codes.push(Bytecode::jump(0));
+                let jump = compile_context.proto.byte_codes.len();
+                compile_context.proto.byte_codes.push(Bytecode::jump(0));
                 if *jump_to_end {
                     compile_context.jumps_to_end.push(jump);
                 } else {
@@ -1530,8 +1518,8 @@ impl<'a> ExpDesc<'a> {
             }
             global @ Self::Global(_) => {
                 let (_, stack_top) = compile_context.reserve_stack_top();
-                stack_top.discharge(global, program, compile_context)?;
-                self.discharge(&stack_top, program, compile_context)?;
+                stack_top.discharge(global,  compile_context)?;
+                self.discharge(&stack_top,  compile_context)?;
                 compile_context.stack_top -= 1;
                 Ok(())
             }
@@ -1541,19 +1529,18 @@ impl<'a> ExpDesc<'a> {
 
     fn find_name(
         name: &'a str,
-        program: &mut Proto,
         compile_context: &mut CompileContext<'a>,
     ) -> Result<ExpDesc<'a>, Error> {
         match compile_context.find_name(name) {
             Some(local) => Ok(ExpDesc::Local(local)),
             None => {
                 if compile_context.exists_in_upvalue(name) {
-                    let upvalue = program.push_upvalue(name);
+                    let upvalue = compile_context.proto.push_upvalue(name);
                     Ok(Self::Upvalue(upvalue))
                 } else if name.len() > SHORT_STRING_LEN {
                     Ok(Self::LongName(name))
                 } else {
-                    Ok(Self::Global(usize::try_from(program.push_constant(name)?)?))
+                    Ok(Self::Global(usize::try_from(compile_context.proto.push_constant(name)?)?))
                 }
             }
         }
@@ -1561,9 +1548,8 @@ impl<'a> ExpDesc<'a> {
 
     pub fn get_local_or_discharge_at_location(
         &self,
-        program: &mut Proto,
-        location: u8,
         compile_context: &mut CompileContext<'a>,
+        location: u8,
     ) -> Result<u8, Error> {
         match self {
             ExpDesc::Name(table_name) => match compile_context.find_name(table_name) {
@@ -1571,7 +1557,6 @@ impl<'a> ExpDesc<'a> {
                 None => {
                     self.discharge(
                         &ExpDesc::Local(usize::from(location)),
-                        program,
                         compile_context,
                     )?;
                     Ok(location)
@@ -1586,16 +1571,15 @@ impl<'a> ExpDesc<'a> {
 
     fn resolve_jumps_to_block(
         start_of_jumps_to_resolve: usize,
-        program: &mut Proto,
         compile_context: &mut CompileContext<'a>,
     ) -> Result<(), Error> {
         let jumps_to_block = compile_context
             .jumps_to_block
             .drain(start_of_jumps_to_resolve..)
             .collect::<Vec<_>>();
-        let jump_dst = program.byte_codes.len();
+        let jump_dst = compile_context.proto.byte_codes.len();
         for jump in jumps_to_block {
-            program.byte_codes[jump] =
+            compile_context.proto.byte_codes[jump] =
                 Bytecode::jump(i32::try_from(jump_dst - jump - 1).map_err(|_| Error::LongJump)?);
         }
         Ok(())
@@ -1603,16 +1587,15 @@ impl<'a> ExpDesc<'a> {
 
     fn resolve_jumps_to_end(
         start_of_jumps_to_resolve: usize,
-        program: &mut Proto,
         compile_context: &mut CompileContext<'a>,
     ) -> Result<(), Error> {
         let jumps_to_end = compile_context
             .jumps_to_end
             .drain(start_of_jumps_to_resolve..)
             .collect::<Vec<_>>();
-        let jump_dst = program.byte_codes.len();
+        let jump_dst = compile_context.proto.byte_codes.len();
         for jump in jumps_to_end {
-            program.byte_codes[jump] =
+            compile_context.proto.byte_codes[jump] =
                 Bytecode::jump(i32::try_from(jump_dst - jump - 1).map_err(|_| Error::LongJump)?);
         }
         Ok(())
