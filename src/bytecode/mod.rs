@@ -2070,7 +2070,7 @@ impl Debug for Bytecode {
             }
             OpCode::Test => {
                 let (a, _, _, k) = self.decode_abck();
-                write!(f, "{:?}({}, {})", op, a, k)
+                write!(f, "{:?}({}, {})", op, a, k == 1)
             }
             OpCode::Move
             | OpCode::LoadNil
@@ -2090,7 +2090,7 @@ impl Debug for Bytecode {
             | OpCode::EqualConstant
             | OpCode::TestSet => {
                 let (a, b, _, k) = self.decode_abck();
-                write!(f, "{:?}({}, {}, {})", op, a, b, k)
+                write!(f, "{:?}({}, {}{})", op, a, b, if k == 1 { "k" } else { "" })
             }
             OpCode::EqualInteger
             | OpCode::LessThanInteger
@@ -2098,7 +2098,14 @@ impl Debug for Bytecode {
             | OpCode::GreaterThanInteger
             | OpCode::GreaterEqualInteger => {
                 let (a, sb, _, k) = self.decode_asbck();
-                write!(f, "{:?}({}, {}, {})", op, a, sb, k)
+                write!(
+                    f,
+                    "{:?}({}, {}{})",
+                    op,
+                    a,
+                    sb,
+                    if k == 1 { "k" } else { "" }
+                )
             }
             OpCode::LoadConstant
             | OpCode::ForPrepare
@@ -2164,7 +2171,15 @@ impl Debug for Bytecode {
             | OpCode::Return
             | OpCode::SetList => {
                 let (a, b, c, k) = self.decode_abck();
-                write!(f, "{:?}({}, {}, {}, {})", op, a, b, c, k)
+                write!(
+                    f,
+                    "{:?}({}, {}, {}{})",
+                    op,
+                    a,
+                    b,
+                    c,
+                    if k == 1 { "k" } else { "" }
+                )
             }
             OpCode::VariadicArguments => {
                 let (a, _, c, _) = self.decode_abck();
