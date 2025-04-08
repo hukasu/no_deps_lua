@@ -1050,6 +1050,9 @@ impl<'a> ExpDesc<'a> {
                                     dst_name.discharge(&src, program, compile_context)?;
                                 }
                             }
+                            local @ ExpDesc::Local(_) => {
+                                local.discharge(src, program, compile_context)?;
+                            } 
                             ExpDesc::TableAccess {
                                 table: _,
                                 key: _,
@@ -1060,36 +1063,62 @@ impl<'a> ExpDesc<'a> {
                         first = false;
                     }
 
-                    if let Some(ExpDesc::FunctionCall(_, _)) = src_explist.last() {
-                        for remaining in explist[src_explist.len()..].iter() {
-                            if let Self::Name(_) = remaining {
-                                let (_, stack_top) = compile_context.reserve_stack_top();
-                                reverse_sets.push((remaining.clone(), stack_top));
-                                used_stack += 1;
+                    match src_explist.last() {
+                        Some(ExpDesc::FunctionCall(_, _)) => {
+                            for remaining in explist[src_explist.len()..].iter() {
+                                if let Self::Name(_) = remaining {
+                                    let (_, stack_top) = compile_context.reserve_stack_top();
+                                    reverse_sets.push((remaining.clone(), stack_top));
+                                    used_stack += 1;
+                                }
+                            }
+    
+                            let Some(last_bytecode) = program.byte_codes.last_mut() else {
+                                unreachable!("Bytecodes should not be empty while discharging.");
+                            };
+                            assert_eq!(last_bytecode.get_opcode(), OpCode::Call);
+    
+                            let (function, in_params, _, _) = last_bytecode.decode_abck();
+                            *last_bytecode = Bytecode::call(
+                                function,
+                                in_params,
+                                u8::try_from(explist.len() - src_explist.len() + 2)?,
+                            );
+                        }
+                        Some(ExpDesc::VariadicArguments) => {
+                            for remaining in explist[src_explist.len()..].iter() {
+                                if let Self::Name(_) = remaining {
+                                    let (_, stack_top) = compile_context.reserve_stack_top();
+                                    reverse_sets.push((remaining.clone(), stack_top));
+                                    used_stack += 1;
+                                }
+                            }
+    
+                            let Some(last_bytecode) = program.byte_codes.last_mut() else {
+                                unreachable!("Bytecodes should not be empty while discharging.");
+                            };
+                            assert_eq!(last_bytecode.get_opcode(), OpCode::VariadicArguments);
+                        
+                            let (register, _, _, _) = last_bytecode.decode_abck();
+                            *last_bytecode = Bytecode::variadic_arguments(
+                                register,
+                                u8::try_from(explist.len() - src_explist.len() + 2)?,
+                            );
+                        }
+                        Some(_) => {
+                            for dst in explist[src_explist.len()..].iter() {
+                                if matches!(dst, Self::Global(_)) {
+                                    let (_, stack_top) = compile_context.reserve_stack_top();
+                                    stack_top.discharge(&ExpDesc::Nil, program, compile_context)?;
+                                    reverse_sets.push((dst.clone(), stack_top));
+                                    used_stack += 1;
+                                } else {
+                                    dst.discharge(&ExpDesc::Nil, program, compile_context)?;
+                                }
                             }
                         }
-
-                        let Some(last_bytecode) = program.byte_codes.last_mut() else {
-                            unreachable!("Bytecodes should not be empty while discharging.");
-                        };
-                        assert_eq!(last_bytecode.get_opcode(), OpCode::Call);
-
-                        let (function, in_params, _, _) = last_bytecode.decode_abck();
-                        *last_bytecode = Bytecode::call(
-                            function,
-                            in_params,
-                            u8::try_from(explist.len() - src_explist.len() + 2)?,
-                        );
-                    } else {
-                        for dst in explist[src_explist.len()..].iter() {
-                            if matches!(dst, Self::Global(_)) {
-                                let (_, stack_top) = compile_context.reserve_stack_top();
-                                stack_top.discharge(&ExpDesc::Nil, program, compile_context)?;
-                                reverse_sets.push((dst.clone(), stack_top));
-                                used_stack += 1;
-                            } else {
-                                dst.discharge(&ExpDesc::Nil, program, compile_context)?;
-                            }
+                        None => {
+                            unreachable!("src_explist should never be empty")
                         }
                     }
 

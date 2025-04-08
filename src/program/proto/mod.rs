@@ -729,35 +729,19 @@ impl Proto {
                 let namelist = self.attnamelist(attnamelist)?;
                 let explist = self.stat_attexplist(stat_attexplist, compile_context)?;
 
-                for exp in explist.iter() {
-                    let (_, stack_top) = compile_context.reserve_stack_top();
-                    stack_top.discharge(exp, self, compile_context)?;
-                }
+                let dst_locals = namelist
+                    .iter()
+                    .map(|_| {
+                        let (_, loc) = compile_context.reserve_stack_top();
+                        loc
+                    })
+                    .collect::<Vec<_>>();
 
-                if explist.len() < namelist.len() {
-                    let remaining = u8::try_from(namelist.len() - explist.len())?;
-
-                    if self
-                        .byte_codes
-                        .last_mut()
-                        .filter(|bytecode| bytecode.get_opcode() == OpCode::VariadicArguments)
-                        .is_some()
-                    {
-                        let Some(variadic) = self.byte_codes.pop() else {
-                            unreachable!()
-                        };
-                        compile_context.stack_top += remaining;
-
-                        let (register, _, _, _) = variadic.decode_abck();
-                        self.byte_codes
-                            .push(Bytecode::variadic_arguments(register, remaining + 2));
-                    } else {
-                        for _ in 0..remaining {
-                            let (_, stack_top) = compile_context.reserve_stack_top();
-                            stack_top.discharge(&ExpDesc::Nil, self, compile_context)?;
-                        }
-                    }
-                }
+                ExpDesc::ExpList(dst_locals).discharge(
+                    &ExpDesc::ExpList(explist),
+                    self,
+                    compile_context,
+                )?;
 
                 // Adding the new names into `locals` to prevent
                 // referencing the new name when you could be trying to shadow a
