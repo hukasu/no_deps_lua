@@ -113,7 +113,7 @@ impl Proto {
         let locals = compile_context.locals.len();
         let cache_var_args = compile_context.var_args.take();
 
-        self.block(block, compile_context, false)?;
+        self.block(block, compile_context)?;
 
         compile_context.var_args = cache_var_args;
         compile_context.stack_top -= u8::try_from(compile_context.locals.len() - locals)
@@ -224,7 +224,9 @@ impl Proto {
             make_deconstruct!(block(TokenType::Block)) => {
                 self.push_upvalue("_ENV");
 
-                self.block(block, compile_context, true)?;
+                self.block(block, compile_context)?;
+
+                self.byte_codes.push(Bytecode::zero_return());
                 self.fix_up_last_return(0, compile_context)?;
 
                 self.close_locals(0, compile_context);
@@ -259,7 +261,6 @@ impl Proto {
         &mut self,
         block: &Token<'a>,
         compile_context: &mut CompileContext<'a>,
-        function_body: bool,
     ) -> Result<(), Error> {
         match block.tokens.as_slice() {
             make_deconstruct!(
@@ -309,10 +310,6 @@ impl Proto {
                     .collect::<Result<Vec<_>, Error>>()?;
                 compile_context.gotos.extend(unmatched);
                 compile_context.labels.truncate(labels);
-
-                if function_body {
-                    self.byte_codes.push(Bytecode::zero_return());
-                }
 
                 Ok(())
             }
@@ -435,7 +432,7 @@ impl Proto {
                 let locals = compile_context.locals.len();
                 let cache_var_args = compile_context.var_args.take();
 
-                self.block(block, compile_context, false)?;
+                self.block(block, compile_context)?;
 
                 compile_context.var_args = cache_var_args;
                 self.close_locals(locals, compile_context);
@@ -471,7 +468,7 @@ impl Proto {
 
                 let cache_var_args = compile_context.var_args.take();
 
-                self.block(block, compile_context, false)?;
+                self.block(block, compile_context)?;
 
                 compile_context.var_args = cache_var_args;
                 self.close_locals(locals, compile_context);
@@ -521,7 +518,7 @@ impl Proto {
                 let repeat_start = self.byte_codes.len();
 
                 let cache_var_args = compile_context.var_args.take();
-                self.block(block, compile_context, false)?;
+                self.block(block, compile_context)?;
                 compile_context.var_args = cache_var_args;
 
                 let cond = self.exp(exp, compile_context)?;
@@ -598,7 +595,7 @@ impl Proto {
                 self.open_local(name);
 
                 let cache_var_args = compile_context.var_args.take();
-                self.block(block, compile_context, false)?;
+                self.block(block, compile_context)?;
                 compile_context.var_args = cache_var_args;
 
                 // Close just the for variable
@@ -782,7 +779,7 @@ impl Proto {
                 let locals = compile_context.locals.len();
                 let cache_var_args = compile_context.var_args.take();
 
-                self.block(block, compile_context, false)?;
+                self.block(block, compile_context)?;
 
                 compile_context.var_args = cache_var_args;
                 compile_context.stack_top -= u8::try_from(compile_context.locals.len() - locals)
@@ -966,19 +963,25 @@ impl Proto {
                         } else {
                             stack_top.discharge(last, self, compile_context)?;
 
-                            if let ExpDesc::FunctionCall(_, _) = last {
-                                let Some(call) = self.byte_codes.pop() else {
-                                    unreachable!("Last should always be a function call");
-                                };
-                                assert_eq!(call.get_opcode(), OpCode::Call);
-                                let (func_index, inputs, _, _) = call.decode_abck();
+                            match last {
+                                ExpDesc::FunctionCall(_, _) => {
+                                    let Some(call) = self.byte_codes.pop() else {
+                                        unreachable!("Last should always be a function call");
+                                    };
+                                    assert_eq!(call.get_opcode(), OpCode::Call);
+                                    let (func_index, inputs, _, _) = call.decode_abck();
 
-                                self.byte_codes
-                                    .push(Bytecode::tail_call(func_index, inputs, 0));
-                                self.byte_codes
-                                    .push(Bytecode::return_bytecode(stack_loc, 0, 0))
-                            } else {
-                                self.byte_codes.push(Bytecode::one_return(stack_loc))
+                                    self.byte_codes
+                                        .push(Bytecode::tail_call(func_index, inputs, 0));
+                                    self.byte_codes
+                                        .push(Bytecode::return_bytecode(stack_loc, 0, 0));
+                                }
+                                ExpDesc::Closure(_) => self
+                                    .byte_codes
+                                    .push(Bytecode::return_bytecode(stack_loc, 2, 0)),
+                                _ => {
+                                    self.byte_codes.push(Bytecode::one_return(stack_loc));
+                                }
                             }
                         };
                         compile_context.stack_top -= 1;
@@ -1563,8 +1566,9 @@ impl Proto {
                 func_compile_context.stack_top =
                     u8::try_from(parlist_name_count)? + (needs_self as u8);
 
-                func_program.block(block, &mut func_compile_context, true)?;
+                func_program.block(block, &mut func_compile_context)?;
 
+                func_program.byte_codes.push(Bytecode::zero_return());
                 if parlist.variadic_args {
                     func_program.fix_up_last_return(
                         u8::try_from(parlist_name_count)?,
