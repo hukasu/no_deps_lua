@@ -27,54 +27,6 @@ pub enum Binop {
     NotEqual,
 }
 
-impl Binop {
-    pub fn arithmetic_binary_operator(&self) -> bool {
-        matches!(
-            self,
-            Self::Add
-                | Self::Sub
-                | Self::Mul
-                | Self::Mod
-                | Self::Pow
-                | Self::Div
-                | Self::Idiv
-                | Self::BitAnd
-                | Self::BitOr
-                | Self::BitXor
-                | Self::ShiftLeft
-                | Self::ShiftRight
-        )
-    }
-
-    pub fn arithmetic_binary_operator_constant(&self) -> bool {
-        matches!(
-            self,
-            Self::Add
-                | Self::Sub
-                | Self::Mul
-                | Self::Mod
-                | Self::Pow
-                | Self::Div
-                | Self::Idiv
-                | Self::BitAnd
-                | Self::BitOr
-                | Self::BitXor
-        )
-    }
-
-    pub fn relational_binary_operator(&self) -> bool {
-        matches!(
-            self,
-            Self::Equal
-                | Self::NotEqual
-                | Self::LessThan
-                | Self::GreaterThan
-                | Self::LessEqual
-                | Self::GreaterEqual
-        )
-    }
-}
-
 impl TryFrom<TokenType<'_>> for Binop {
     type Error = Error;
 
