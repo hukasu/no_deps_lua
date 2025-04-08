@@ -288,6 +288,14 @@ impl<'a> ExpDesc<'a> {
                         compile_context,
                     )
                 }
+                (_, upval @ Self::Upvalue(_), _) => {
+                    self.discharge(upval, program, compile_context)?;
+                    self.discharge(
+                        &Self::Binop(*op, Box::new(self.clone()), rhs.clone()),
+                        program,
+                        compile_context,
+                    )
+                }
                 // TODO expand to other `Binop`s
                 (op, binop @ Self::Binop(Binop::Add, _, _), _) => {
                     self.discharge(binop, program, compile_context)?;
