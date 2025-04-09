@@ -1938,12 +1938,13 @@ impl<'a> CompileStackView<'a, '_> {
                 present_higher_up
             }
         } else {
-            false
+            name == "_ENV"
         }
     }
 
     pub fn capture_environment(&mut self, name: &'a str) -> Option<ExpDesc<'a>> {
         self.proto_mut().push_upvalue("_ENV");
+        self.find_name_on_stack("_ENV");
         let Ok(global) = self.proto_mut().push_constant(name) else {
             unreachable!("Should never overflow u32.");
         };
