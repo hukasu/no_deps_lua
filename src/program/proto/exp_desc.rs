@@ -59,7 +59,6 @@ impl<'a> ExpDesc<'a> {
         src: &ExpDesc<'a>,
         compile_stack: &mut CompileStack<'a>,
     ) -> Result<(), Error> {
-        log::trace!("{:?} <= {:?}", self, src);
         match self {
             Self::Name(_) => self.discharge_into_name(src, compile_stack),
             Self::LongName(_) => self.discharge_into_long_name(src, compile_stack),
