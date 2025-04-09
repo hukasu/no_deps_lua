@@ -1,21 +1,19 @@
-mod binops;
-mod exp_desc;
-mod helper_types;
-mod proto;
-mod unops;
-
 use alloc::{boxed::Box, vec, vec::Vec};
-use exp_desc::ExpDesc;
-use helper_types::{FunctionNameList, ParList, TableFields, TableKey};
 
 use crate::{
     bytecode::{Bytecode, OpCode},
     function::Function,
-    parser::{Parser, Token, TokenType},
+    parser::{Token, TokenType},
     program::{Error, Local},
 };
 
-pub use proto::Proto;
+use super::{
+    Proto,
+    compile_context::{CompileContext, GotoLabel},
+    exp_desc::ExpDesc,
+    helper_types::{FunctionNameList, ParList, TableFields, TableKey},
+    unops,
+};
 
 macro_rules! make_deconstruct {
     ($($name:ident($token:pat$(,)?)),+$(,)?) => {
@@ -26,55 +24,68 @@ macro_rules! make_deconstruct {
     };
 }
 
-type ExpList<'a> = Vec<ExpDesc<'a>>;
+pub type ExpList<'a> = Vec<ExpDesc<'a>>;
 type NameList<'a> = Vec<Box<str>>;
 
-#[derive(Debug, Default)]
-pub struct CompileContext<'a> {
-    pub proto: Proto,
-    pub stack_top: u8,
-    pub previous_context: Option<&'a CompileContext<'a>>,
-    pub var_args: Option<bool>,
-    pub locals: Vec<Box<str>>,
-    pub breaks: Option<Vec<usize>>,
-    pub gotos: Vec<GotoLabel<'a>>,
-    pub labels: Vec<GotoLabel<'a>>,
-    pub jumps_to_block: Vec<usize>,
-    pub jumps_to_end: Vec<usize>,
+pub struct CompileStack<'a> {
+    pub stack: Vec<CompileFrame<'a>>,
 }
 
-impl<'a> CompileContext<'a> {
-    pub fn with_var_args(mut self, var_args: bool) -> Self {
-        self.var_args = Some(var_args);
-        self
+pub struct CompileStackView<'a, 'b> {
+    pub stack: &'b mut [CompileFrame<'a>],
+}
+
+#[derive(Debug)]
+pub struct CompileFrame<'a> {
+    pub proto: Proto,
+    pub compile_context: CompileContext<'a>,
+}
+
+impl<'a> CompileStack<'a> {
+    pub fn proto_mut(&mut self) -> &mut Proto {
+        let Some(frame) = self.stack.last_mut() else {
+            unreachable!("CompileStack should never be empty.");
+        };
+        &mut frame.proto
     }
 
-    pub fn parse(program: &str) -> Result<Proto, Error> {
-        let chunk = Parser::parse(program)?;
+    pub fn compile_context_mut(&mut self) -> &mut CompileContext<'a> {
+        let Some(frame) = self.stack.last_mut() else {
+            unreachable!("CompileStack should never be empty.");
+        };
+        &mut frame.compile_context
+    }
 
-        let mut compile_context = CompileContext::default().with_var_args(true);
-        compile_context.chunk(&chunk)?;
+    pub fn frame_mut(&mut self) -> &mut CompileFrame<'a> {
+        let Some(frame) = self.stack.last_mut() else {
+            unreachable!("CompileStack should never be empty.");
+        };
+        frame
+    }
 
-        Ok(compile_context.proto)
+    pub fn view<'b>(&'b mut self) -> CompileStackView<'a, 'b> {
+        CompileStackView {
+            stack: self.stack.as_mut_slice(),
+        }
     }
 
     // Non-terminals
     pub fn chunk(&mut self, chunk: &Token<'a>) -> Result<(), Error> {
         match chunk.tokens.as_slice() {
             make_deconstruct!(block(TokenType::Block)) => {
-                self.proto.push_upvalue("_ENV");
+                self.proto_mut().push_upvalue("_ENV");
 
                 self.block(block)?;
 
-                self.proto.byte_codes.push(Bytecode::zero_return());
+                self.proto_mut().byte_codes.push(Bytecode::zero_return());
                 self.fix_up_last_return(0)?;
 
                 self.close_locals(0);
 
-                if self.gotos.is_empty() {
+                if self.compile_context_mut().gotos.is_empty() {
                     Ok(())
                 } else {
-                    for goto in self.gotos.iter() {
+                    for goto in self.compile_context_mut().gotos.iter() {
                         log::error!(
                             target: "no_deps_lua::parser",
                             "Goto `{}` did not point to a label.",
@@ -103,12 +114,12 @@ impl<'a> CompileContext<'a> {
                 block_stat(TokenType::BlockStat),
                 block_retstat(TokenType::BlockRetstat)
             ) => {
-                let gotos = self.gotos.len();
-                let labels = self.labels.len();
-                let locals = self.locals.len();
+                let gotos = self.compile_context_mut().gotos.len();
+                let labels = self.compile_context_mut().labels.len();
+                let locals = self.compile_context_mut().locals.len();
 
-                if self.var_args.unwrap_or(false) {
-                    self.proto
+                if self.compile_context_mut().var_args.unwrap_or(false) {
+                    self.proto_mut()
                         .byte_codes
                         .push(Bytecode::variadic_arguments_prepare(u8::try_from(locals)?));
                 }
@@ -116,19 +127,22 @@ impl<'a> CompileContext<'a> {
                 self.block_stat(block_stat)?;
                 self.block_retstat(block_retstat)?;
 
-                let unmatched = self
+                let CompileFrame {
+                    proto,
+                    compile_context,
+                } = self.frame_mut();
+
+                let unmatched = compile_context
                     .gotos
                     .drain(gotos..)
                     .filter_map(|goto| {
-                        if let Some(label) = self
+                        if let Some(label) = compile_context
                             .labels
                             .iter()
                             .rev()
                             .find(|label| label.name == goto.name)
                         {
-                            if label.bytecode != self.proto.byte_codes.len()
-                                && label.nvar > goto.nvar
-                            {
+                            if label.bytecode != proto.byte_codes.len() && label.nvar > goto.nvar {
                                 return Some(Err(Error::GotoIntoScope));
                             }
                             let Ok(label_i) = isize::try_from(label.bytecode) else {
@@ -140,15 +154,16 @@ impl<'a> CompileContext<'a> {
                             let Ok(jump) = i32::try_from((label_i - 1) - goto_i) else {
                                 return Some(Err(Error::LongJump));
                             };
-                            self.proto.byte_codes[goto.bytecode] = Bytecode::jump(jump);
+                            proto.byte_codes[goto.bytecode] = Bytecode::jump(jump);
                             None
                         } else {
                             Some(Ok(goto))
                         }
                     })
                     .collect::<Result<Vec<_>, Error>>()?;
-                self.gotos.extend(unmatched);
-                self.labels.truncate(labels);
+
+                compile_context.gotos.extend(unmatched);
+                compile_context.labels.truncate(labels);
 
                 Ok(())
             }
@@ -217,30 +232,41 @@ impl<'a> CompileContext<'a> {
             make_deconstruct!(functioncall(TokenType::Functioncall)) => {
                 let function_call = self.functioncall(functioncall)?;
 
-                let (_, stack_top) = self.reserve_stack_top();
+                let (_, stack_top) = self.compile_context_mut().reserve_stack_top();
                 stack_top.discharge(&function_call, self)?;
-                self.stack_top -= 1;
+                self.compile_context_mut().stack_top -= 1;
 
                 Ok(())
             }
             make_deconstruct!(label(TokenType::Label)) => self.label(label),
-            make_deconstruct!(_break(TokenType::Break)) => match self.breaks.as_mut() {
-                Some(breaks) => {
-                    let bytecode = self.proto.byte_codes.len();
-                    breaks.push(bytecode);
-                    self.proto.byte_codes.push(Bytecode::jump(0));
-                    Ok(())
+            make_deconstruct!(_break(TokenType::Break)) => {
+                let CompileFrame {
+                    proto,
+                    compile_context,
+                } = self.frame_mut();
+                match compile_context.breaks.as_mut() {
+                    Some(breaks) => {
+                        let bytecode = proto.byte_codes.len();
+                        breaks.push(bytecode);
+                        proto.byte_codes.push(Bytecode::jump(0));
+                        Ok(())
+                    }
+                    None => Err(Error::BreakOutsideLoop),
                 }
-                None => Err(Error::BreakOutsideLoop),
-            },
+            }
             make_deconstruct!(_goto(TokenType::Goto), _name(TokenType::Name(name))) => {
-                let bytecode = self.proto.byte_codes.len();
-                self.proto.byte_codes.push(Bytecode::jump(0));
+                let CompileFrame {
+                    proto,
+                    compile_context,
+                } = self.frame_mut();
 
-                self.push_goto(GotoLabel {
+                let bytecode = proto.byte_codes.len();
+                proto.byte_codes.push(Bytecode::jump(0));
+
+                compile_context.push_goto(GotoLabel {
                     name,
                     bytecode,
-                    nvar: self.locals.len(),
+                    nvar: proto.locals.len(),
                 });
 
                 Ok(())
@@ -250,12 +276,12 @@ impl<'a> CompileContext<'a> {
                 block(TokenType::Block),
                 _end(TokenType::End)
             ) => {
-                let locals = self.locals.len();
-                let cache_var_args = self.var_args.take();
+                let locals = self.proto_mut().locals.len();
+                let cache_var_args = self.compile_context_mut().var_args.take();
 
                 self.block(block)?;
 
-                self.var_args = cache_var_args;
+                self.compile_context_mut().var_args = cache_var_args;
                 self.close_locals(locals);
 
                 Ok(())
@@ -267,12 +293,15 @@ impl<'a> CompileContext<'a> {
                 block(TokenType::Block),
                 _end(TokenType::End)
             ) => {
-                let jump_to_block_count = self.jumps_to_block.len();
-                let jump_to_end_count = self.jumps_to_end.len();
-                let locals = self.locals.len();
-                let mut cache_break = self.breaks.replace(Vec::with_capacity(16));
+                let jump_to_block_count = self.compile_context_mut().jumps_to_block.len();
+                let jump_to_end_count = self.compile_context_mut().jumps_to_end.len();
+                let locals = self.proto_mut().locals.len();
+                let mut cache_break = self
+                    .compile_context_mut()
+                    .breaks
+                    .replace(Vec::with_capacity(16));
 
-                let start_of_cond = self.proto.byte_codes.len();
+                let start_of_cond = self.proto_mut().byte_codes.len();
                 let cond = self.exp(exp)?;
                 ExpDesc::Condition {
                     jump_to_end: true,
@@ -280,44 +309,55 @@ impl<'a> CompileContext<'a> {
                 }
                 .discharge(&cond, self)?;
 
-                let end_of_cond = self.proto.byte_codes.len();
-                for jump in self.jumps_to_block.drain(jump_to_block_count..) {
-                    self.proto.byte_codes[jump] = Bytecode::jump(
+                let CompileFrame {
+                    proto,
+                    compile_context,
+                } = self.frame_mut();
+
+                let end_of_cond = proto.byte_codes.len();
+                for jump in compile_context.jumps_to_block.drain(jump_to_block_count..) {
+                    proto.byte_codes[jump] = Bytecode::jump(
                         i32::try_from(end_of_cond - jump).map_err(|_| Error::LongJump)?,
                     );
                 }
 
-                let cache_var_args = self.var_args.take();
+                let cache_var_args = self.compile_context_mut().var_args.take();
 
                 self.block(block)?;
 
-                self.var_args = cache_var_args;
+                self.compile_context_mut().var_args = cache_var_args;
                 self.close_locals(locals);
-                self.stack_top -= u8::try_from(self.locals.len() - locals).inspect_err(|_| {
-                    log::error!("Failed to rewind stack top after `while`s block.")
-                })?;
+                self.compile_context_mut().stack_top -=
+                    u8::try_from(self.proto_mut().locals.len() - locals).inspect_err(|_| {
+                        log::error!("Failed to rewind stack top after `while`s block.")
+                    })?;
 
-                let end_of_block = self.proto.byte_codes.len();
-                for jump in self.jumps_to_end.drain(jump_to_end_count..) {
-                    self.proto.byte_codes[jump] = Bytecode::jump(
+                let CompileFrame {
+                    proto,
+                    compile_context,
+                } = self.frame_mut();
+
+                let end_of_block = proto.byte_codes.len();
+                for jump in compile_context.jumps_to_end.drain(jump_to_end_count..) {
+                    proto.byte_codes[jump] = Bytecode::jump(
                         i32::try_from(end_of_block - jump).map_err(|_| Error::LongJump)?,
                     );
                 }
 
-                core::mem::swap(&mut self.breaks, &mut cache_break);
+                core::mem::swap(&mut self.compile_context_mut().breaks, &mut cache_break);
                 let Some(breaks) = cache_break else {
                     unreachable!(
                         "Compile Context breaks should only ever be None outside of loops."
                     );
                 };
                 for break_bytecode in breaks {
-                    self.proto.byte_codes[break_bytecode] = Bytecode::jump(
+                    self.proto_mut().byte_codes[break_bytecode] = Bytecode::jump(
                         i32::try_from(end_of_block - break_bytecode)
                             .map_err(|_| Error::LongJump)?,
                     );
                 }
 
-                self.proto.byte_codes.push(Bytecode::jump(
+                self.proto_mut().byte_codes.push(Bytecode::jump(
                     i32::try_from(start_of_cond)
                         .and_then(|lhs| i32::try_from(end_of_block + 1).map(|rhs| (lhs, rhs)))
                         .map(|(lhs, rhs)| lhs - rhs)
@@ -332,14 +372,14 @@ impl<'a> CompileContext<'a> {
                 _until(TokenType::Until),
                 exp(TokenType::Exp)
             ) => {
-                let mut jump_cache = core::mem::take(&mut self.jumps_to_end);
+                let mut jump_cache = core::mem::take(&mut self.compile_context_mut().jumps_to_end);
 
-                let locals = self.locals.len();
-                let repeat_start = self.proto.byte_codes.len();
+                let locals = self.proto_mut().locals.len();
+                let repeat_start = self.proto_mut().byte_codes.len();
 
-                let cache_var_args = self.var_args.take();
+                let cache_var_args = self.compile_context_mut().var_args.take();
                 self.block(block)?;
-                self.var_args = cache_var_args;
+                self.compile_context_mut().var_args = cache_var_args;
 
                 let cond = self.exp(exp)?;
 
@@ -350,15 +390,18 @@ impl<'a> CompileContext<'a> {
                 .discharge(&cond, self)?;
                 self.close_locals(locals);
 
-                core::mem::swap(&mut self.jumps_to_end, &mut jump_cache);
+                core::mem::swap(
+                    &mut self.compile_context_mut().jumps_to_end,
+                    &mut jump_cache,
+                );
                 assert_eq!(
                     jump_cache.len(),
                     1,
                     "Repeat should only ever have 1 conditional jump."
                 );
 
-                let repeat_end = self.proto.byte_codes.len();
-                self.proto.byte_codes[jump_cache[0]] = Bytecode::jump(
+                let repeat_end = self.proto_mut().byte_codes.len();
+                self.proto_mut().byte_codes[jump_cache[0]] = Bytecode::jump(
                     i32::try_from(isize::try_from(repeat_start)? - isize::try_from(repeat_end)?)
                         .map_err(|_| Error::LongJump)?,
                 );
@@ -385,18 +428,18 @@ impl<'a> CompileContext<'a> {
                 block(TokenType::Block),
                 _end(TokenType::End)
             ) => {
-                let locals = self.locals.len();
+                let locals = self.compile_context_mut().locals.len();
 
                 let start = self.exp(start)?;
-                let (for_stack, start_stack) = self.reserve_stack_top();
+                let (for_stack, start_stack) = self.compile_context_mut().reserve_stack_top();
                 start_stack.discharge(&start, self)?;
 
                 let end = self.exp(end)?;
-                let (_, end_stack) = self.reserve_stack_top();
+                let (_, end_stack) = self.compile_context_mut().reserve_stack_top();
                 end_stack.discharge(&end, self)?;
 
                 let step = self.stat_forexp(stat_forexp)?;
-                let (_, step_stack) = self.reserve_stack_top();
+                let (_, step_stack) = self.compile_context_mut().reserve_stack_top();
                 step_stack.discharge(&step, self)?;
 
                 // Names can't start with `?`, so using it for internal symbols
@@ -405,33 +448,35 @@ impl<'a> CompileContext<'a> {
                 }
 
                 // Reserve 1 slot for counter
-                self.stack_top += 1;
+                self.compile_context_mut().stack_top += 1;
 
-                let counter_bytecode = self.proto.byte_codes.len();
-                self.proto
+                let counter_bytecode = self.proto_mut().byte_codes.len();
+                self.proto_mut()
                     .byte_codes
                     .push(Bytecode::for_prepare(for_stack, 0));
 
                 self.open_local(name);
 
-                let cache_var_args = self.var_args.take();
+                let cache_var_args = self.compile_context_mut().var_args.take();
                 self.block(block)?;
-                self.var_args = cache_var_args;
+                self.compile_context_mut().var_args = cache_var_args;
 
+                log::warn!("{:?}", self.compile_context_mut().locals);
+                log::warn!("{:?}", self.proto_mut().locals);
                 // Close just the for variable
                 self.close_locals(locals + 3);
 
-                let end_bytecode = self.proto.byte_codes.len();
-                self.proto.byte_codes.push(Bytecode::for_loop(
+                let end_bytecode = self.proto_mut().byte_codes.len();
+                self.proto_mut().byte_codes.push(Bytecode::for_loop(
                     for_stack,
                     u32::try_from(end_bytecode - counter_bytecode)?,
                 ));
-                self.proto.byte_codes[counter_bytecode] = Bytecode::for_prepare(
+                self.proto_mut().byte_codes[counter_bytecode] = Bytecode::for_prepare(
                     for_stack,
                     u32::try_from(end_bytecode - (counter_bytecode + 1))?,
                 );
 
-                self.stack_top = for_stack;
+                self.compile_context_mut().stack_top = for_stack;
                 // Close for states
                 self.close_locals(locals);
 
@@ -463,24 +508,25 @@ impl<'a> CompileContext<'a> {
                 let final_dst = if head.is_empty() {
                     // This is the case where the function is defined as
                     // function f() ... end
-                    let constant = self.proto.push_constant(*tail)?;
+                    let constant = self.proto_mut().push_constant(*tail)?;
                     ExpDesc::Global(usize::try_from(constant)?)
                 } else {
-                    let (stack_loc, stack_top) = self.reserve_stack_top();
+                    let (stack_loc, stack_top) = self.compile_context_mut().reserve_stack_top();
                     let mut used_stack_top = false;
 
-                    let mut table_loc = if let Some(local) = self.find_name(head[0]) {
-                        u8::try_from(local)?
-                    } else {
-                        used_stack_top = true;
-                        let constant = self.proto.push_constant(head[0])?;
-                        self.proto.byte_codes.push(Bytecode::get_uptable(
-                            stack_loc,
-                            0,
-                            u8::try_from(constant)?,
-                        ));
-                        stack_loc
-                    };
+                    let mut table_loc =
+                        if let Some(local) = self.compile_context_mut().find_name(head[0]) {
+                            u8::try_from(local)?
+                        } else {
+                            used_stack_top = true;
+                            let constant = self.proto_mut().push_constant(head[0])?;
+                            self.proto_mut().byte_codes.push(Bytecode::get_uptable(
+                                stack_loc,
+                                0,
+                                u8::try_from(constant)?,
+                            ));
+                            stack_loc
+                        };
 
                     for table_key in &head[1..] {
                         stack_top.discharge(
@@ -499,7 +545,7 @@ impl<'a> CompileContext<'a> {
                     if used_stack_top {
                         stacks_used += 1;
                     } else {
-                        self.stack_top -= 1;
+                        self.compile_context_mut().stack_top -= 1;
                     }
 
                     ExpDesc::TableAccess {
@@ -509,14 +555,14 @@ impl<'a> CompileContext<'a> {
                     }
                 };
 
-                let (_, funcbody_stack) = self.reserve_stack_top();
+                let (_, funcbody_stack) = self.compile_context_mut().reserve_stack_top();
                 stacks_used += 1;
 
                 funcbody_stack.discharge(&funcbody, self)?;
 
                 final_dst.discharge(&funcbody_stack, self)?;
 
-                self.stack_top -= stacks_used;
+                self.compile_context_mut().stack_top -= stacks_used;
 
                 Ok(())
             }
@@ -528,7 +574,7 @@ impl<'a> CompileContext<'a> {
             ) => {
                 let funcbody = self.funcbody(funcbody, false)?;
 
-                let (_, function_body) = self.reserve_stack_top();
+                let (_, function_body) = self.compile_context_mut().reserve_stack_top();
                 function_body.discharge(&funcbody, self)?;
 
                 self.open_local(name);
@@ -546,7 +592,7 @@ impl<'a> CompileContext<'a> {
                 let dst_locals = namelist
                     .iter()
                     .map(|_| {
-                        let (_, loc) = self.reserve_stack_top();
+                        let (_, loc) = self.compile_context_mut().reserve_stack_top();
                         loc
                     })
                     .collect::<Vec<_>>();
@@ -584,15 +630,16 @@ impl<'a> CompileContext<'a> {
                 stat_if(TokenType::StatIf)
             ) => self.make_if(exp, block, stat_if),
             make_deconstruct!(_else(TokenType::Else), block(TokenType::Block)) => {
-                let locals = self.locals.len();
-                let cache_var_args = self.var_args.take();
+                let locals = self.proto_mut().locals.len();
+                let cache_var_args = self.compile_context_mut().var_args.take();
 
                 self.block(block)?;
 
-                self.var_args = cache_var_args;
-                self.stack_top -= u8::try_from(self.locals.len() - locals).inspect_err(|_| {
-                    log::error!("Failed to rewind stack top after `else`s block.")
-                })?;
+                self.compile_context_mut().var_args = cache_var_args;
+                self.compile_context_mut().stack_top -=
+                    u8::try_from(self.proto_mut().locals.len() - locals).inspect_err(|_| {
+                        log::error!("Failed to rewind stack top after `else`s block.")
+                    })?;
                 self.close_locals(locals);
 
                 Ok(())
@@ -735,7 +782,7 @@ impl<'a> CompileContext<'a> {
                 let explist = self.retstat_explist(retstat_explist)?;
 
                 match explist.len() {
-                    0 => self.proto.byte_codes.push(Bytecode::zero_return()),
+                    0 => self.proto_mut().byte_codes.push(Bytecode::zero_return()),
                     1 => {
                         let Some(last) = explist.last() else {
                             unreachable!(
@@ -744,49 +791,51 @@ impl<'a> CompileContext<'a> {
                             );
                         };
 
-                        let (stack_loc, stack_top) = self.reserve_stack_top();
+                        let (stack_loc, stack_top) = self.compile_context_mut().reserve_stack_top();
                         if let ExpDesc::Name(_) = last {
                             let dst = last.get_local_or_discharge_at_location(self, stack_loc)?;
 
-                            self.proto.byte_codes.push(Bytecode::one_return(dst))
+                            self.proto_mut().byte_codes.push(Bytecode::one_return(dst))
                         } else {
                             stack_top.discharge(last, self)?;
 
                             match last {
                                 ExpDesc::FunctionCall(_, _) => {
-                                    let Some(call) = self.proto.byte_codes.pop() else {
+                                    let Some(call) = self.proto_mut().byte_codes.pop() else {
                                         unreachable!("Last should always be a function call");
                                     };
                                     assert_eq!(call.get_opcode(), OpCode::Call);
                                     let (func_index, inputs, _, _) = call.decode_abck();
 
-                                    self.proto
+                                    self.proto_mut()
                                         .byte_codes
                                         .push(Bytecode::tail_call(func_index, inputs, 0));
-                                    self.proto
+                                    self.proto_mut()
                                         .byte_codes
                                         .push(Bytecode::return_bytecode(stack_loc, 0, 0));
                                 }
                                 ExpDesc::Closure(_) => self
-                                    .proto
+                                    .proto_mut()
                                     .byte_codes
                                     .push(Bytecode::return_bytecode(stack_loc, 2, 0)),
                                 _ => {
-                                    self.proto.byte_codes.push(Bytecode::one_return(stack_loc));
+                                    self.proto_mut()
+                                        .byte_codes
+                                        .push(Bytecode::one_return(stack_loc));
                                 }
                             }
                         };
-                        self.stack_top -= 1;
+                        self.compile_context_mut().stack_top -= 1;
                     }
                     _ => {
-                        let return_start = self.stack_top;
+                        let return_start = self.compile_context_mut().stack_top;
                         for exp in explist.iter() {
-                            let (_, stack_top) = self.reserve_stack_top();
+                            let (_, stack_top) = self.compile_context_mut().reserve_stack_top();
                             stack_top.discharge(exp, self)?;
                         }
-                        self.stack_top -= u8::try_from(explist.len())?;
+                        self.compile_context_mut().stack_top -= u8::try_from(explist.len())?;
 
-                        self.proto.byte_codes.push(Bytecode::return_bytecode(
+                        self.proto_mut().byte_codes.push(Bytecode::return_bytecode(
                             return_start,
                             u8::try_from(explist.len())? + 1,
                             0,
@@ -851,11 +900,17 @@ impl<'a> CompileContext<'a> {
                 _doublecolon1(TokenType::DoubleColon),
                 _name(TokenType::Name(name)),
                 _doublecolon2(TokenType::DoubleColon)
-            ) => self.push_label(GotoLabel {
-                name,
-                bytecode: self.proto.byte_codes.len(),
-                nvar: self.locals.len(),
-            }),
+            ) => {
+                let CompileFrame {
+                    proto,
+                    compile_context,
+                } = self.frame_mut();
+                compile_context.push_label(GotoLabel {
+                    name,
+                    bytecode: proto.byte_codes.len(),
+                    nvar: proto.locals.len(),
+                })
+            }
             _ => {
                 unreachable!(
                     "Label did not match any of the productions. Had {:#?}.",
@@ -1278,38 +1333,13 @@ impl<'a> CompileContext<'a> {
                 let parlist = self.funcbody_parlist(funcbody_parlist)?;
                 let parlist_name_count = parlist.names.len();
 
-                let mut func_compile_context =
-                    CompileContext::default().with_var_args(parlist.variadic_args);
-                func_compile_context.previous_context = Some(self);
+                let proto = self.make_closure(&parlist, block, needs_self)?;
 
-                if needs_self {
-                    func_compile_context.open_local("self");
-                }
-                for name in parlist.names {
-                    func_compile_context.open_local(name.as_ref());
-                }
-
-                func_compile_context.stack_top =
-                    u8::try_from(parlist_name_count)? + (needs_self as u8);
-
-                func_compile_context.block(block)?;
-
-                func_compile_context
-                    .proto
-                    .byte_codes
-                    .push(Bytecode::zero_return());
-                if parlist.variadic_args {
-                    func_compile_context.fix_up_last_return(u8::try_from(parlist_name_count)?)?;
-                }
-
-                func_compile_context.close_locals(0);
-
-                let closure_position = self.proto.push_function(Function::new(
-                    func_compile_context.proto.into(),
+                let closure_position = self.proto_mut().push_function(Function::new(
+                    proto.into(),
                     parlist_name_count + (needs_self as usize),
                     parlist.variadic_args,
                 ));
-
                 Ok(ExpDesc::Closure(closure_position))
             }
             _ => {
@@ -1658,32 +1688,14 @@ impl<'a> CompileContext<'a> {
         ExpDesc::Name(name)
     }
 
-    pub fn find_name(&self, name: &'a str) -> Option<usize> {
-        self.locals.iter().rposition(|local| local.as_ref() == name)
-    }
-
-    pub fn exists_in_upvalue(&self, name: &'a str) -> bool {
-        if self
-            .locals
-            .iter()
-            .any(|local| local.as_ref() == name || local.as_ref() == "_ENV")
-        {
-            true
-        } else {
-            self.previous_context
-                .filter(|context| context.exists_in_upvalue(name))
-                .is_some()
-        }
-    }
-
     fn make_if(
         &mut self,
         exp: &Token<'a>,
         block: &Token<'a>,
         stat_if: &Token<'a>,
     ) -> Result<(), Error> {
-        let jump_to_block_count = self.jumps_to_block.len();
-        let jump_to_end_count = self.jumps_to_end.len();
+        let jump_to_block_count = self.compile_context_mut().jumps_to_block.len();
+        let jump_to_end_count = self.compile_context_mut().jumps_to_end.len();
 
         let cond = self.exp(exp)?;
         ExpDesc::Condition {
@@ -1692,56 +1704,122 @@ impl<'a> CompileContext<'a> {
         }
         .discharge(&cond, self)?;
 
-        let start_of_block = self.proto.byte_codes.len() - 1;
-        for jump in self.jumps_to_block.drain(jump_to_block_count..) {
-            self.proto.byte_codes[jump] =
-                Bytecode::jump(i32::try_from(start_of_block - jump).map_err(|_| Error::LongJump)?);
+        {
+            let CompileFrame {
+                proto,
+                compile_context,
+            } = self.frame_mut();
+
+            let start = proto.byte_codes.len() - 1;
+            for jump in compile_context.jumps_to_block.drain(jump_to_block_count..) {
+                proto.byte_codes[jump] =
+                    Bytecode::jump(i32::try_from(start - jump).map_err(|_| Error::LongJump)?);
+            }
         }
 
-        let locals = self.locals.len();
-        let cache_var_args = self.var_args.take();
+        let locals = self.proto_mut().locals.len();
+        let cache_var_args = self.compile_context_mut().var_args.take();
 
         self.block(block)?;
 
-        self.var_args = cache_var_args;
-        self.stack_top -= u8::try_from(self.locals.len() - locals)
-            .inspect_err(|_| log::error!("Failed to rewind stack top after `if`s block."))?;
+        self.compile_context_mut().var_args = cache_var_args;
+        self.compile_context_mut().stack_top -=
+            u8::try_from(self.proto_mut().locals.len() - locals)
+                .inspect_err(|_| log::error!("Failed to rewind stack top after `if`s block."))?;
         self.close_locals(locals);
 
-        let jump_out_of_if = self.proto.byte_codes.len();
-        self.proto.byte_codes.push(Bytecode::jump(0));
+        let jump_out_of_if = self.proto_mut().byte_codes.len();
+        self.proto_mut().byte_codes.push(Bytecode::jump(0));
 
-        let start_of_block = self.proto.byte_codes.len() - 1;
-        for jump in self.jumps_to_block.drain(jump_to_block_count..) {
-            self.proto.byte_codes[jump] =
-                Bytecode::jump(i32::try_from(start_of_block - jump).map_err(|_| Error::LongJump)?);
-        }
+        let start_of_block = {
+            let CompileFrame {
+                proto,
+                compile_context,
+            } = self.frame_mut();
+
+            let start = proto.byte_codes.len() - 1;
+            for jump in compile_context.jumps_to_block.drain(jump_to_block_count..) {
+                proto.byte_codes[jump] =
+                    Bytecode::jump(i32::try_from(start - jump).map_err(|_| Error::LongJump)?);
+            }
+            start
+        };
 
         self.stat_if(stat_if)?;
 
-        let after_elses = self.proto.byte_codes.len();
+        let after_elses = self.proto_mut().byte_codes.len();
         let offset = if after_elses != jump_out_of_if + 1 {
-            self.proto.byte_codes[jump_out_of_if] = Bytecode::jump(
+            self.proto_mut().byte_codes[jump_out_of_if] = Bytecode::jump(
                 i32::try_from(after_elses - jump_out_of_if - 1).map_err(|_| Error::LongJump)?,
             );
             0
         } else {
-            self.proto.byte_codes.pop();
+            self.proto_mut().byte_codes.pop();
             1
         };
 
-        for jump in self.jumps_to_end.drain(jump_to_end_count..) {
-            self.proto.byte_codes[jump] = Bytecode::jump(
-                i32::try_from(start_of_block - jump - offset).map_err(|_| Error::LongJump)?,
-            );
+        {
+            let CompileFrame {
+                proto,
+                compile_context,
+            } = self.frame_mut();
+
+            for jump in compile_context.jumps_to_end.drain(jump_to_end_count..) {
+                proto.byte_codes[jump] = Bytecode::jump(
+                    i32::try_from(start_of_block - jump - offset).map_err(|_| Error::LongJump)?,
+                );
+            }
         }
 
         Ok(())
     }
 
+    fn make_closure(
+        &mut self,
+        parlist: &ParList,
+        block: &Token<'a>,
+        needs_self: bool,
+    ) -> Result<Proto, Error> {
+        let parlist_name_count = parlist.names.len();
+
+        self.stack.push(CompileFrame {
+            proto: Proto::default(),
+            compile_context: CompileContext::new_with_var_args(parlist.variadic_args),
+        });
+
+        if needs_self {
+            self.open_local("self");
+        }
+        for name in &parlist.names {
+            self.open_local(name.as_ref());
+        }
+
+        self.compile_context_mut().stack_top =
+            u8::try_from(parlist_name_count)? + (needs_self as u8);
+
+        self.block(block)?;
+
+        self.proto_mut().byte_codes.push(Bytecode::zero_return());
+        if parlist.variadic_args {
+            self.fix_up_last_return(u8::try_from(parlist_name_count)?)?;
+        }
+
+        self.close_locals(0);
+
+        let Some(CompileFrame {
+            proto,
+            compile_context: _,
+        }) = self.stack.pop()
+        else {
+            unreachable!("CompileStack should never be empty.");
+        };
+
+        Ok(proto)
+    }
+
     fn fix_up_last_return(&mut self, fixed_arguments: u8) -> Result<(), Error> {
         if self
-            .proto
+            .proto_mut()
             .byte_codes
             .pop()
             .filter(|bytecode| bytecode.get_opcode() == OpCode::ZeroReturn)
@@ -1750,40 +1828,48 @@ impl<'a> CompileContext<'a> {
             unreachable!("Bytecode at the end of a function body should always be `ZeroReturn`.");
         };
 
-        let locals = u8::try_from(self.locals.len())?;
+        let locals = u8::try_from(self.compile_context_mut().locals.len())?;
         if self
-            .proto
+            .proto_mut()
             .byte_codes
             .last()
             .filter(|bytecode| bytecode.get_opcode() == OpCode::TailCall)
             .is_some()
         {
-            self.proto
+            self.proto_mut()
                 .byte_codes
                 .push(Bytecode::return_bytecode(locals, 0, 0));
         } else {
-            self.proto
-                .byte_codes
-                .push(Bytecode::return_bytecode(locals, 1, fixed_arguments + 1));
+            self.proto_mut().byte_codes.push(Bytecode::return_bytecode(
+                locals,
+                1,
+                fixed_arguments + 1,
+            ));
         }
 
         Ok(())
     }
 
     fn open_local(&mut self, name: &str) {
-        self.locals.push(name.into());
-        self.proto.locals.push(Local::new_no_end(
-            name.into(),
-            self.proto.byte_codes.len() + 1,
-        ));
+        self.compile_context_mut().locals.push(name.into());
+        let local_loc = self.proto_mut().byte_codes.len() + 1;
+        self.proto_mut()
+            .locals
+            .push(Local::new_no_end(name.into(), local_loc));
     }
 
     fn close_locals(&mut self, first_local_of_scope: usize) {
-        let scope_end = self.proto.byte_codes.len() + 1;
+        let CompileFrame {
+            proto,
+            compile_context,
+        } = self.frame_mut();
+
+        let scope_end = proto.byte_codes.len() + 1;
         let mut closed_on_this_call = Vec::new();
-        for local in self.locals.drain(first_local_of_scope..).rev() {
+
+        for local in compile_context.locals.drain(first_local_of_scope..).rev() {
             let Some((i, local)) =
-                self.proto
+                proto
                     .locals
                     .iter_mut()
                     .enumerate()
@@ -1801,34 +1887,67 @@ impl<'a> CompileContext<'a> {
             local.update_scope_end(scope_end);
         }
     }
-
-    pub fn reserve_stack_top(&mut self) -> (u8, ExpDesc<'a>) {
-        let top = self.stack_top;
-        self.stack_top += 1;
-        (top, ExpDesc::Local(usize::from(top)))
-    }
-
-    fn push_goto(&mut self, goto_label: GotoLabel<'a>) {
-        self.gotos.push(goto_label);
-    }
-
-    fn push_label(&mut self, goto_label: GotoLabel<'a>) -> Result<(), Error> {
-        if self
-            .labels
-            .iter()
-            .any(|label| label.name == goto_label.name)
-        {
-            Err(Error::LabelRedefinition)
-        } else {
-            self.labels.push(goto_label);
-            Ok(())
-        }
-    }
 }
 
-#[derive(Debug)]
-pub struct GotoLabel<'a> {
-    pub name: &'a str,
-    pub bytecode: usize,
-    pub nvar: usize,
+impl<'a> CompileStackView<'a, '_> {
+    const SHORT_STRING_LEN: usize = 32;
+
+    pub fn proto_mut(&mut self) -> &mut Proto {
+        let Some(frame) = self.stack.last_mut() else {
+            unreachable!("CompileStack should never be empty.");
+        };
+        &mut frame.proto
+    }
+
+    pub fn compile_context_mut(&mut self) -> &mut CompileContext<'a> {
+        let Some(frame) = self.stack.last_mut() else {
+            unreachable!("CompileStack should never be empty.");
+        };
+        &mut frame.compile_context
+    }
+
+    pub fn find_name(&mut self, name: &'a str) -> Option<ExpDesc<'a>> {
+        if name.len() > Self::SHORT_STRING_LEN {
+            Some(ExpDesc::LongName(name))
+        } else {
+            self.compile_context_mut()
+                .find_name(name)
+                .map(ExpDesc::Local)
+        }
+    }
+
+    pub fn capture_name(&mut self, name: &'a str) -> Option<ExpDesc<'a>> {
+        if self.find_name_on_stack(name) {
+            let upvalue = self.proto_mut().push_upvalue(name);
+            log::trace!("{} Upvalue({})", name, upvalue);
+            Some(ExpDesc::Upvalue(upvalue))
+        } else {
+            None
+        }
+    }
+
+    fn find_name_on_stack(&mut self, name: &'a str) -> bool {
+        if let [head @ .., tail] = self.stack {
+            if tail.compile_context.find_name(name).is_some() {
+                true
+            } else {
+                let mut view = CompileStackView { stack: head };
+                let present_higher_up = view.find_name_on_stack(name);
+                if present_higher_up {
+                    tail.proto.push_upvalue(name);
+                }
+                present_higher_up
+            }
+        } else {
+            false
+        }
+    }
+
+    pub fn capture_environment(&mut self, name: &'a str) -> Option<ExpDesc<'a>> {
+        self.proto_mut().push_upvalue("_ENV");
+        let Ok(global) = self.proto_mut().push_constant(name) else {
+            unreachable!("Should never overflow u32.");
+        };
+        Some(ExpDesc::Global(usize::try_from(global).unwrap()))
+    }
 }

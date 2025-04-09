@@ -1,6 +1,6 @@
-mod compile_context;
 mod error;
 mod locals;
+mod proto;
 #[cfg(test)]
 mod tests;
 
@@ -10,9 +10,9 @@ use crate::{bytecode::Bytecode, function::Function};
 
 use super::value::Value;
 
-use compile_context::{CompileContext, Proto};
 pub use error::Error;
 pub use locals::Local;
+use proto::Proto;
 
 #[derive(Debug, Default, Clone)]
 pub struct Program {
@@ -25,7 +25,7 @@ pub struct Program {
 
 impl Program {
     pub fn parse(program: &str) -> Result<Self, Error> {
-        CompileContext::parse(program).map(Program::from)
+        Proto::parse(program).map(Program::from)
     }
 
     pub fn read_bytecode(&self, index: usize) -> Option<Bytecode> {
