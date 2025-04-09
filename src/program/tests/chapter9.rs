@@ -1,4 +1,4 @@
-use crate::{bytecode::Bytecode, program::Local, Program};
+use crate::{Program, bytecode::Bytecode, program::Local};
 
 #[test]
 fn upvalues() {
@@ -170,6 +170,120 @@ foo()
             "up4".into(),
             "print".into(),
         ],
+        0,
+    );
+
+    crate::Lua::run_program(program).expect("Should run");
+}
+
+#[test]
+fn broker() {
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
+
+    let program = Program::parse(
+        r#"
+local function factory()
+    local i = 0
+    return function()
+        print(i)
+	    i = i + 1
+    end
+end
+
+local f1 = factory()
+f1()
+f1()
+local f2 = factory()
+f2()
+f1()
+f2()
+f1()
+"#,
+    )
+    .unwrap();
+
+    super::compare_program(
+        &program,
+        &[
+            Bytecode::variadic_arguments_prepare(0),
+            // local function factory()
+            Bytecode::closure(0, 0),
+            // local f1 = factory()
+            Bytecode::move_bytecode(1, 0),
+            Bytecode::call(1, 1, 2),
+            // f1()
+            Bytecode::move_bytecode(2, 1),
+            Bytecode::call(2, 1, 1),
+            // f1()
+            Bytecode::move_bytecode(2, 1),
+            Bytecode::call(2, 1, 1),
+            // local f2 = factory()
+            Bytecode::move_bytecode(2, 0),
+            Bytecode::call(2, 1, 2),
+            // f2()
+            Bytecode::move_bytecode(3, 2),
+            Bytecode::call(3, 1, 1),
+            // f1()
+            Bytecode::move_bytecode(3, 1),
+            Bytecode::call(3, 1, 1),
+            // f2()
+            Bytecode::move_bytecode(3, 2),
+            Bytecode::call(3, 1, 1),
+            // f1()
+            Bytecode::move_bytecode(3, 1),
+            Bytecode::call(3, 1, 1),
+            // EOF
+            Bytecode::return_bytecode(3, 1, 1),
+        ],
+        &[],
+        &[
+            Local::new("factory".into(), 3, 20),
+            Local::new("f1".into(), 5, 20),
+            Local::new("f2".into(), 11, 20),
+        ],
+        &["_ENV".into()],
+        1,
+    );
+
+    let closure = super::get_closure_program(&program, 0);
+    super::compare_program(
+        closure,
+        &[
+            // local function factory()
+            //     local i = 0
+            Bytecode::load_integer(0, 0),
+            //     return function()
+            Bytecode::closure(1, 0),
+            Bytecode::return_bytecode(1, 2, 0),
+            // end
+            Bytecode::zero_return(),
+        ],
+        &[],
+        &[Local::new("i".into(), 2, 5)],
+        &["_ENV".into()],
+        1,
+    );
+
+    let closure = super::get_closure_program(closure, 0);
+    super::compare_program(
+        closure,
+        &[
+            // function()
+            //     print(i)
+            Bytecode::get_uptable(0, 0, 0),
+            Bytecode::get_upvalue(1, 1),
+            Bytecode::call(0, 2, 1),
+            //     i = i + 1
+            Bytecode::get_upvalue(0, 1),
+            Bytecode::add_integer(0, 0, 1),
+            // MMBINI
+            Bytecode::set_upvalue(1, 0),
+            // end
+            Bytecode::zero_return(),
+        ],
+        &["print".into()],
+        &[],
+        &["_ENV".into(), "i".into()],
         0,
     );
 
