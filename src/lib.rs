@@ -109,6 +109,7 @@ impl Lua {
             stack_frame: last_stack + last_variadics + func_index + 1,
             variadic_arguments,
             out_params,
+            open_upvalues: Vec::new(),
         };
 
         self.stack.resize(
@@ -123,6 +124,10 @@ impl Lua {
         let popped_stack = self.pop_stack_frame();
 
         let start = popped_stack.stack_frame + return_start;
+
+        for open_upvalue in popped_stack.open_upvalues {
+            open_upvalue.borrow_mut().close(self);
+        }
 
         let returns = self
             .stack
@@ -266,7 +271,8 @@ impl Lua {
 
     fn find_upvalue(&mut self, upvalue: &str) -> Result<Rc<RefCell<Upvalue>>, Error> {
         let mut upvalue_opt = None;
-        for stack_frame in self.stack_frame.iter().rev() {
+        for stack_frame_id in (0..self.stack_frame.len()).rev() {
+            let stack_frame = &self.stack_frame[stack_frame_id];
             let closure = self.get_running_closure_of_stack_frame(stack_frame);
             if let Some(local) = closure
                 .program()
@@ -278,9 +284,12 @@ impl Lua {
                 .last()
                 .map(|(i, _)| i)
             {
-                upvalue_opt = Some(Rc::new(RefCell::new(Upvalue::Open(
-                    stack_frame.stack_frame + local,
-                ))));
+                let open_upvalue =
+                    Rc::new(RefCell::new(Upvalue::Open(stack_frame.stack_frame + local)));
+                self.stack_frame[stack_frame_id]
+                    .open_upvalues
+                    .push(open_upvalue.clone());
+                upvalue_opt = Some(open_upvalue);
                 break;
             }
         }

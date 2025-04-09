@@ -2,7 +2,7 @@ use core::cell::RefCell;
 
 use alloc::{rc::Rc, vec::Vec};
 
-use crate::{function::Function, value::Value, Error, Lua, Program};
+use crate::{Error, Lua, Program, function::Function, value::Value};
 
 #[derive(Debug)]
 pub struct Closure {
@@ -87,4 +87,16 @@ pub enum FunctionType {
 pub enum Upvalue {
     Open(usize),
     Closed(Value),
+}
+
+impl Upvalue {
+    pub fn close(&mut self, lua: &Lua) {
+        match self {
+            Upvalue::Open(stack) => {
+                let value = lua.stack[*stack].clone();
+                *self = Upvalue::Closed(value);
+            }
+            Upvalue::Closed(_) => unreachable!("Called `close` on a already closed Upvalue."),
+        }
+    }
 }
