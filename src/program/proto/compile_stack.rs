@@ -1919,7 +1919,6 @@ impl<'a> CompileStackView<'a, '_> {
     pub fn capture_name(&mut self, name: &'a str) -> Option<ExpDesc<'a>> {
         if self.find_name_on_stack(name) {
             let upvalue = self.proto_mut().push_upvalue(name);
-            log::trace!("{} Upvalue({})", name, upvalue);
             Some(ExpDesc::Upvalue(upvalue))
         } else {
             None

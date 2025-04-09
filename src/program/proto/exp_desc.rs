@@ -1163,9 +1163,7 @@ impl<'a> ExpDesc<'a> {
                 self
             );
         };
-        log::trace!("{:?}", compile_stack.compile_context_mut().locals);
-        log::trace!("{:?}", compile_stack.proto_mut().locals);
-        log::trace!("{:?}", compile_stack.proto_mut().upvalues);
+
         match src {
             Self::ExpList(src_explist) => {
                 let mut used_stack = 0;
