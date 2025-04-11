@@ -1,5 +1,7 @@
 use core::{fmt::Display, num::TryFromIntError};
 
+use alloc::boxed::Box;
+
 #[derive(Debug, PartialEq)]
 pub enum Error {
     Parse,
@@ -32,6 +34,7 @@ pub enum Error {
     UnmatchedGoto,
     IntCoversion,
     GotoIntoScope,
+    NonSequentialLocalInitialization(Box<str>),
 }
 
 impl Display for Error {
@@ -114,6 +117,13 @@ impl Display for Error {
             }
             Self::StackOverflow => {
                 write!(f, "Tried accessing index outside stack bounds.")
+            }
+            Self::NonSequentialLocalInitialization(explist) => {
+                write!(
+                    f,
+                    "Local initialization need to have the locations in sequential order, but was {:?}.",
+                    explist
+                )
             }
         }
     }
