@@ -15,11 +15,11 @@ use alloc::{
 };
 
 use crate::{
+    Lua,
     closure::{Closure, FunctionType},
     function::Function,
     table::Table,
     value::{Value, ValueKey},
-    Lua,
 };
 
 use super::Error;
@@ -1063,7 +1063,7 @@ impl Bytecode {
                     "add",
                     lhs.static_type_name(),
                     "integer",
-                ))
+                ));
             }
         };
         vm.set_stack(dst, res)
@@ -1087,7 +1087,7 @@ impl Bytecode {
                     "add",
                     lhs.static_type_name(),
                     rhs.static_type_name(),
-                ))
+                ));
             }
         };
         vm.set_stack(dst, res)
@@ -1111,7 +1111,7 @@ impl Bytecode {
                     "mul",
                     lhs.static_type_name(),
                     rhs.static_type_name(),
-                ))
+                ));
             }
         };
         vm.set_stack(dst, res)
@@ -1130,7 +1130,7 @@ impl Bytecode {
                     "add",
                     lhs.static_type_name(),
                     rhs.static_type_name(),
-                ))
+                ));
             }
         };
         vm.set_stack(dst, res)
@@ -1149,7 +1149,7 @@ impl Bytecode {
                     "sub",
                     lhs.static_type_name(),
                     rhs.static_type_name(),
-                ))
+                ));
             }
         };
         vm.set_stack(dst, res)
@@ -1168,7 +1168,7 @@ impl Bytecode {
                     "mul",
                     lhs.static_type_name(),
                     rhs.static_type_name(),
-                ))
+                ));
             }
         };
         vm.set_stack(dst, res)
@@ -1187,7 +1187,7 @@ impl Bytecode {
                     "mod",
                     lhs.static_type_name(),
                     rhs.static_type_name(),
-                ))
+                ));
             }
         };
         vm.set_stack(dst, res)
@@ -1206,7 +1206,7 @@ impl Bytecode {
                     "pow",
                     lhs.static_type_name(),
                     rhs.static_type_name(),
-                ))
+                ));
             }
         };
         vm.set_stack(dst, res)
@@ -1225,7 +1225,7 @@ impl Bytecode {
                     "div",
                     lhs.static_type_name(),
                     rhs.static_type_name(),
-                ))
+                ));
             }
         };
         vm.set_stack(dst, res)
@@ -1244,7 +1244,7 @@ impl Bytecode {
                     "idiv",
                     lhs.static_type_name(),
                     rhs.static_type_name(),
-                ))
+                ));
             }
         };
         vm.set_stack(dst, res)
@@ -1260,7 +1260,7 @@ impl Bytecode {
                     "and",
                     lhs.static_type_name(),
                     rhs.static_type_name(),
-                ))
+                ));
             }
         };
         vm.set_stack(dst, res)
@@ -1276,7 +1276,7 @@ impl Bytecode {
                     "or",
                     lhs.static_type_name(),
                     rhs.static_type_name(),
-                ))
+                ));
             }
         };
         vm.set_stack(dst, res)
@@ -1292,7 +1292,7 @@ impl Bytecode {
                     "xor",
                     lhs.static_type_name(),
                     rhs.static_type_name(),
-                ))
+                ));
             }
         };
         vm.set_stack(dst, res)
@@ -1308,7 +1308,7 @@ impl Bytecode {
                     "shift left",
                     lhs.static_type_name(),
                     rhs.static_type_name(),
-                ))
+                ));
             }
         };
         vm.set_stack(dst, res)
@@ -1327,7 +1327,7 @@ impl Bytecode {
                     "shift right",
                     lhs.static_type_name(),
                     rhs.static_type_name(),
-                ))
+                ));
             }
         };
         vm.set_stack(dst, res)
