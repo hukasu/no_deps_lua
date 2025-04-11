@@ -1,4 +1,4 @@
-use crate::{bytecode::Bytecode, program::Local, Program};
+use crate::{Program, bytecode::Bytecode, program::Local};
 
 #[test]
 fn if_statement() {
@@ -548,6 +548,117 @@ end
             "local var".into(),
         ],
         &[Local::new("a".into(), 19, 19)],
+        &["_ENV".into()],
+        0,
+    );
+
+    crate::Lua::run_program(program).expect("Should run");
+}
+
+#[test]
+fn local_in_blocks() {
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
+
+    let program = Program::parse(
+        r#"
+local a = 5
+if a > 10 then
+    local b = 100
+elseif a < 0 then
+    local b = 101
+else
+    local b = 102
+end
+do
+    local b = 103
+end
+for i = 1,2 do
+    local b = 104
+end
+repeat
+    local b = 105
+until a > 0
+while a > 0 do
+    local b = 106
+    break
+end
+local c = 10
+
+"#,
+    )
+    .unwrap();
+
+    super::compare_program(
+        &program,
+        &[
+            Bytecode::variadic_arguments_prepare(0),
+            // local a = 5
+            Bytecode::load_integer(0, 5),
+            // if a > 10 then
+            Bytecode::greater_than_integer(0, 10, 0),
+            Bytecode::jump(2),
+            //     local b = 100
+            Bytecode::load_integer(1, 100),
+            Bytecode::jump(5),
+            // elseif a < 0 then
+            Bytecode::less_than_integer(0, 0, 0),
+            Bytecode::jump(2),
+            //     local b = 101
+            Bytecode::load_integer(1, 101),
+            Bytecode::jump(1),
+            // else
+            //     local b = 102
+            Bytecode::load_integer(1, 102),
+            // end
+            // do
+            //     local b = 103
+            Bytecode::load_integer(1, 103),
+            // end
+            // for i = 1,2 do
+            Bytecode::load_integer(1, 1),
+            Bytecode::load_integer(2, 2),
+            Bytecode::load_integer(3, 1),
+            Bytecode::for_prepare(1, 1),
+            //     local b = 104
+            Bytecode::load_integer(5, 104),
+            // end
+            Bytecode::for_loop(1, 2),
+            // repeat
+            //     local b = 105
+            Bytecode::load_integer(1, 105),
+            // until a > 0
+            Bytecode::greater_than_integer(0, 0, 0),
+            Bytecode::jump(-3),
+            // while a > 0 do
+            Bytecode::greater_than_integer(0, 0, 0),
+            Bytecode::jump(3),
+            //     local b = 106
+            Bytecode::load_integer(1, 106),
+            //     break
+            Bytecode::jump(1),
+            // end
+            Bytecode::jump(-5),
+            // local c = 10
+            Bytecode::load_integer(1, 10),
+            // EOF
+            Bytecode::return_bytecode(2, 1, 1),
+        ],
+        &[],
+        &[
+            Local::new("a".into(), 3, 29),
+            Local::new("b".into(), 6, 6),
+            Local::new("b".into(), 10, 10),
+            Local::new("b".into(), 12, 12),
+            Local::new("b".into(), 13, 13),
+            Local::new("?for_start".into(), 16, 19),
+            Local::new("?for_end".into(), 16, 19),
+            Local::new("?for_step".into(), 16, 19),
+            Local::new("i".into(), 17, 18),
+            Local::new("b".into(), 18, 18),
+            Local::new("b".into(), 20, 22),
+            Local::new("b".into(), 25, 26),
+            Local::new("c".into(), 28, 29),
+        ],
         &["_ENV".into()],
         0,
     );

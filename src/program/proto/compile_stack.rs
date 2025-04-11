@@ -276,13 +276,15 @@ impl<'a> CompileStack<'a> {
                 block(TokenType::Block),
                 _end(TokenType::End)
             ) => {
-                let locals = self.proto_mut().locals.len();
+                let locals = self.compile_context_mut().locals.len();
+                let rewind_stack_top = self.compile_context_mut().stack_top;
                 let cache_var_args = self.compile_context_mut().var_args.take();
 
                 self.block(block)?;
 
                 self.compile_context_mut().var_args = cache_var_args;
                 self.close_locals(locals);
+                self.compile_context_mut().stack_top = rewind_stack_top;
 
                 Ok(())
             }
@@ -295,7 +297,8 @@ impl<'a> CompileStack<'a> {
             ) => {
                 let jump_to_block_count = self.compile_context_mut().jumps_to_block.len();
                 let jump_to_end_count = self.compile_context_mut().jumps_to_end.len();
-                let locals = self.proto_mut().locals.len();
+                let locals = self.compile_context_mut().locals.len();
+                let rewind_stack_top = self.compile_context_mut().stack_top;
                 let mut cache_break = self
                     .compile_context_mut()
                     .breaks
@@ -327,10 +330,7 @@ impl<'a> CompileStack<'a> {
 
                 self.compile_context_mut().var_args = cache_var_args;
                 self.close_locals(locals);
-                self.compile_context_mut().stack_top -=
-                    u8::try_from(self.proto_mut().locals.len() - locals).inspect_err(|_| {
-                        log::error!("Failed to rewind stack top after `while`s block.")
-                    })?;
+                self.compile_context_mut().stack_top = rewind_stack_top;
 
                 let CompileFrame {
                     proto,
@@ -374,7 +374,8 @@ impl<'a> CompileStack<'a> {
             ) => {
                 let mut jump_cache = core::mem::take(&mut self.compile_context_mut().jumps_to_end);
 
-                let locals = self.proto_mut().locals.len();
+                let locals = self.compile_context_mut().locals.len();
+                let rewind_stack_top = self.compile_context_mut().stack_top;
                 let repeat_start = self.proto_mut().byte_codes.len();
 
                 let cache_var_args = self.compile_context_mut().var_args.take();
@@ -389,6 +390,7 @@ impl<'a> CompileStack<'a> {
                 }
                 .discharge(&cond, self)?;
                 self.close_locals(locals);
+                self.compile_context_mut().stack_top = rewind_stack_top;
 
                 core::mem::swap(
                     &mut self.compile_context_mut().jumps_to_end,
@@ -429,6 +431,7 @@ impl<'a> CompileStack<'a> {
                 _end(TokenType::End)
             ) => {
                 let locals = self.compile_context_mut().locals.len();
+                let rewind_stack_top = self.compile_context_mut().stack_top;
 
                 let start = self.exp(start)?;
                 let (for_stack, start_stack) = self.compile_context_mut().reserve_stack_top();
@@ -461,8 +464,6 @@ impl<'a> CompileStack<'a> {
                 self.block(block)?;
                 self.compile_context_mut().var_args = cache_var_args;
 
-                log::warn!("{:?}", self.compile_context_mut().locals);
-                log::warn!("{:?}", self.proto_mut().locals);
                 // Close just the for variable
                 self.close_locals(locals + 3);
 
@@ -476,9 +477,9 @@ impl<'a> CompileStack<'a> {
                     u32::try_from(end_bytecode - (counter_bytecode + 1))?,
                 );
 
-                self.compile_context_mut().stack_top = for_stack;
                 // Close for states
                 self.close_locals(locals);
+                self.compile_context_mut().stack_top = rewind_stack_top;
 
                 Ok(())
             }
@@ -630,16 +631,14 @@ impl<'a> CompileStack<'a> {
                 stat_if(TokenType::StatIf)
             ) => self.make_if(exp, block, stat_if),
             make_deconstruct!(_else(TokenType::Else), block(TokenType::Block)) => {
-                let locals = self.proto_mut().locals.len();
+                let locals = self.compile_context_mut().locals.len();
+                let rewind_stack_top = self.compile_context_mut().stack_top;
                 let cache_var_args = self.compile_context_mut().var_args.take();
 
                 self.block(block)?;
 
                 self.compile_context_mut().var_args = cache_var_args;
-                self.compile_context_mut().stack_top -=
-                    u8::try_from(self.proto_mut().locals.len() - locals).inspect_err(|_| {
-                        log::error!("Failed to rewind stack top after `else`s block.")
-                    })?;
+                self.compile_context_mut().stack_top = rewind_stack_top;
                 self.close_locals(locals);
 
                 Ok(())
@@ -1717,15 +1716,14 @@ impl<'a> CompileStack<'a> {
             }
         }
 
-        let locals = self.proto_mut().locals.len();
+        let locals = self.compile_context_mut().locals.len();
+        let rewind_stack_top = self.compile_context_mut().stack_top;
         let cache_var_args = self.compile_context_mut().var_args.take();
 
         self.block(block)?;
 
         self.compile_context_mut().var_args = cache_var_args;
-        self.compile_context_mut().stack_top -=
-            u8::try_from(self.proto_mut().locals.len() - locals)
-                .inspect_err(|_| log::error!("Failed to rewind stack top after `if`s block."))?;
+        self.compile_context_mut().stack_top = rewind_stack_top;
         self.close_locals(locals);
 
         let jump_out_of_if = self.proto_mut().byte_codes.len();
