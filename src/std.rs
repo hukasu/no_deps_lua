@@ -9,7 +9,7 @@ pub fn lib_print(vm: &mut Lua) -> i32 {
         .iter()
         .map(|value| value.to_string())
         .collect::<Vec<_>>()
-        .join(",");
+        .join("\t");
 
     log::info!(target: "no_deps_lua::vm", "{}", print_string);
     0
