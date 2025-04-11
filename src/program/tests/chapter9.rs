@@ -415,3 +415,143 @@ test_upvalue_env()
 
     crate::Lua::run_program(program).expect("Should run");
 }
+
+#[test]
+fn block() {
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
+
+    let program = Program::parse(
+        r#"
+local f, g, h
+local up1 = 1
+do
+    local up2 = 2
+    do
+        local up3 = 3
+
+        -- closure with local variable in block
+        f = function()
+            up3 = up3 + 1
+            print(up3)
+        end
+
+        -- closure with local variable out of block
+        g = function()
+            up2 = up2 + 1
+            print(up2)
+        end
+
+        -- closure with local variable out of block 2 levels
+        h = function()
+            up1 = up1 + 1
+            print(up1)
+        end
+
+        -- call these closures in block
+        f()
+        g()
+        h()
+        print(up1, up2, up3)
+    end
+
+    -- call these closures out of block
+    f()
+    g()
+    h()
+    print(up1, up2)
+
+end
+
+-- call these closures out of block
+f()
+g()
+h()
+print(up1)
+"#,
+    )
+    .unwrap();
+
+    super::compare_program(
+        &program,
+        &[
+            Bytecode::variadic_arguments_prepare(0),
+            // local f, g, h
+            Bytecode::load_nil(0, 2),
+            // local up1 = 1
+            Bytecode::load_integer(3, 1),
+            // do
+            //     local up2 = 2
+            Bytecode::load_integer(4, 2),
+            //     do
+            //         local up3 = 3
+            Bytecode::load_integer(5, 3),
+            //         f = function()
+            Bytecode::closure(0, 0), // This is optimized compared to luac
+            //         g = function()
+            Bytecode::closure(1, 1), // This is optimized compared to luac
+            //         h = function()
+            Bytecode::closure(2, 2), // This is optimized compared to luac
+            //         f()
+            Bytecode::move_bytecode(6, 0),
+            Bytecode::call(6, 1, 1),
+            //         g()
+            Bytecode::move_bytecode(6, 1),
+            Bytecode::call(6, 1, 1),
+            //         h()
+            Bytecode::move_bytecode(6, 2),
+            Bytecode::call(6, 1, 1),
+            //         print(up1, up2, up3)
+            Bytecode::get_uptable(6, 0, 0),
+            Bytecode::move_bytecode(7, 3),
+            Bytecode::move_bytecode(8, 4),
+            Bytecode::move_bytecode(9, 5),
+            Bytecode::call(6, 4, 1),
+            //     end
+            Bytecode::close(5),
+            //     f()
+            Bytecode::move_bytecode(5, 0),
+            Bytecode::call(5, 1, 1),
+            //     g()
+            Bytecode::move_bytecode(5, 1),
+            Bytecode::call(5, 1, 1),
+            //     h()
+            Bytecode::move_bytecode(5, 2),
+            Bytecode::call(5, 1, 1),
+            //     print(up1, up2)
+            Bytecode::get_uptable(5, 0, 0),
+            Bytecode::move_bytecode(6, 3),
+            Bytecode::move_bytecode(7, 4),
+            Bytecode::call(5, 3, 1),
+            // end
+            Bytecode::close(4),
+            // f()
+            Bytecode::move_bytecode(4, 0),
+            Bytecode::call(4, 1, 1),
+            // g()
+            Bytecode::move_bytecode(4, 1),
+            Bytecode::call(4, 1, 1),
+            // h()
+            Bytecode::move_bytecode(4, 2),
+            Bytecode::call(4, 1, 1),
+            // print(up1)
+            Bytecode::get_uptable(4, 0, 0),
+            Bytecode::move_bytecode(5, 3),
+            Bytecode::call(4, 2, 1),
+            // EOF
+            Bytecode::return_bytecode(4, 1, 1),
+        ],
+        &["print".into()],
+        &[
+            Local::new("f".into(), 3, 42),
+            Local::new("g".into(), 3, 42),
+            Local::new("h".into(), 3, 42),
+            Local::new("up1".into(), 4, 42),
+            Local::new("up2".into(), 5, 31),
+            Local::new("up3".into(), 6, 20),
+        ],
+        &["_ENV".into()],
+        3,
+    );
+
+    crate::Lua::run_program(program).expect("Should run");
+}

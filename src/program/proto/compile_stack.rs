@@ -286,6 +286,15 @@ impl<'a> CompileStack<'a> {
                 self.close_locals(locals);
                 self.compile_context_mut().stack_top = rewind_stack_top;
 
+                if self
+                    .compile_context_mut()
+                    .clear_captures_above(usize::from(rewind_stack_top))
+                {
+                    self.proto_mut()
+                        .byte_codes
+                        .push(Bytecode::close(rewind_stack_top));
+                }
+
                 Ok(())
             }
             make_deconstruct!(
@@ -1925,7 +1934,8 @@ impl<'a> CompileStackView<'a, '_> {
 
     fn find_name_on_stack(&mut self, name: &'a str) -> bool {
         if let [head @ .., tail] = self.stack {
-            if tail.compile_context.find_name(name).is_some() {
+            if let Some(capture) = tail.compile_context.find_name(name) {
+                tail.compile_context.push_capture(capture);
                 true
             } else {
                 let mut view = CompileStackView { stack: head };

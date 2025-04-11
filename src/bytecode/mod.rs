@@ -16,7 +16,7 @@ use alloc::{
 
 use crate::{
     Lua,
-    closure::{Closure, FunctionType},
+    closure::{Closure, FunctionType, Upvalue},
     function::Function,
     table::Table,
     value::{Value, ValueKey},
@@ -551,6 +551,17 @@ impl Bytecode {
         Bytecode {
             bytecode: Self::encode_abck(OpCode::Concat, first, count, 0, 0),
             function: Self::execute_concat,
+        }
+    }
+
+    /// `CLOSE`  
+    /// Closes an upvalue at the end of a block.
+    ///
+    /// `first`: Location on stack of first register to be closed
+    pub const fn close(first: u8) -> Bytecode {
+        Bytecode {
+            bytecode: Self::encode_abck(OpCode::Close, first, 0, 0, 0),
+            function: Self::execute_close,
         }
     }
 
@@ -1405,6 +1416,34 @@ impl Bytecode {
 
         let concatenated = strings.into_iter().collect::<String>();
         vm.set_stack(first, concatenated.as_str().into())
+    }
+
+    fn execute_close(&self, vm: &mut Lua) -> Result<(), Error> {
+        let (first, _, _, _) = self.decode_abck();
+
+        let upvalues_to_close = vm
+            .get_stack_frame_mut()
+            .open_upvalues
+            .iter()
+            .enumerate()
+            .filter_map(|(i, upvalue)| {
+                if let Upvalue::Open(stack) = *upvalue.borrow() {
+                    Some(i).filter(|_| stack > usize::from(first))
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        for upvalue in upvalues_to_close.into_iter().rev() {
+            vm.get_stack_frame_mut()
+                .open_upvalues
+                .swap_remove(upvalue)
+                .borrow_mut()
+                .close(vm);
+        }
+
+        Ok(())
     }
 
     fn execute_jump(&self, vm: &mut Lua) -> Result<(), Error> {

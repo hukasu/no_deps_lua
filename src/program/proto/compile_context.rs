@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, vec::Vec};
+use alloc::{boxed::Box, collections::btree_set::BTreeSet, vec::Vec};
 
 use crate::program::Error;
 
@@ -14,6 +14,7 @@ pub struct CompileContext<'a> {
     pub labels: Vec<GotoLabel<'a>>,
     pub jumps_to_block: Vec<usize>,
     pub jumps_to_end: Vec<usize>,
+    pub captured_locals: BTreeSet<usize>,
 }
 
 impl<'a> CompileContext<'a> {
@@ -48,6 +49,25 @@ impl<'a> CompileContext<'a> {
         } else {
             self.labels.push(goto_label);
             Ok(())
+        }
+    }
+
+    pub fn push_capture(&mut self, local: usize) {
+        self.captured_locals.insert(local);
+    }
+
+    pub fn clear_captures_above(&mut self, first_local: usize) -> bool {
+        if let Some(max) = self
+            .captured_locals
+            .iter()
+            .max()
+            .filter(|local| **local >= first_local)
+            .copied()
+        {
+            self.captured_locals.retain(|local| *local < max);
+            true
+        } else {
+            false
         }
     }
 }
