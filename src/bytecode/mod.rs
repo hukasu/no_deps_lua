@@ -617,6 +617,19 @@ impl Bytecode {
         }
     }
 
+    /// `LTI`
+    /// Peforms a less than (<) comparison between the register and integer constant.
+    ///
+    /// `register`: Location on stack of left operand  
+    /// `integer`: Integer constant of right operand  
+    /// `test`: If it should test for `true` or `false`
+    pub const fn less_than_integer(lhs: u8, rhs: i8, test: u8) -> Bytecode {
+        Bytecode {
+            bytecode: Self::encode_asbck(OpCode::LessThanInteger, lhs, rhs, 0, test),
+            function: Self::execute_less_than_integer,
+        }
+    }
+
     /// `GTI`
     /// Peforms a greater than (>) comparison between the register and integer constant.
     ///
@@ -1459,6 +1472,21 @@ impl Bytecode {
         let rhs = Value::Integer(i64::from(integer));
 
         Self::relational_comparison(lhs, &rhs, |ordering| ordering == Ordering::Equal, test == 1)
+            .and_then(|should_advance_pc| {
+                if should_advance_pc {
+                    vm.jump(1)?;
+                }
+                Ok(())
+            })
+    }
+
+    fn execute_less_than_integer(&self, vm: &mut Lua) -> Result<(), Error> {
+        let (register, integer, _, test) = self.decode_asbck();
+
+        let lhs = vm.get_stack(register)?;
+        let rhs = Value::Integer(i64::from(integer));
+
+        Self::relational_comparison(lhs, &rhs, |ordering| ordering == Ordering::Less, test == 1)
             .and_then(|should_advance_pc| {
                 if should_advance_pc {
                     vm.jump(1)?;

@@ -1693,6 +1693,41 @@ impl<'a> ExpDesc<'a> {
                         compile_stack,
                     )
                 }
+                (Binop::LessThan, Self::Local(local), Self::Integer(integer)) => {
+                    if let Ok(integer) = i8::try_from(*integer) {
+                        compile_stack
+                            .proto_mut()
+                            .byte_codes
+                            .push(Bytecode::less_than_integer(
+                                u8::try_from(*local)?,
+                                integer,
+                                *if_condition as u8,
+                            ));
+
+                        let jump = compile_stack.proto_mut().byte_codes.len();
+                        compile_stack.proto_mut().byte_codes.push(Bytecode::jump(0));
+                        if *jump_to_end {
+                            compile_stack.compile_context_mut().jumps_to_end.push(jump);
+                        } else {
+                            compile_stack
+                                .compile_context_mut()
+                                .jumps_to_block
+                                .push(jump);
+                        }
+
+                        Ok(())
+                    } else {
+                        let (_, stack_top) =
+                            compile_stack.compile_context_mut().reserve_stack_top();
+                        stack_top.discharge(rhs.as_ref(), compile_stack)?;
+                        self.discharge(
+                            &Self::Binop(*op, lhs.clone(), Box::new(stack_top)),
+                            compile_stack,
+                        )?;
+                        compile_stack.compile_context_mut().stack_top -= 1;
+                        Ok(())
+                    }
+                }
                 (Binop::GreaterThan, Self::Local(local), Self::Integer(integer)) => {
                     if let Ok(integer) = i8::try_from(*integer) {
                         compile_stack
