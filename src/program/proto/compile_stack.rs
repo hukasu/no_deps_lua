@@ -1938,16 +1938,40 @@ impl<'a> CompileStackView<'a, '_> {
                 present_higher_up
             }
         } else {
-            name == "_ENV"
+            false
         }
     }
 
     pub fn capture_environment(&mut self, name: &'a str) -> Option<ExpDesc<'a>> {
-        self.proto_mut().push_upvalue("_ENV");
-        self.find_name_on_stack("_ENV");
-        let Ok(global) = self.proto_mut().push_constant(name) else {
-            unreachable!("Should never overflow u32.");
-        };
-        Some(ExpDesc::Global(usize::try_from(global).unwrap()))
+        if let Some(local_env) = self.find_name("_ENV") {
+            Some(ExpDesc::TableAccess {
+                table: local_env.into(),
+                key: Box::new(ExpDesc::String(name)),
+                record: false,
+            })
+        } else {
+            let upvalue = self.proto_mut().push_upvalue("_ENV");
+            if self.find_name_on_stack("_ENV") {
+                Some(ExpDesc::TableAccess {
+                    table: Box::new(ExpDesc::Upvalue(upvalue)),
+                    key: Box::new(ExpDesc::String(name)),
+                    record: false,
+                })
+            } else {
+                self.add_environment_to_all_stacks();
+                let Ok(global) = self.proto_mut().push_constant(name) else {
+                    unreachable!("Should never overflow u32.");
+                };
+                Some(ExpDesc::Global(usize::try_from(global).unwrap()))
+            }
+        }
+    }
+
+    fn add_environment_to_all_stacks(&mut self) {
+        if let [head @ .., tail] = self.stack {
+            tail.proto.push_upvalue("_ENV");
+            let mut view = CompileStackView { stack: head };
+            view.add_environment_to_all_stacks();
+        }
     }
 }

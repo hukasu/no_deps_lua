@@ -289,3 +289,129 @@ f1()
 
     crate::Lua::run_program(program).expect("Should run");
 }
+
+#[test]
+fn env() {
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
+
+    let program = Program::parse(
+        r#"
+local function my_print(a)
+    print("test _ENV:", a)
+end
+
+-- _ENV as local variable
+local function test_local_env()
+    local _ENV = { print = my_print }
+    print "hello, world!" -- this `print` is my_print
+end
+
+test_local_env()
+
+-- _ENV as upvalue
+local _ENV = { print = my_print }
+local function test_upvalue_env()
+    print "hello, upvalue!" -- this `print` is my_print
+end
+
+test_upvalue_env()
+"#,
+    )
+    .unwrap();
+
+    super::compare_program(
+        &program,
+        &[
+            Bytecode::variadic_arguments_prepare(0),
+            // local function my_print(a)
+            Bytecode::closure(0, 0),
+            // local function test_local_env()
+            Bytecode::closure(1, 1),
+            // test_local_env()
+            Bytecode::move_bytecode(2, 1),
+            Bytecode::call(2, 1, 1),
+            // local _ENV = { print = my_print }
+            Bytecode::new_table(2, 1, 0),
+            // EXTRAARG
+            Bytecode::set_field(2, 0, 0, 0),
+            // local function test_upvalue_env()
+            Bytecode::closure(3, 2),
+            // test_upvalue_env()
+            Bytecode::move_bytecode(4, 3),
+            Bytecode::call(4, 1, 1),
+            // EOF
+            Bytecode::return_bytecode(4, 1, 1),
+        ],
+        &["print".into()],
+        &[
+            Local::new("my_print".into(), 3, 12),
+            Local::new("test_local_env".into(), 4, 12),
+            Local::new("_ENV".into(), 8, 12),
+            Local::new("test_upvalue_env".into(), 9, 12),
+        ],
+        &["_ENV".into()],
+        3,
+    );
+
+    let closure = super::get_closure_program(&program, 0);
+    super::compare_program(
+        closure,
+        &[
+            // local function my_print(a)
+            //     print("test _ENV:", a)
+            Bytecode::get_uptable(1, 0, 0),
+            Bytecode::load_constant(2, 1),
+            Bytecode::move_bytecode(3, 0),
+            Bytecode::call(1, 3, 1),
+            // end
+            Bytecode::zero_return(),
+        ],
+        &["print".into(), "test _ENV:".into()],
+        &[Local::new("a".into(), 1, 6)],
+        &["_ENV".into()],
+        0,
+    );
+
+    let closure = super::get_closure_program(&program, 1);
+    super::compare_program(
+        closure,
+        &[
+            // local function test_local_env()
+            //     local _ENV = { print = my_print }
+            Bytecode::new_table(0, 1, 0),
+            // EXTRAARG
+            Bytecode::get_upvalue(1, 0),
+            Bytecode::set_field(0, 0, 1, 0),
+            //     print "hello, world!" -- this `print` is my_print
+            Bytecode::get_field(1, 0, 0),
+            Bytecode::load_constant(2, 1),
+            Bytecode::call(1, 2, 1),
+            // end
+            Bytecode::zero_return(),
+        ],
+        &["print".into(), "hello, world!".into()],
+        &[Local::new("_ENV".into(), 4, 8)],
+        &["my_print".into()],
+        0,
+    );
+
+    let closure = super::get_closure_program(&program, 2);
+    super::compare_program(
+        closure,
+        &[
+            // local function test_upvalue_env()
+            //     print "hello, upvalue!" -- this `print` is my_print
+            Bytecode::get_uptable(0, 0, 0),
+            Bytecode::load_constant(1, 1),
+            Bytecode::call(0, 2, 1),
+            // end
+            Bytecode::zero_return(),
+        ],
+        &["print".into(), "hello, upvalue!".into()],
+        &[],
+        &["_ENV".into()],
+        0,
+    );
+
+    crate::Lua::run_program(program).expect("Should run");
+}

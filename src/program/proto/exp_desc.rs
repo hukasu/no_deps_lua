@@ -850,6 +850,29 @@ impl<'a> ExpDesc<'a> {
                         compile_stack,
                     )
                 }
+                (table @ Self::Upvalue(_), Self::String(key)) => {
+                    let global = compile_stack.proto_mut().push_constant(*key)?;
+
+                    self.discharge(
+                        &Self::TableAccess {
+                            table: Box::new(table.clone()),
+                            key: Box::new(ExpDesc::Global(usize::try_from(global)?)),
+                            record: false,
+                        },
+                        compile_stack,
+                    )
+                }
+                (Self::Upvalue(table), Self::Global(global)) => {
+                    compile_stack
+                        .proto_mut()
+                        .byte_codes
+                        .push(Bytecode::get_uptable(
+                            dst,
+                            u8::try_from(*table)?,
+                            u8::try_from(*global)?,
+                        ));
+                    Ok(())
+                }
                 (Self::Local(local_table), Self::Integer(index)) => {
                     if let Ok(index) = u8::try_from(*index) {
                         compile_stack
@@ -1332,6 +1355,13 @@ impl<'a> ExpDesc<'a> {
         };
 
         match (table.as_ref(), key.as_ref(), record, src) {
+            (_, _, _, src @ ExpDesc::Upvalue(_)) => {
+                let (_, stack_exp) = compile_stack.compile_context_mut().reserve_stack_top();
+                stack_exp.discharge(src, compile_stack)?;
+                compile_stack.compile_context_mut().stack_top -= 1;
+
+                self.discharge(&stack_exp, compile_stack)
+            }
             (_, Self::Name(key), true, _) => {
                 // Rewrite all access in the form `t.x` as `t["x"]`
                 let table_access = Self::TableAccess {
