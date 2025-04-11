@@ -1733,7 +1733,7 @@ impl<'a> ExpDesc<'a> {
                         compile_stack
                             .proto_mut()
                             .byte_codes
-                            .push(Bytecode::greater_equal_integer(
+                            .push(Bytecode::greater_than_integer(
                                 u8::try_from(*local)?,
                                 integer,
                                 *if_condition as u8,
