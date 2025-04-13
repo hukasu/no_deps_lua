@@ -662,7 +662,7 @@ impl Bytecode {
     /// `test`: If it should test for `true` or `false`
     pub const fn greater_equal_integer(lhs: u8, rhs: i8, test: u8) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_asbck(OpCode::GreaterEqualInteger, lhs, rhs, test, 0),
+            bytecode: Self::encode_asbck(OpCode::GreaterEqualInteger, lhs, rhs, 0, test),
             function: Self::execute_greater_equal_integer,
         }
     }
