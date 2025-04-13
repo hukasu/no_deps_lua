@@ -707,7 +707,7 @@ impl Bytecode {
         }
     }
 
-    /// `RETURN0`  
+    /// `RETURN`  
     /// Returns from function
     ///
     /// `register`: First item on stack to return  
