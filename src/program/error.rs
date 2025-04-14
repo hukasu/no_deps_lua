@@ -2,6 +2,8 @@ use core::{fmt::Display, num::TryFromIntError};
 
 use alloc::boxed::Box;
 
+use crate::bytecode::arguments::BytecodeArgumentError;
+
 #[derive(Debug, PartialEq)]
 pub enum Error {
     Parse,
@@ -34,6 +36,7 @@ pub enum Error {
     UnmatchedGoto,
     IntCoversion,
     GotoIntoScope,
+    BytecodeArgument(BytecodeArgumentError),
     NonSequentialLocalInitialization(Box<str>),
 }
 
@@ -118,6 +121,13 @@ impl Display for Error {
             Self::StackOverflow => {
                 write!(f, "Tried accessing index outside stack bounds.")
             }
+            Self::BytecodeArgument(arg) => {
+                write!(
+                    f,
+                    "Failed to build bytecode due to an invalid argument. {}",
+                    arg
+                )
+            }
             Self::NonSequentialLocalInitialization(explist) => {
                 write!(
                     f,
@@ -149,5 +159,12 @@ impl From<TryFromIntError> for Error {
     fn from(value: TryFromIntError) -> Self {
         log::error!(target: "no_deps_lua::parser", "{:?}", value);
         Self::StackOverflow
+    }
+}
+
+impl From<BytecodeArgumentError> for Error {
+    fn from(value: BytecodeArgumentError) -> Self {
+        log::error!(target: "no_deps_lua::parser", "{:?}", value);
+        Self::BytecodeArgument(value)
     }
 }

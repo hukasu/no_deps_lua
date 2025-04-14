@@ -1,4 +1,4 @@
-use crate::{bytecode::Bytecode, program::Local, Error, Program};
+use crate::{Error, Program, bytecode::Bytecode, program::Local};
 
 #[test]
 fn unops() {
@@ -26,57 +26,57 @@ print(not print)
     super::compare_program(
         &program,
         &[
-            Bytecode::variadic_arguments_prepare(0),
+            Bytecode::variadic_arguments_prepare(0.into()),
             // local i = 100
-            Bytecode::load_integer(0, 100),
+            Bytecode::load_integer(0.into(), 100i8.into()),
             // local f = 3.14
-            Bytecode::load_constant(1, 0),
+            Bytecode::load_constant(1.into(), 0u8.into()),
             // a = "iamastring"
-            Bytecode::set_uptable(0, 1, 2, 1),
+            Bytecode::set_uptable(0.into(), 1.into(), 2.into(), true.into()),
             // print(~100)
-            Bytecode::get_uptable(2, 0, 3),
-            Bytecode::load_integer(3, -101),
-            Bytecode::call(2, 2, 1),
+            Bytecode::get_uptable(2.into(), 0.into(), 3.into()),
+            Bytecode::load_integer(3.into(), (-101i8).into()),
+            Bytecode::call(2.into(), 2.into(), 1.into()),
             // print(~i)
-            Bytecode::get_uptable(2, 0, 3),
-            Bytecode::bit_not(3, 0),
-            Bytecode::call(2, 2, 1),
+            Bytecode::get_uptable(2.into(), 0.into(), 3.into()),
+            Bytecode::bit_not(3.into(), 0.into()),
+            Bytecode::call(2.into(), 2.into(), 1.into()),
             // print(-3.14)
-            Bytecode::get_uptable(2, 0, 3),
-            Bytecode::load_constant(3, 4),
-            Bytecode::call(2, 2, 1),
+            Bytecode::get_uptable(2.into(), 0.into(), 3.into()),
+            Bytecode::load_constant(3.into(), 4u8.into()),
+            Bytecode::call(2.into(), 2.into(), 1.into()),
             // print(-f)
-            Bytecode::get_uptable(2, 0, 3),
-            Bytecode::neg(3, 1),
-            Bytecode::call(2, 2, 1),
+            Bytecode::get_uptable(2.into(), 0.into(), 3.into()),
+            Bytecode::neg(3.into(), 1.into()),
+            Bytecode::call(2.into(), 2.into(), 1.into()),
             // print(#"iamastring")
-            Bytecode::get_uptable(2, 0, 3),
-            Bytecode::load_integer(3, 10), // Optimized taking the len of a constant string
-            Bytecode::call(2, 2, 1),
+            Bytecode::get_uptable(2.into(), 0.into(), 3.into()),
+            Bytecode::load_integer(3.into(), 10i8.into()), // Optimized taking the len of a constant string
+            Bytecode::call(2.into(), 2.into(), 1.into()),
             // print(#a)
-            Bytecode::get_uptable(2, 0, 3),
-            Bytecode::get_uptable(3, 0, 1),
-            Bytecode::len(3, 3),
-            Bytecode::call(2, 2, 1),
+            Bytecode::get_uptable(2.into(), 0.into(), 3.into()),
+            Bytecode::get_uptable(3.into(), 0.into(), 1.into()),
+            Bytecode::len(3.into(), 3.into()),
+            Bytecode::call(2.into(), 2.into(), 1.into()),
             // print(not false)
-            Bytecode::get_uptable(2, 0, 3),
-            Bytecode::load_true(3),
-            Bytecode::call(2, 2, 1),
+            Bytecode::get_uptable(2.into(), 0.into(), 3.into()),
+            Bytecode::load_true(3.into()),
+            Bytecode::call(2.into(), 2.into(), 1.into()),
             // print(not nil)
-            Bytecode::get_uptable(2, 0, 3),
-            Bytecode::load_true(3),
-            Bytecode::call(2, 2, 1),
+            Bytecode::get_uptable(2.into(), 0.into(), 3.into()),
+            Bytecode::load_true(3.into()),
+            Bytecode::call(2.into(), 2.into(), 1.into()),
             // print(not not nil)
-            Bytecode::get_uptable(2, 0, 3),
-            Bytecode::load_false(3),
-            Bytecode::call(2, 2, 1),
+            Bytecode::get_uptable(2.into(), 0.into(), 3.into()),
+            Bytecode::load_false(3.into()),
+            Bytecode::call(2.into(), 2.into(), 1.into()),
             // print(not print)
-            Bytecode::get_uptable(2, 0, 3),
-            Bytecode::get_uptable(3, 0, 3),
-            Bytecode::not(3, 3),
-            Bytecode::call(2, 2, 1),
+            Bytecode::get_uptable(2.into(), 0.into(), 3.into()),
+            Bytecode::get_uptable(3.into(), 0.into(), 3.into()),
+            Bytecode::not(3.into(), 3.into()),
+            Bytecode::call(2.into(), 2.into(), 1.into()),
             // EOF
-            Bytecode::return_bytecode(2, 1, 1),
+            Bytecode::return_bytecode(2.into(), 1.into(), 1.into()),
         ],
         &[
             #[allow(clippy::approx_constant)]
@@ -116,44 +116,44 @@ print(100>>a) -- panic
     super::compare_program(
         &program,
         &[
-            Bytecode::variadic_arguments_prepare(0),
+            Bytecode::variadic_arguments_prepare(0.into()),
             // g = 10
-            Bytecode::set_uptable(0, 0, 1, 1),
+            Bytecode::set_uptable(0.into(), 0.into(), 1.into(), true.into()),
             // local a,b,c = 1.1, 2.0, 100
-            Bytecode::load_constant(0, 2),
-            Bytecode::load_float(1, 2),
-            Bytecode::load_integer(2, 100),
+            Bytecode::load_constant(0.into(), 2u8.into()),
+            Bytecode::load_float(1.into(), 2i8.into()),
+            Bytecode::load_integer(2.into(), 100i8.into()),
             // print(100+g) -- commutative, AddInt
-            Bytecode::get_uptable(3, 0, 3),
-            Bytecode::get_uptable(4, 0, 0),
-            Bytecode::add_integer(4, 4, 100),
+            Bytecode::get_uptable(3.into(), 0.into(), 3.into()),
+            Bytecode::get_uptable(4.into(), 0.into(), 0.into()),
+            Bytecode::add_integer(4.into(), 4.into(), 100.into()),
             // TODO MMBINI
-            Bytecode::call(3, 2, 1),
+            Bytecode::call(3.into(), 2.into(), 1.into()),
             // print(a-1)
-            Bytecode::get_uptable(3, 0, 3),
-            Bytecode::add_integer(4, 0, -1),
+            Bytecode::get_uptable(3.into(), 0.into(), 3.into()),
+            Bytecode::add_integer(4.into(), 0.into(), (-1i8).into()),
             // TODO MMBINI
-            Bytecode::call(3, 2, 1),
+            Bytecode::call(3.into(), 2.into(), 1.into()),
             // print(100/c) -- result is float
-            Bytecode::get_uptable(3, 0, 3),
-            Bytecode::load_integer(4, 100),
-            Bytecode::div(4, 4, 2),
+            Bytecode::get_uptable(3.into(), 0.into(), 3.into()),
+            Bytecode::load_integer(4.into(), 100i8.into()),
+            Bytecode::div(4.into(), 4.into(), 2.into()),
             // TODO MMBINI
-            Bytecode::call(3, 2, 1),
+            Bytecode::call(3.into(), 2.into(), 1.into()),
             // print(100>>b) -- 2.0 will be convert to int 2
-            Bytecode::get_uptable(3, 0, 3),
-            Bytecode::load_integer(4, 100),
-            Bytecode::shift_right(4, 4, 1),
+            Bytecode::get_uptable(3.into(), 0.into(), 3.into()),
+            Bytecode::load_integer(4.into(), 100i8.into()),
+            Bytecode::shift_right(4.into(), 4.into(), 1.into()),
             // TODO MMBINI
-            Bytecode::call(3, 2, 1),
+            Bytecode::call(3.into(), 2.into(), 1.into()),
             // print(100>>a) -- panic
-            Bytecode::get_uptable(3, 0, 3),
-            Bytecode::load_integer(4, 100),
-            Bytecode::shift_right(4, 4, 0),
+            Bytecode::get_uptable(3.into(), 0.into(), 3.into()),
+            Bytecode::load_integer(4.into(), 100i8.into()),
+            Bytecode::shift_right(4.into(), 4.into(), 0.into()),
             // TODO MMBINI
-            Bytecode::call(3, 2, 1),
+            Bytecode::call(3.into(), 2.into(), 1.into()),
             // EOF
-            Bytecode::return_bytecode(3, 1, 1),
+            Bytecode::return_bytecode(3.into(), 1.into(), 1.into()),
         ],
         &["g".into(), 10i64.into(), 1.1f64.into(), "print".into()],
         &[
@@ -190,34 +190,34 @@ print('hello' .. a) -- panic
     super::compare_program(
         &program,
         &[
-            Bytecode::variadic_arguments_prepare(0),
+            Bytecode::variadic_arguments_prepare(0.into()),
             // print('hello, '..'world')
-            Bytecode::get_uptable(0, 0, 0),
-            Bytecode::load_constant(1, 1),
-            Bytecode::load_constant(2, 2),
-            Bytecode::concat(1, 2),
-            Bytecode::call(0, 2, 1),
+            Bytecode::get_uptable(0.into(), 0.into(), 0.into()),
+            Bytecode::load_constant(1.into(), 1u8.into()),
+            Bytecode::load_constant(2.into(), 2u8.into()),
+            Bytecode::concat(1.into(), 2.into()),
+            Bytecode::call(0.into(), 2.into(), 1.into()),
             // print('hello, ' .. 123)
-            Bytecode::get_uptable(0, 0, 0),
-            Bytecode::load_constant(1, 1),
-            Bytecode::load_integer(2, 123),
-            Bytecode::concat(1, 2),
-            Bytecode::call(0, 2, 1),
+            Bytecode::get_uptable(0.into(), 0.into(), 0.into()),
+            Bytecode::load_constant(1.into(), 1u8.into()),
+            Bytecode::load_integer(2.into(), 123i8.into()),
+            Bytecode::concat(1.into(), 2.into()),
+            Bytecode::call(0.into(), 2.into(), 1.into()),
             // print(3.14 .. 15926)
-            Bytecode::get_uptable(0, 0, 0),
-            Bytecode::load_constant(1, 3),
-            Bytecode::load_integer(2, 15926),
-            Bytecode::concat(1, 2),
-            Bytecode::call(0, 2, 1),
+            Bytecode::get_uptable(0.into(), 0.into(), 0.into()),
+            Bytecode::load_constant(1.into(), 3u8.into()),
+            Bytecode::load_integer(2.into(), 15926i16.into()),
+            Bytecode::concat(1.into(), 2.into()),
+            Bytecode::call(0.into(), 2.into(), 1.into()),
             // print('hello' .. true) -- panic
-            Bytecode::load_true(0),
-            Bytecode::get_uptable(1, 0, 0),
-            Bytecode::load_constant(2, 4),
-            Bytecode::move_bytecode(3, 0),
-            Bytecode::concat(2, 2),
-            Bytecode::call(1, 2, 1),
+            Bytecode::load_true(0.into()),
+            Bytecode::get_uptable(1.into(), 0.into(), 0.into()),
+            Bytecode::load_constant(2.into(), 4u8.into()),
+            Bytecode::move_bytecode(3.into(), 0.into()),
+            Bytecode::concat(2.into(), 2.into()),
+            Bytecode::call(1.into(), 2.into(), 1.into()),
             // EOF
-            Bytecode::return_bytecode(1, 1, 1),
+            Bytecode::return_bytecode(1.into(), 1.into(), 1.into()),
         ],
         &[
             "print".into(),
@@ -253,20 +253,20 @@ print(('hello, '..'world').." "..("3." .. 14 .. 15))
     super::compare_program(
         &program,
         &[
-            Bytecode::variadic_arguments_prepare(0),
+            Bytecode::variadic_arguments_prepare(0.into()),
             // print(('hello, '..'world').." "..("3." .. 14 .. 15))
-            Bytecode::get_uptable(0, 0, 0),
-            Bytecode::load_constant(1, 1),
-            Bytecode::load_constant(2, 2),
-            Bytecode::concat(1, 2),
-            Bytecode::load_constant(2, 3),
-            Bytecode::load_constant(3, 4),
-            Bytecode::load_integer(4, 14),
-            Bytecode::load_integer(5, 15),
-            Bytecode::concat(1, 5),
-            Bytecode::call(0, 2, 1),
+            Bytecode::get_uptable(0.into(), 0.into(), 0.into()),
+            Bytecode::load_constant(1.into(), 1u8.into()),
+            Bytecode::load_constant(2.into(), 2u8.into()),
+            Bytecode::concat(1.into(), 2.into()),
+            Bytecode::load_constant(2.into(), 3u8.into()),
+            Bytecode::load_constant(3.into(), 4u8.into()),
+            Bytecode::load_integer(4.into(), 14i8.into()),
+            Bytecode::load_integer(5.into(), 15i8.into()),
+            Bytecode::concat(1.into(), 5.into()),
+            Bytecode::call(0.into(), 2.into(), 1.into()),
             // EOF
-            Bytecode::return_bytecode(0, 1, 1),
+            Bytecode::return_bytecode(0.into(), 1.into(), 1.into()),
         ],
         &[
             "print".into(),

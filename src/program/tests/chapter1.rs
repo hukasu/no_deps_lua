@@ -15,17 +15,17 @@ print "hello, again!"
     super::compare_program(
         &program,
         &[
-            Bytecode::variadic_arguments_prepare(0),
+            Bytecode::variadic_arguments_prepare(0.into()),
             // print "hello, world!"
-            Bytecode::get_uptable(0, 0, 0),
-            Bytecode::load_constant(1, 1),
-            Bytecode::call(0, 2, 1),
+            Bytecode::get_uptable(0.into(), 0.into(), 0.into()),
+            Bytecode::load_constant(1.into(), 1u8.into()),
+            Bytecode::call(0.into(), 2.into(), 1.into()),
             // print "hello, again!"
-            Bytecode::get_uptable(0, 0, 0),
-            Bytecode::load_constant(1, 2),
-            Bytecode::call(0, 2, 1),
+            Bytecode::get_uptable(0.into(), 0.into(), 0.into()),
+            Bytecode::load_constant(1.into(), 2u8.into()),
+            Bytecode::call(0.into(), 2.into(), 1.into()),
             // EOF
-            Bytecode::return_bytecode(0, 1, 1),
+            Bytecode::return_bytecode(0.into(), 1.into(), 1.into()),
         ],
         &[
             "print".into(),

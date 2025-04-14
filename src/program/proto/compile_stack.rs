@@ -1,7 +1,10 @@
 use alloc::{boxed::Box, vec, vec::Vec};
 
 use crate::{
-    bytecode::{Bytecode, OpCode},
+    bytecode::{
+        Bytecode, OpCode,
+        arguments::{B, Bx, BytecodeArgument, C, Sj},
+    },
     function::Function,
     parser::{Token, TokenType},
     program::{Error, Local},
@@ -121,7 +124,9 @@ impl<'a> CompileStack<'a> {
                 if self.compile_context_mut().var_args.unwrap_or(false) {
                     self.proto_mut()
                         .byte_codes
-                        .push(Bytecode::variadic_arguments_prepare(u8::try_from(locals)?));
+                        .push(Bytecode::variadic_arguments_prepare(
+                            u8::try_from(locals)?.into(),
+                        ));
                 }
 
                 self.block_stat(block_stat)?;
@@ -154,8 +159,13 @@ impl<'a> CompileStack<'a> {
                             let Ok(jump) = i32::try_from((label_i - 1) - goto_i) else {
                                 return Some(Err(Error::LongJump));
                             };
-                            proto.byte_codes[goto.bytecode] = Bytecode::jump(jump);
-                            None
+                            match jump.try_into() {
+                                Ok(jump) => {
+                                    proto.byte_codes[goto.bytecode] = Bytecode::jump(jump);
+                                    None
+                                }
+                                Err(err) => Some(Err(Error::from(err))),
+                            }
                         } else {
                             Some(Ok(goto))
                         }
@@ -248,7 +258,7 @@ impl<'a> CompileStack<'a> {
                     Some(breaks) => {
                         let bytecode = proto.byte_codes.len();
                         breaks.push(bytecode);
-                        proto.byte_codes.push(Bytecode::jump(0));
+                        proto.byte_codes.push(Bytecode::jump(Sj::ZERO));
                         Ok(())
                     }
                     None => Err(Error::BreakOutsideLoop),
@@ -261,7 +271,7 @@ impl<'a> CompileStack<'a> {
                 } = self.frame_mut();
 
                 let bytecode = proto.byte_codes.len();
-                proto.byte_codes.push(Bytecode::jump(0));
+                proto.byte_codes.push(Bytecode::jump(Sj::ZERO));
 
                 compile_context.push_goto(GotoLabel {
                     name,
@@ -292,7 +302,7 @@ impl<'a> CompileStack<'a> {
                 {
                     self.proto_mut()
                         .byte_codes
-                        .push(Bytecode::close(rewind_stack_top));
+                        .push(Bytecode::close(rewind_stack_top.into()));
                 }
 
                 Ok(())
@@ -329,7 +339,9 @@ impl<'a> CompileStack<'a> {
                 let end_of_cond = proto.byte_codes.len();
                 for jump in compile_context.jumps_to_block.drain(jump_to_block_count..) {
                     proto.byte_codes[jump] = Bytecode::jump(
-                        i32::try_from(end_of_cond - jump).map_err(|_| Error::LongJump)?,
+                        i32::try_from(end_of_cond - jump)
+                            .map_err(|_| Error::LongJump)?
+                            .try_into()?,
                     );
                 }
 
@@ -349,7 +361,9 @@ impl<'a> CompileStack<'a> {
                 let end_of_block = proto.byte_codes.len();
                 for jump in compile_context.jumps_to_end.drain(jump_to_end_count..) {
                     proto.byte_codes[jump] = Bytecode::jump(
-                        i32::try_from(end_of_block - jump).map_err(|_| Error::LongJump)?,
+                        i32::try_from(end_of_block - jump)
+                            .map_err(|_| Error::LongJump)?
+                            .try_into()?,
                     );
                 }
 
@@ -362,7 +376,8 @@ impl<'a> CompileStack<'a> {
                 for break_bytecode in breaks {
                     self.proto_mut().byte_codes[break_bytecode] = Bytecode::jump(
                         i32::try_from(end_of_block - break_bytecode)
-                            .map_err(|_| Error::LongJump)?,
+                            .map_err(|_| Error::LongJump)?
+                            .try_into()?,
                     );
                 }
 
@@ -370,7 +385,8 @@ impl<'a> CompileStack<'a> {
                     i32::try_from(start_of_cond)
                         .and_then(|lhs| i32::try_from(end_of_block + 1).map(|rhs| (lhs, rhs)))
                         .map(|(lhs, rhs)| lhs - rhs)
-                        .map_err(|_| Error::LongJump)?,
+                        .map_err(|_| Error::LongJump)?
+                        .try_into()?,
                 ));
 
                 Ok(())
@@ -414,7 +430,8 @@ impl<'a> CompileStack<'a> {
                 let repeat_end = self.proto_mut().byte_codes.len();
                 self.proto_mut().byte_codes[jump_cache[0]] = Bytecode::jump(
                     i32::try_from(isize::try_from(repeat_start)? - isize::try_from(repeat_end)?)
-                        .map_err(|_| Error::LongJump)?,
+                        .map_err(|_| Error::LongJump)?
+                        .try_into()?,
                 );
 
                 Ok(())
@@ -465,7 +482,7 @@ impl<'a> CompileStack<'a> {
                 let counter_bytecode = self.proto_mut().byte_codes.len();
                 self.proto_mut()
                     .byte_codes
-                    .push(Bytecode::for_prepare(for_stack, 0));
+                    .push(Bytecode::for_prepare(for_stack.into(), Bx::ZERO));
 
                 self.open_local(name);
 
@@ -478,12 +495,12 @@ impl<'a> CompileStack<'a> {
 
                 let end_bytecode = self.proto_mut().byte_codes.len();
                 self.proto_mut().byte_codes.push(Bytecode::for_loop(
-                    for_stack,
-                    u32::try_from(end_bytecode - counter_bytecode)?,
+                    for_stack.into(),
+                    u32::try_from(end_bytecode - counter_bytecode)?.try_into()?,
                 ));
                 self.proto_mut().byte_codes[counter_bytecode] = Bytecode::for_prepare(
-                    for_stack,
-                    u32::try_from(end_bytecode - (counter_bytecode + 1))?,
+                    for_stack.into(),
+                    u32::try_from(end_bytecode - (counter_bytecode + 1))?.try_into()?,
                 );
 
                 // Close for states
@@ -531,9 +548,9 @@ impl<'a> CompileStack<'a> {
                             used_stack_top = true;
                             let constant = self.proto_mut().push_constant(head[0])?;
                             self.proto_mut().byte_codes.push(Bytecode::get_uptable(
-                                stack_loc,
-                                0,
-                                u8::try_from(constant)?,
+                                stack_loc.into(),
+                                B::ZERO,
+                                u8::try_from(constant)?.into(),
                             ));
                             stack_loc
                         };
@@ -803,7 +820,9 @@ impl<'a> CompileStack<'a> {
                         if let ExpDesc::Name(_) = last {
                             let dst = last.get_local_or_discharge_at_location(self, stack_loc)?;
 
-                            self.proto_mut().byte_codes.push(Bytecode::one_return(dst))
+                            self.proto_mut()
+                                .byte_codes
+                                .push(Bytecode::one_return(dst.into()))
                         } else {
                             stack_top.discharge(last, self)?;
 
@@ -812,24 +831,27 @@ impl<'a> CompileStack<'a> {
                                     let Some(call) = self.proto_mut().byte_codes.pop() else {
                                         unreachable!("Last should always be a function call");
                                     };
-                                    assert_eq!(call.get_opcode(), OpCode::Call);
+                                    assert_eq!(OpCode::read(*call), OpCode::Call);
                                     let (func_index, inputs, _, _) = call.decode_abck();
 
-                                    self.proto_mut()
-                                        .byte_codes
-                                        .push(Bytecode::tail_call(func_index, inputs, 0));
-                                    self.proto_mut()
-                                        .byte_codes
-                                        .push(Bytecode::return_bytecode(stack_loc, 0, 0));
+                                    self.proto_mut().byte_codes.push(Bytecode::tail_call(
+                                        func_index,
+                                        inputs,
+                                        C::ZERO,
+                                    ));
+                                    self.proto_mut().byte_codes.push(Bytecode::return_bytecode(
+                                        stack_loc.into(),
+                                        B::ZERO,
+                                        C::ZERO,
+                                    ));
                                 }
-                                ExpDesc::Closure(_) => self
-                                    .proto_mut()
-                                    .byte_codes
-                                    .push(Bytecode::return_bytecode(stack_loc, 2, 0)),
+                                ExpDesc::Closure(_) => self.proto_mut().byte_codes.push(
+                                    Bytecode::return_bytecode(stack_loc.into(), 2.into(), C::ZERO),
+                                ),
                                 _ => {
                                     self.proto_mut()
                                         .byte_codes
-                                        .push(Bytecode::one_return(stack_loc));
+                                        .push(Bytecode::one_return(stack_loc.into()));
                                 }
                             }
                         };
@@ -844,9 +866,9 @@ impl<'a> CompileStack<'a> {
                         self.compile_context_mut().stack_top -= u8::try_from(explist.len())?;
 
                         self.proto_mut().byte_codes.push(Bytecode::return_bytecode(
-                            return_start,
-                            u8::try_from(explist.len())? + 1,
-                            0,
+                            return_start.into(),
+                            (u8::try_from(explist.len())? + 1).into(),
+                            C::ZERO,
                         ));
                     }
                 }
@@ -1720,8 +1742,11 @@ impl<'a> CompileStack<'a> {
 
             let start = proto.byte_codes.len() - 1;
             for jump in compile_context.jumps_to_block.drain(jump_to_block_count..) {
-                proto.byte_codes[jump] =
-                    Bytecode::jump(i32::try_from(start - jump).map_err(|_| Error::LongJump)?);
+                proto.byte_codes[jump] = Bytecode::jump(
+                    i32::try_from(start - jump)
+                        .map_err(|_| Error::LongJump)?
+                        .try_into()?,
+                );
             }
         }
 
@@ -1736,7 +1761,7 @@ impl<'a> CompileStack<'a> {
         self.close_locals(locals);
 
         let jump_out_of_if = self.proto_mut().byte_codes.len();
-        self.proto_mut().byte_codes.push(Bytecode::jump(0));
+        self.proto_mut().byte_codes.push(Bytecode::jump(Sj::ZERO));
 
         let start_of_block = {
             let CompileFrame {
@@ -1746,8 +1771,11 @@ impl<'a> CompileStack<'a> {
 
             let start = proto.byte_codes.len() - 1;
             for jump in compile_context.jumps_to_block.drain(jump_to_block_count..) {
-                proto.byte_codes[jump] =
-                    Bytecode::jump(i32::try_from(start - jump).map_err(|_| Error::LongJump)?);
+                proto.byte_codes[jump] = Bytecode::jump(
+                    i32::try_from(start - jump)
+                        .map_err(|_| Error::LongJump)?
+                        .try_into()?,
+                );
             }
             start
         };
@@ -1757,7 +1785,9 @@ impl<'a> CompileStack<'a> {
         let after_elses = self.proto_mut().byte_codes.len();
         let offset = if after_elses != jump_out_of_if + 1 {
             self.proto_mut().byte_codes[jump_out_of_if] = Bytecode::jump(
-                i32::try_from(after_elses - jump_out_of_if - 1).map_err(|_| Error::LongJump)?,
+                i32::try_from(after_elses - jump_out_of_if - 1)
+                    .map_err(|_| Error::LongJump)?
+                    .try_into()?,
             );
             0
         } else {
@@ -1773,7 +1803,9 @@ impl<'a> CompileStack<'a> {
 
             for jump in compile_context.jumps_to_end.drain(jump_to_end_count..) {
                 proto.byte_codes[jump] = Bytecode::jump(
-                    i32::try_from(start_of_block - jump - offset).map_err(|_| Error::LongJump)?,
+                    i32::try_from(start_of_block - jump - offset)
+                        .map_err(|_| Error::LongJump)?
+                        .try_into()?,
                 );
             }
         }
@@ -1829,7 +1861,7 @@ impl<'a> CompileStack<'a> {
             .proto_mut()
             .byte_codes
             .pop()
-            .filter(|bytecode| bytecode.get_opcode() == OpCode::ZeroReturn)
+            .filter(|bytecode| OpCode::read(**bytecode) == OpCode::ZeroReturn)
             .is_none()
         {
             unreachable!("Bytecode at the end of a function body should always be `ZeroReturn`.");
@@ -1840,17 +1872,19 @@ impl<'a> CompileStack<'a> {
             .proto_mut()
             .byte_codes
             .last()
-            .filter(|bytecode| bytecode.get_opcode() == OpCode::TailCall)
+            .filter(|bytecode| OpCode::read(***bytecode) == OpCode::TailCall)
             .is_some()
         {
-            self.proto_mut()
-                .byte_codes
-                .push(Bytecode::return_bytecode(locals, 0, 0));
+            self.proto_mut().byte_codes.push(Bytecode::return_bytecode(
+                locals.into(),
+                B::ZERO,
+                C::ZERO,
+            ));
         } else {
             self.proto_mut().byte_codes.push(Bytecode::return_bytecode(
-                locals,
-                1,
-                fixed_arguments + 1,
+                locals.into(),
+                1.into(),
+                (fixed_arguments + 1).into(),
             ));
         }
 

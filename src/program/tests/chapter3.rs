@@ -1,6 +1,6 @@
 use alloc::string::String;
 
-use crate::{bytecode::Bytecode, ext::Unescape, program::Local, Program};
+use crate::{Program, bytecode::Bytecode, ext::Unescape, program::Local};
 
 #[test]
 fn escape() {
@@ -20,29 +20,29 @@ print "null: \0." -- '\0'
     super::compare_program(
         &program,
         &[
-            Bytecode::variadic_arguments_prepare(0),
+            Bytecode::variadic_arguments_prepare(0.into()),
             // print "tab:\thi" -- tab
-            Bytecode::get_uptable(0, 0, 0),
-            Bytecode::load_constant(1, 1),
-            Bytecode::call(0, 2, 1),
+            Bytecode::get_uptable(0.into(), 0.into(), 0.into()),
+            Bytecode::load_constant(1.into(), 1u8.into()),
+            Bytecode::call(0.into(), 2.into(), 1.into()),
             // print "\xE4\xBD\xA0\xE5\xA5\xBD" -- 你好
-            Bytecode::get_uptable(0, 0, 0),
-            Bytecode::load_constant(1, 2),
-            Bytecode::call(0, 2, 1),
+            Bytecode::get_uptable(0.into(), 0.into(), 0.into()),
+            Bytecode::load_constant(1.into(), 2u8.into()),
+            Bytecode::call(0.into(), 2.into(), 1.into()),
             // print "\xE4\xBD" -- invalid UTF-8
-            Bytecode::get_uptable(0, 0, 0),
-            Bytecode::load_constant(1, 3),
-            Bytecode::call(0, 2, 1),
+            Bytecode::get_uptable(0.into(), 0.into(), 0.into()),
+            Bytecode::load_constant(1.into(), 3u8.into()),
+            Bytecode::call(0.into(), 2.into(), 1.into()),
             // print "\72\101\108\108\111" -- Hello
-            Bytecode::get_uptable(0, 0, 0),
-            Bytecode::load_constant(1, 4),
-            Bytecode::call(0, 2, 1),
+            Bytecode::get_uptable(0.into(), 0.into(), 0.into()),
+            Bytecode::load_constant(1.into(), 4u8.into()),
+            Bytecode::call(0.into(), 2.into(), 1.into()),
             // print "null: \0." -- '\0'
-            Bytecode::get_uptable(0, 0, 0),
-            Bytecode::load_constant(1, 5),
-            Bytecode::call(0, 2, 1),
+            Bytecode::get_uptable(0.into(), 0.into(), 0.into()),
+            Bytecode::load_constant(1.into(), 5u8.into()),
+            Bytecode::call(0.into(), 2.into(), 1.into()),
             // EOF
-            Bytecode::return_bytecode(0, 1, 1),
+            Bytecode::return_bytecode(0.into(), 1.into(), 1.into()),
         ],
         &[
             "print".into(),
@@ -96,49 +96,49 @@ print(long_string_long_string_long_string_long_string_long_string)
     super::compare_program(
         &program,
         &[
-            Bytecode::variadic_arguments_prepare(0),
+            Bytecode::variadic_arguments_prepare(0.into()),
             // local s = "hello_world"
-            Bytecode::load_constant(0, 0),
+            Bytecode::load_constant(0.into(), 0u8.into()),
             // local m = "middle_string_middle_string"
-            Bytecode::load_constant(1, 1),
+            Bytecode::load_constant(1.into(), 1u8.into()),
             // local l = "long_string_long_string_long_string_long_string_long_string"
-            Bytecode::load_constant(2, 2),
+            Bytecode::load_constant(2.into(), 2u8.into()),
             // print(s)
-            Bytecode::get_uptable(3, 0, 3),
-            Bytecode::move_bytecode(4, 0),
-            Bytecode::call(3, 2, 1),
+            Bytecode::get_uptable(3.into(), 0.into(), 3.into()),
+            Bytecode::move_bytecode(4.into(), 0.into()),
+            Bytecode::call(3.into(), 2.into(), 1.into()),
             // print(m)
-            Bytecode::get_uptable(3, 0, 3),
-            Bytecode::move_bytecode(4, 1),
-            Bytecode::call(3, 2, 1),
+            Bytecode::get_uptable(3.into(), 0.into(), 3.into()),
+            Bytecode::move_bytecode(4.into(), 1.into()),
+            Bytecode::call(3.into(), 2.into(), 1.into()),
             // print(l)
-            Bytecode::get_uptable(3, 0, 3),
-            Bytecode::move_bytecode(4, 2),
-            Bytecode::call(3, 2, 1),
+            Bytecode::get_uptable(3.into(), 0.into(), 3.into()),
+            Bytecode::move_bytecode(4.into(), 2.into()),
+            Bytecode::call(3.into(), 2.into(), 1.into()),
             // hello_world = 12
-            Bytecode::set_uptable(0, 0, 4, 1),
+            Bytecode::set_uptable(0.into(), 0.into(), 4.into(), true.into()),
             // middle_string_middle_string = 345
-            Bytecode::set_uptable(0, 1, 5, 1),
+            Bytecode::set_uptable(0.into(), 1.into(), 5.into(), true.into()),
             // long_string_long_string_long_string_long_string_long_string = 6789
-            Bytecode::get_upvalue(3, 0),
-            Bytecode::load_constant(4, 2),
-            Bytecode::set_table(3, 4, 6, 1),
+            Bytecode::get_upvalue(3.into(), 0.into()),
+            Bytecode::load_constant(4.into(), 2u8.into()),
+            Bytecode::set_table(3.into(), 4.into(), 6.into(), true.into()),
             // print(hello_world)
-            Bytecode::get_uptable(3, 0, 3),
-            Bytecode::get_uptable(4, 0, 0),
-            Bytecode::call(3, 2, 1),
+            Bytecode::get_uptable(3.into(), 0.into(), 3.into()),
+            Bytecode::get_uptable(4.into(), 0.into(), 0.into()),
+            Bytecode::call(3.into(), 2.into(), 1.into()),
             // print(middle_string_middle_string)
-            Bytecode::get_uptable(3, 0, 3),
-            Bytecode::get_uptable(4, 0, 1),
-            Bytecode::call(3, 2, 1),
+            Bytecode::get_uptable(3.into(), 0.into(), 3.into()),
+            Bytecode::get_uptable(4.into(), 0.into(), 1.into()),
+            Bytecode::call(3.into(), 2.into(), 1.into()),
             // print(long_string_long_string_long_string_long_string_long_string)
-            Bytecode::get_uptable(3, 0, 3),
-            Bytecode::get_upvalue(4, 0),
-            Bytecode::load_constant(5, 2),
-            Bytecode::get_table(4, 4, 5),
-            Bytecode::call(3, 2, 1),
+            Bytecode::get_uptable(3.into(), 0.into(), 3.into()),
+            Bytecode::get_upvalue(4.into(), 0.into()),
+            Bytecode::load_constant(5.into(), 2u8.into()),
+            Bytecode::get_table(4.into(), 4.into(), 5.into()),
+            Bytecode::call(3.into(), 2.into(), 1.into()),
             // EOF
-            Bytecode::return_bytecode(3, 1, 1),
+            Bytecode::return_bytecode(3.into(), 1.into(), 1.into()),
         ],
         &[
             "hello_world".into(),

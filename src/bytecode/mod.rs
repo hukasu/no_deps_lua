@@ -1,4 +1,4 @@
-pub mod ext;
+pub mod arguments;
 mod opcode;
 
 use core::{
@@ -13,6 +13,7 @@ use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
+use arguments::{A, Ax, B, Bx, BytecodeArgument, C, K, Sb, Sbx, Sc, Sj};
 
 use crate::{
     Lua,
@@ -34,26 +35,6 @@ pub struct Bytecode {
 
 type BytecodeFunction = fn(bytecode: &Bytecode, vm: &mut Lua) -> Result<(), Error>;
 
-const A_MASK: u32 = 0x7f80;
-const A_SHIFT: u32 = 7;
-const B_MASK: u32 = 0xff0000;
-const B_SHIFT: u32 = 16;
-const C_MASK: u32 = 0xff000000;
-const C_SHIFT: u32 = 24;
-const K_MASK: u32 = 0x8000;
-const K_SHIFT: u32 = 15;
-
-const BX_MAX: u32 = (1 << 17) - 1;
-const BX_MASK: u32 = 0xffff8000;
-const BX_SHIFT: u32 = 15;
-
-const J_MAX: u32 = (1 << 25) - 1;
-const J_SHIFT: u32 = A_SHIFT;
-
-const I8_OFFSET: u8 = u8::MAX >> 1;
-const I17_OFFSET: u32 = BX_MAX >> 1;
-const I25_OFFSET: u32 = J_MAX >> 1;
-
 impl Bytecode {
     pub fn execute(&self, vm: &mut Lua) -> Result<(), Error> {
         (self.function)(self, vm)
@@ -64,9 +45,9 @@ impl Bytecode {
     ///
     /// `dst`: Location on the stack to store the value  
     /// `src`: Location on the stack to load the value
-    pub const fn move_bytecode(dst: u8, src: u8) -> Bytecode {
+    pub fn move_bytecode(dst: A, src: B) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::Move, dst, src, 0, 0),
+            bytecode: Self::encode_abck(OpCode::Move, dst, src, C::ZERO, K::ZERO),
             function: Self::execute_move,
         }
     }
@@ -77,7 +58,7 @@ impl Bytecode {
     /// `dst`: Location on the stack to place integer
     /// `integer`: Integer value to load into stack, this is limited
     /// 17 bits
-    pub const fn load_integer(dst: u8, integer: i32) -> Bytecode {
+    pub fn load_integer(dst: A, integer: Sbx) -> Bytecode {
         Bytecode {
             bytecode: Self::encode_asbx(OpCode::LoadInteger, dst, integer),
             function: Self::execute_load_integer,
@@ -90,7 +71,7 @@ impl Bytecode {
     /// `dst`: Location on the stack to place integer  
     /// `value`: Float value to load into stack, this is limited
     /// to a whole floats that can be expressed in 17 bits
-    pub const fn load_float(dst: u8, value: i32) -> Bytecode {
+    pub fn load_float(dst: A, value: Sbx) -> Bytecode {
         Bytecode {
             bytecode: Self::encode_asbx(OpCode::LoadFloat, dst, value),
             function: Self::execute_load_float,
@@ -102,7 +83,7 @@ impl Bytecode {
     ///
     /// `dst`: Location on the stack to place constant  
     /// `constant`: Id of `constant`
-    pub const fn load_constant(dst: u8, constant: u32) -> Bytecode {
+    pub fn load_constant(dst: A, constant: Bx) -> Bytecode {
         Bytecode {
             bytecode: Self::encode_abx(OpCode::LoadConstant, dst, constant),
             function: Self::execute_load_constant,
@@ -113,9 +94,9 @@ impl Bytecode {
     /// Loads a `false` value into the stack
     ///
     /// `dst`: Location on the stack to place boolean  
-    pub const fn load_false(dst: u8) -> Bytecode {
+    pub fn load_false(dst: A) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::LoadFalse, dst, 0, 0, 0),
+            bytecode: Self::encode_abck(OpCode::LoadFalse, dst, B::ZERO, C::ZERO, K::ZERO),
             function: Self::execute_load_false,
         }
     }
@@ -124,9 +105,9 @@ impl Bytecode {
     /// Loads a `false` value into the stack and skips next instruction
     ///
     /// `dst`: Location on the stack to place boolean
-    pub const fn load_false_skip(dst: u8) -> Bytecode {
+    pub fn load_false_skip(dst: A) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::LoadFalseSkip, dst, 0, 0, 0),
+            bytecode: Self::encode_abck(OpCode::LoadFalseSkip, dst, B::ZERO, C::ZERO, K::ZERO),
             function: Self::execute_load_false_skip,
         }
     }
@@ -135,9 +116,9 @@ impl Bytecode {
     /// Loads a `false` value into the stack
     ///
     /// `dst`: Location on the stack to place boolean  
-    pub const fn load_true(dst: u8) -> Bytecode {
+    pub fn load_true(dst: A) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::LoadTrue, dst, 0, 0, 0),
+            bytecode: Self::encode_abck(OpCode::LoadTrue, dst, B::ZERO, C::ZERO, K::ZERO),
             function: Self::execute_load_true,
         }
     }
@@ -147,9 +128,9 @@ impl Bytecode {
     ///
     /// `dst`: Location on the stack to place nil  
     /// `extras`: Extra number of `nil`s to load
-    pub const fn load_nil(dst: u8, extras: u8) -> Bytecode {
+    pub fn load_nil(dst: A, extras: B) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::LoadNil, dst, extras, 0, 0),
+            bytecode: Self::encode_abck(OpCode::LoadNil, dst, extras, C::ZERO, K::ZERO),
             function: Self::execute_load_nil,
         }
     }
@@ -159,9 +140,9 @@ impl Bytecode {
     ///
     /// `dst`: Location on stack to place the global  
     /// `upvalue`: Upvalue to load
-    pub const fn get_upvalue(dst: u8, upvalue: u8) -> Bytecode {
+    pub fn get_upvalue(dst: A, upvalue: B) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::GetUpValue, dst, upvalue, 0, 0),
+            bytecode: Self::encode_abck(OpCode::GetUpValue, dst, upvalue, C::ZERO, K::ZERO),
             function: Self::execute_get_upvalue,
         }
     }
@@ -171,9 +152,9 @@ impl Bytecode {
     ///
     /// `upvalue`: Upvalue to set  
     /// `value`: Value on to set upvalue to
-    pub const fn set_upvalue(upvalue: u8, value: u8) -> Bytecode {
+    pub fn set_upvalue(upvalue: A, value: B) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::SetUpValue, upvalue, value, 0, 0),
+            bytecode: Self::encode_abck(OpCode::SetUpValue, upvalue, value, C::ZERO, K::ZERO),
             function: Self::execute_set_upvalue,
         }
     }
@@ -184,9 +165,9 @@ impl Bytecode {
     /// `dst`: Location on stack to place the global  
     /// `upvalue`: Upvalue to collect the field from  
     /// `key`: Location on `constants` where the key into the table resides
-    pub const fn get_uptable(dst: u8, upvalue: u8, key: u8) -> Bytecode {
+    pub fn get_uptable(dst: A, upvalue: B, key: C) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::GetUpTable, dst, upvalue, key, 0),
+            bytecode: Self::encode_abck(OpCode::GetUpTable, dst, upvalue, key, K::ZERO),
             function: Self::execute_get_uptable,
         }
     }
@@ -197,9 +178,9 @@ impl Bytecode {
     /// `dst`: Location on the stack to store the table's value  
     /// `table`: Location of the table on the stack  
     /// `key`: Location of the name on the stack  
-    pub const fn get_table(dst: u8, table: u8, key: u8) -> Bytecode {
+    pub fn get_table(dst: A, table: B, key: C) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::GetTable, dst, table, key, 0),
+            bytecode: Self::encode_abck(OpCode::GetTable, dst, table, key, K::ZERO),
             function: Self::execute_get_table,
         }
     }
@@ -210,9 +191,9 @@ impl Bytecode {
     /// `dst`: Location on the stack to store the table's value  
     /// `table`: Location of the table on the stack  
     /// `index`: Index of the item to load
-    pub const fn get_index(dst: u8, table: u8, index: u8) -> Bytecode {
+    pub fn get_index(dst: A, table: B, index: C) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::GetIndex, dst, table, index, 0),
+            bytecode: Self::encode_abck(OpCode::GetIndex, dst, table, index, K::ZERO),
             function: Self::execute_get_index,
         }
     }
@@ -223,9 +204,9 @@ impl Bytecode {
     /// `dst`: Location on the stack to store the table's value  
     /// `table`: Location of the table on the stack  
     /// `key`: Location of the key on `constants`  
-    pub const fn get_field(dst: u8, table: u8, index: u8) -> Bytecode {
+    pub fn get_field(dst: A, table: B, index: C) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::GetField, dst, table, index, 0),
+            bytecode: Self::encode_abck(OpCode::GetField, dst, table, index, K::ZERO),
             function: Self::execute_get_field,
         }
     }
@@ -237,7 +218,7 @@ impl Bytecode {
     /// `key`: Location on `constants` where the key into the table reside  
     /// `src`: Location of the value  
     /// `constant`: Whether `src` is a value on `stack` or on `constants`
-    pub const fn set_uptable(uptable: u8, key: u8, src: u8, constant: u8) -> Bytecode {
+    pub fn set_uptable(uptable: A, key: B, src: C, constant: K) -> Bytecode {
         Bytecode {
             bytecode: Self::encode_abck(OpCode::SetUpTable, uptable, key, src, constant),
             function: Self::execute_set_uptable,
@@ -252,7 +233,7 @@ impl Bytecode {
     /// as key  
     /// `src`: Location of the value  
     /// `constant`: Whether `src` is a value on `stack` or on `constants`
-    pub const fn set_table(table: u8, key: u8, src: u8, constant: u8) -> Bytecode {
+    pub fn set_table(table: A, key: B, src: C, constant: K) -> Bytecode {
         Bytecode {
             bytecode: Self::encode_abck(OpCode::SetTable, table, key, src, constant),
             function: Self::execute_set_table,
@@ -266,7 +247,7 @@ impl Bytecode {
     /// `key`: Location of the name on `constants`  
     /// `src`: Location of the value  
     /// `constant`: Whether `src` is a value on `stack` or on `constants`
-    pub const fn set_field(table: u8, key: u8, src: u8, constant: u8) -> Bytecode {
+    pub fn set_field(table: A, key: B, src: C, constant: K) -> Bytecode {
         Bytecode {
             bytecode: Self::encode_abck(OpCode::SetField, table, key, src, constant),
             function: Self::execute_set_field,
@@ -279,9 +260,9 @@ impl Bytecode {
     /// `dst`: Location on the stack to store the table  
     /// `array_len`: Amount of items to allocate on the list  
     /// `table_len`: Amount of items to allocate for the map
-    pub const fn new_table(dst: u8, table_len: u8, array_len: u8) -> Bytecode {
+    pub fn new_table(dst: A, table_len: B, array_len: C) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::NewTable, dst, table_len, array_len, 0),
+            bytecode: Self::encode_abck(OpCode::NewTable, dst, table_len, array_len, K::ZERO),
             function: Self::execute_new_table,
         }
     }
@@ -292,9 +273,9 @@ impl Bytecode {
     /// `dst`: Destination of the closure  
     /// `table`: Location of the table on the `stack`     
     /// `key`: Location of the key on `constants`  
-    pub const fn table_self(dst: u8, table: u8, key: u8) -> Bytecode {
+    pub fn table_self(dst: A, table: B, key: C) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::TableSelf, dst, table, key, 0),
+            bytecode: Self::encode_abck(OpCode::TableSelf, dst, table, key, K::ZERO),
             function: Self::execute_table_self,
         }
     }
@@ -305,9 +286,9 @@ impl Bytecode {
     /// `dst`: Location on stack to store result of operation  
     /// `lhs`: Location on stack of left-hand operand  
     /// `integer`: Integer value to add
-    pub const fn add_integer(dst: u8, lhs: u8, integer: i8) -> Bytecode {
+    pub fn add_integer(dst: A, lhs: B, integer: Sc) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_absck(OpCode::AddInteger, dst, lhs, integer, 0),
+            bytecode: Self::encode_absck(OpCode::AddInteger, dst, lhs, integer, K::ZERO),
             function: Self::execute_add_integer,
         }
     }
@@ -317,9 +298,9 @@ impl Bytecode {
     /// `dst`: Location on stack to store result of operation  
     /// `lhs`: Location on stack of left-hand operand  
     /// `constant`: Location on `constant` of right-hand operand
-    pub const fn add_constant(dst: u8, lhs: u8, constant: u8) -> Bytecode {
+    pub fn add_constant(dst: A, lhs: B, constant: C) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::AddConstant, dst, lhs, constant, 0),
+            bytecode: Self::encode_abck(OpCode::AddConstant, dst, lhs, constant, K::ZERO),
             function: Self::execute_add_constant,
         }
     }
@@ -330,9 +311,9 @@ impl Bytecode {
     /// `dst`: Location on stack to store result of operation  
     /// `lhs`: Location on stack of left-hand operand  
     /// `constant`: Location on `constant` of right-hand operand
-    pub const fn mul_constant(dst: u8, lhs: u8, constant: u8) -> Bytecode {
+    pub fn mul_constant(dst: A, lhs: B, constant: C) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::MulConstant, dst, lhs, constant, 0),
+            bytecode: Self::encode_abck(OpCode::MulConstant, dst, lhs, constant, K::ZERO),
             function: Self::execute_mul_constant,
         }
     }
@@ -343,9 +324,9 @@ impl Bytecode {
     /// `dst`: Location on stack to store result of operation  
     /// `lhs`: Location on stack of left-hand operand  
     /// `rhs`: Location on stack of right-hand operand
-    pub const fn add(dst: u8, lhs: u8, rhs: u8) -> Bytecode {
+    pub fn add(dst: A, lhs: B, rhs: C) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::Add, dst, lhs, rhs, 0),
+            bytecode: Self::encode_abck(OpCode::Add, dst, lhs, rhs, K::ZERO),
             function: Self::execute_add,
         }
     }
@@ -356,9 +337,9 @@ impl Bytecode {
     /// `dst`: Location on stack to store result of operation  
     /// `lhs`: Location on stack of left-hand operand  
     /// `rhs`: Location on stack of right-hand operand
-    pub const fn sub(dst: u8, lhs: u8, rhs: u8) -> Bytecode {
+    pub fn sub(dst: A, lhs: B, rhs: C) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::Sub, dst, lhs, rhs, 0),
+            bytecode: Self::encode_abck(OpCode::Sub, dst, lhs, rhs, K::ZERO),
             function: Self::execute_sub,
         }
     }
@@ -369,9 +350,9 @@ impl Bytecode {
     /// `dst`: Location on stack to store result of operation  
     /// `lhs`: Location on stack of left-hand operand  
     /// `rhs`: Location on stack of right-hand operand
-    pub const fn mul(dst: u8, lhs: u8, rhs: u8) -> Bytecode {
+    pub fn mul(dst: A, lhs: B, rhs: C) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::Mul, dst, lhs, rhs, 0),
+            bytecode: Self::encode_abck(OpCode::Mul, dst, lhs, rhs, K::ZERO),
             function: Self::execute_mul,
         }
     }
@@ -382,9 +363,9 @@ impl Bytecode {
     /// `dst`: Location on stack to store result of operation  
     /// `lhs`: Location on stack of left-hand operand  
     /// `rhs`: Location on stack of right-hand operand
-    pub const fn mod_bytecode(dst: u8, lhs: u8, rhs: u8) -> Bytecode {
+    pub fn mod_bytecode(dst: A, lhs: B, rhs: C) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::Mod, dst, lhs, rhs, 0),
+            bytecode: Self::encode_abck(OpCode::Mod, dst, lhs, rhs, K::ZERO),
             function: Self::execute_mod,
         }
     }
@@ -395,9 +376,9 @@ impl Bytecode {
     /// `dst`: Location on stack to store result of operation  
     /// `lhs`: Location on stack of left-hand operand  
     /// `rhs`: Location on stack of right-hand operand
-    pub const fn pow(dst: u8, lhs: u8, rhs: u8) -> Bytecode {
+    pub fn pow(dst: A, lhs: B, rhs: C) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::Pow, dst, lhs, rhs, 0),
+            bytecode: Self::encode_abck(OpCode::Pow, dst, lhs, rhs, K::ZERO),
             function: Self::execute_pow,
         }
     }
@@ -408,9 +389,9 @@ impl Bytecode {
     /// `dst`: Location on stack to store result of operation  
     /// `lhs`: Location on stack of left-hand operand  
     /// `rhs`: Location on stack of right-hand operand
-    pub const fn div(dst: u8, lhs: u8, rhs: u8) -> Bytecode {
+    pub fn div(dst: A, lhs: B, rhs: C) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::Div, dst, lhs, rhs, 0),
+            bytecode: Self::encode_abck(OpCode::Div, dst, lhs, rhs, K::ZERO),
             function: Self::execute_div,
         }
     }
@@ -421,9 +402,9 @@ impl Bytecode {
     /// `dst`: Location on stack to store result of operation  
     /// `lhs`: Location on stack of left-hand operand  
     /// `rhs`: Location on stack of right-hand operand
-    pub const fn idiv(dst: u8, lhs: u8, rhs: u8) -> Bytecode {
+    pub fn idiv(dst: A, lhs: B, rhs: C) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::IDiv, dst, lhs, rhs, 0),
+            bytecode: Self::encode_abck(OpCode::IDiv, dst, lhs, rhs, K::ZERO),
             function: Self::execute_idiv,
         }
     }
@@ -434,9 +415,9 @@ impl Bytecode {
     /// `dst`: Location on stack to store result of operation  
     /// `lhs`: Location on stack of left-hand operand  
     /// `rhs`: Location on stack of right-hand operand
-    pub const fn bit_and(dst: u8, lhs: u8, rhs: u8) -> Bytecode {
+    pub fn bit_and(dst: A, lhs: B, rhs: C) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::BitAnd, dst, lhs, rhs, 0),
+            bytecode: Self::encode_abck(OpCode::BitAnd, dst, lhs, rhs, K::ZERO),
             function: Self::execute_bit_and,
         }
     }
@@ -447,9 +428,9 @@ impl Bytecode {
     /// `dst`: Location on stack to store result of operation  
     /// `lhs`: Location on stack of left-hand operand  
     /// `rhs`: Location on stack of right-hand operand
-    pub const fn bit_or(dst: u8, lhs: u8, rhs: u8) -> Bytecode {
+    pub fn bit_or(dst: A, lhs: B, rhs: C) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::BitOr, dst, lhs, rhs, 0),
+            bytecode: Self::encode_abck(OpCode::BitOr, dst, lhs, rhs, K::ZERO),
             function: Self::execute_bit_or,
         }
     }
@@ -460,9 +441,9 @@ impl Bytecode {
     /// `dst`: Location on stack to store result of operation  
     /// `lhs`: Location on stack of left-hand operand  
     /// `rhs`: Location on stack of right-hand operand
-    pub const fn bit_xor(dst: u8, lhs: u8, rhs: u8) -> Bytecode {
+    pub fn bit_xor(dst: A, lhs: B, rhs: C) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::BitXor, dst, lhs, rhs, 0),
+            bytecode: Self::encode_abck(OpCode::BitXor, dst, lhs, rhs, K::ZERO),
             function: Self::execute_bit_xor,
         }
     }
@@ -473,9 +454,9 @@ impl Bytecode {
     /// `dst`: Location on stack to store result of operation  
     /// `lhs`: Location on stack of left-hand operand  
     /// `rhs`: Location on stack of right-hand operand
-    pub const fn shift_left(dst: u8, lhs: u8, rhs: u8) -> Bytecode {
+    pub fn shift_left(dst: A, lhs: B, rhs: C) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::ShiftLeft, dst, lhs, rhs, 0),
+            bytecode: Self::encode_abck(OpCode::ShiftLeft, dst, lhs, rhs, K::ZERO),
             function: Self::execute_shift_left,
         }
     }
@@ -486,9 +467,9 @@ impl Bytecode {
     /// `dst`: Location on stack to store result of operation  
     /// `lhs`: Location on stack of left-hand operand  
     /// `rhs`: Location on stack of right-hand operand
-    pub const fn shift_right(dst: u8, lhs: u8, rhs: u8) -> Bytecode {
+    pub fn shift_right(dst: A, lhs: B, rhs: C) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::ShiftRight, dst, lhs, rhs, 0),
+            bytecode: Self::encode_abck(OpCode::ShiftRight, dst, lhs, rhs, K::ZERO),
             function: Self::execute_shift_right,
         }
     }
@@ -498,9 +479,9 @@ impl Bytecode {
     ///
     /// `dst`: Location on stack to store result of operation  
     /// `src`: Location on stack to load value
-    pub const fn neg(dst: u8, rhs: u8) -> Bytecode {
+    pub fn neg(dst: A, rhs: B) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::Neg, dst, rhs, 0, 0),
+            bytecode: Self::encode_abck(OpCode::Neg, dst, rhs, C::ZERO, K::ZERO),
             function: Self::execute_neg,
         }
     }
@@ -510,9 +491,9 @@ impl Bytecode {
     ///
     /// `dst`: Location on stack to store result of operation  
     /// `src`: Location on stack to load value
-    pub const fn bit_not(dst: u8, rhs: u8) -> Bytecode {
+    pub fn bit_not(dst: A, rhs: B) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::BitNot, dst, rhs, 0, 0),
+            bytecode: Self::encode_abck(OpCode::BitNot, dst, rhs, C::ZERO, K::ZERO),
             function: Self::execute_bit_not,
         }
     }
@@ -522,9 +503,9 @@ impl Bytecode {
     ///
     /// `dst`: Location on stack to store result of operation  
     /// `src`: Location on stack to load value
-    pub const fn not(dst: u8, rhs: u8) -> Bytecode {
+    pub fn not(dst: A, rhs: B) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::Not, dst, rhs, 0, 0),
+            bytecode: Self::encode_abck(OpCode::Not, dst, rhs, C::ZERO, K::ZERO),
             function: Self::execute_not,
         }
     }
@@ -534,9 +515,9 @@ impl Bytecode {
     ///
     /// `dst`: Location on stack to store result of operation  
     /// `src`: Location on stack to load value
-    pub const fn len(dst: u8, rhs: u8) -> Bytecode {
+    pub fn len(dst: A, rhs: B) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::Len, dst, rhs, 0, 0),
+            bytecode: Self::encode_abck(OpCode::Len, dst, rhs, C::ZERO, K::ZERO),
             function: Self::execute_len,
         }
     }
@@ -547,9 +528,9 @@ impl Bytecode {
     /// `first`: Location on stack of first string, the result is
     /// stored here  
     /// `string_count`: Number of strings to concat
-    pub const fn concat(first: u8, count: u8) -> Bytecode {
+    pub fn concat(first: A, count: B) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::Concat, first, count, 0, 0),
+            bytecode: Self::encode_abck(OpCode::Concat, first, count, C::ZERO, K::ZERO),
             function: Self::execute_concat,
         }
     }
@@ -558,9 +539,9 @@ impl Bytecode {
     /// Closes an upvalue at the end of a block.
     ///
     /// `first`: Location on stack of first register to be closed
-    pub const fn close(first: u8) -> Bytecode {
+    pub fn close(first: A) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::Close, first, 0, 0, 0),
+            bytecode: Self::encode_abck(OpCode::Close, first, B::ZERO, C::ZERO, K::ZERO),
             function: Self::execute_close,
         }
     }
@@ -569,7 +550,7 @@ impl Bytecode {
     /// Performs jump.
     ///
     /// `jump`: Number of intructions to jump
-    pub const fn jump(jump: i32) -> Bytecode {
+    pub fn jump(jump: Sj) -> Bytecode {
         Bytecode {
             bytecode: Self::encode_asj(OpCode::Jump, jump),
             function: Self::execute_jump,
@@ -582,9 +563,9 @@ impl Bytecode {
     /// `lhs`: Location on stack of left operand  
     /// `rhs`: Location on stack of light operand  
     /// `test`: If it should test for `true` or `false`
-    pub const fn less_than(lst: u8, rhs: u8, test: u8) -> Bytecode {
+    pub fn less_than(lst: A, rhs: B, test: K) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::LessThan, lst, rhs, 0, test),
+            bytecode: Self::encode_abck(OpCode::LessThan, lst, rhs, C::ZERO, test),
             function: Self::execute_less_than,
         }
     }
@@ -595,9 +576,9 @@ impl Bytecode {
     /// `lhs`: Location on stack of left operand  
     /// `rhs`: Location on stack of light operand  
     /// `test`: If it should test for `true` or `false`
-    pub const fn less_equal(lhs: u8, rhs: u8, test: u8) -> Bytecode {
+    pub fn less_equal(lhs: A, rhs: B, test: K) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::LessEqual, lhs, rhs, 0, test),
+            bytecode: Self::encode_abck(OpCode::LessEqual, lhs, rhs, C::ZERO, test),
             function: Self::execute_less_equal,
         }
     }
@@ -608,9 +589,9 @@ impl Bytecode {
     /// `register`: Location on stack of left operand  
     /// `constant`: Id of constant  
     /// `test`: If it should test for `true` or `false`
-    pub const fn equal_constant(lhs: u8, rhs: u8, test: u8) -> Bytecode {
+    pub fn equal_constant(lhs: A, rhs: B, test: K) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::EqualConstant, lhs, rhs, 0, test),
+            bytecode: Self::encode_abck(OpCode::EqualConstant, lhs, rhs, C::ZERO, test),
             function: Self::execute_equal_constant,
         }
     }
@@ -621,9 +602,9 @@ impl Bytecode {
     /// `register`: Location on stack of left operand  
     /// `integer`: Integer constant  
     /// `test`: If it should test for `true` or `false`
-    pub const fn equal_integer(lhs: u8, rhs: i8, test: u8) -> Bytecode {
+    pub fn equal_integer(lhs: A, rhs: Sb, test: K) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_asbck(OpCode::EqualInteger, lhs, rhs, 0, test),
+            bytecode: Self::encode_asbck(OpCode::EqualInteger, lhs, rhs, C::ZERO, test),
             function: Self::execute_equal_integer,
         }
     }
@@ -634,9 +615,9 @@ impl Bytecode {
     /// `register`: Location on stack of left operand  
     /// `integer`: Integer constant of right operand  
     /// `test`: If it should test for `true` or `false`
-    pub const fn less_than_integer(lhs: u8, rhs: i8, test: u8) -> Bytecode {
+    pub fn less_than_integer(lhs: A, rhs: Sb, test: K) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_asbck(OpCode::LessThanInteger, lhs, rhs, 0, test),
+            bytecode: Self::encode_asbck(OpCode::LessThanInteger, lhs, rhs, C::ZERO, test),
             function: Self::execute_less_than_integer,
         }
     }
@@ -647,9 +628,9 @@ impl Bytecode {
     /// `register`: Location on stack of left operand  
     /// `integer`: Integer constant of right operand  
     /// `test`: If it should test for `true` or `false`
-    pub const fn greater_than_integer(lhs: u8, rhs: i8, test: u8) -> Bytecode {
+    pub fn greater_than_integer(lhs: A, rhs: Sb, test: K) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_asbck(OpCode::GreaterThanInteger, lhs, rhs, 0, test),
+            bytecode: Self::encode_asbck(OpCode::GreaterThanInteger, lhs, rhs, C::ZERO, test),
             function: Self::execute_greater_than_integer,
         }
     }
@@ -660,9 +641,9 @@ impl Bytecode {
     /// `register`: Location on stack of left operand  
     /// `integer`: Integer constant of right operand  
     /// `test`: If it should test for `true` or `false`
-    pub const fn greater_equal_integer(lhs: u8, rhs: i8, test: u8) -> Bytecode {
+    pub fn greater_equal_integer(lhs: A, rhs: Sb, test: K) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_asbck(OpCode::GreaterEqualInteger, lhs, rhs, 0, test),
+            bytecode: Self::encode_asbck(OpCode::GreaterEqualInteger, lhs, rhs, C::ZERO, test),
             function: Self::execute_greater_equal_integer,
         }
     }
@@ -672,9 +653,9 @@ impl Bytecode {
     ///
     /// `register`: Location on stack of the value that if going to be tested  
     /// `test`: Test to perform  
-    pub const fn test(register: u8, test: u8) -> Bytecode {
+    pub fn test(register: A, test: K) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::Test, register, 0, 0, test),
+            bytecode: Self::encode_abck(OpCode::Test, register, B::ZERO, C::ZERO, test),
             function: Self::execute_test,
         }
     }
@@ -687,9 +668,9 @@ impl Bytecode {
     /// itself counts as one item, `0` means a variable number of items   
     /// `out`: How many items coming out of the function should be moved into
     /// the caller stack frame, `0` means all  
-    pub const fn call(func: u8, in_params: u8, out_params: u8) -> Bytecode {
+    pub fn call(func: A, in_params: B, out_params: C) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::Call, func, in_params, out_params, 0),
+            bytecode: Self::encode_abck(OpCode::Call, func, in_params, out_params, K::ZERO),
             function: Self::execute_call,
         }
     }
@@ -700,9 +681,9 @@ impl Bytecode {
     /// `func`: Location on the stack where the function was loaded  
     /// `args`: Count of arguments  
     /// `variadics`: Number of variadic arguments
-    pub const fn tail_call(func: u8, args: u8, variadics: u8) -> Bytecode {
+    pub fn tail_call(func: A, args: B, variadics: C) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::TailCall, func, args, variadics, 0),
+            bytecode: Self::encode_abck(OpCode::TailCall, func, args, variadics, K::ZERO),
             function: Self::execute_tail_call,
         }
     }
@@ -715,18 +696,18 @@ impl Bytecode {
     /// it by 1, if zero, return all items on stack  
     /// `varargs`: If `var_args` > 0, the function is has variadic arguments
     /// and the number of fixed arguments is `var_args - 1`
-    pub const fn return_bytecode(register: u8, count: u8, varargs: u8) -> Bytecode {
+    pub fn return_bytecode(register: A, count: B, varargs: C) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::Return, register, count, varargs, 0),
+            bytecode: Self::encode_abck(OpCode::Return, register, count, varargs, K::ZERO),
             function: Self::execute_return,
         }
     }
 
     /// `RETURN0`  
     /// Returns from function with 0 out values
-    pub const fn zero_return() -> Bytecode {
+    pub fn zero_return() -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::ZeroReturn, 0, 0, 0, 0),
+            bytecode: Self::encode_abck(OpCode::ZeroReturn, A::ZERO, B::ZERO, C::ZERO, K::ZERO),
             function: Self::execute_zero_return,
         }
     }
@@ -734,9 +715,9 @@ impl Bytecode {
     /// Returns from function with 1 out values
     ///
     /// `return`: Location on stack of the returned value
-    pub const fn one_return(register: u8) -> Bytecode {
+    pub fn one_return(register: A) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::OneReturn, register, 0, 0, 0),
+            bytecode: Self::encode_abck(OpCode::OneReturn, register, B::ZERO, C::ZERO, K::ZERO),
             function: Self::execute_one_return,
         }
     }
@@ -746,7 +727,7 @@ impl Bytecode {
     ///
     /// `for`: Location on the stack counter information is stored  
     /// `jump`: Number of byte codes to jump to reach start of for block
-    pub const fn for_loop(counter: u8, jump: u32) -> Bytecode {
+    pub fn for_loop(counter: A, jump: Bx) -> Bytecode {
         Bytecode {
             bytecode: Self::encode_abx(OpCode::ForLoop, counter, jump),
             function: Self::execute_for_loop,
@@ -758,7 +739,7 @@ impl Bytecode {
     ///
     /// `for`: Location on the stack counter information is stored  
     /// `jump`: Number of byte codes to jump to reach end of for loop
-    pub const fn for_prepare(counter: u8, jump: u32) -> Bytecode {
+    pub fn for_prepare(counter: A, jump: Bx) -> Bytecode {
         Bytecode {
             bytecode: Self::encode_abx(OpCode::ForPrepare, counter, jump),
             function: Self::execute_for_prepare,
@@ -771,9 +752,9 @@ impl Bytecode {
     /// `table`: Location of the table on the stack  
     /// `array_len`: Number of items on the stack to store  
     /// `c`: ?
-    pub const fn set_list(table: u8, array_len: u8, c: u8) -> Bytecode {
+    pub fn set_list(table: A, array_len: B, c: C) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::SetList, table, array_len, c, 0),
+            bytecode: Self::encode_abck(OpCode::SetList, table, array_len, c, K::ZERO),
             function: Self::execute_set_list,
         }
     }
@@ -783,7 +764,7 @@ impl Bytecode {
     ///
     /// `dst`: Stack location to store function reference  
     /// `func_id`: Id of function
-    pub const fn closure(dst: u8, func_id: u32) -> Bytecode {
+    pub fn closure(dst: A, func_id: Bx) -> Bytecode {
         Bytecode {
             bytecode: Self::encode_abx(OpCode::Closure, dst, func_id),
             function: Self::execute_closure,
@@ -796,9 +777,15 @@ impl Bytecode {
     /// `register`: First destination of variable arguments  
     /// `count`: Count of variable arguments, `0` means use all, other values
     /// are subtracted by `1`, i.e. the range is (register..(register + count - 1))
-    pub const fn variadic_arguments(register: u8, count: u8) -> Bytecode {
+    pub fn variadic_arguments(register: A, count: C) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::VariadicArguments, register, 0, count, 0),
+            bytecode: Self::encode_abck(
+                OpCode::VariadicArguments,
+                register,
+                B::ZERO,
+                count,
+                K::ZERO,
+            ),
             function: Self::execute_variadic_arguments,
         }
     }
@@ -807,57 +794,63 @@ impl Bytecode {
     /// Prepares the variadic arguments of the closure.
     ///
     /// `fixed`: Number of fixed arguments
-    pub const fn variadic_arguments_prepare(varargs: u8) -> Bytecode {
+    pub fn variadic_arguments_prepare(varargs: A) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::VariadicArgumentsPrepare, varargs, 0, 0, 0),
+            bytecode: Self::encode_abck(
+                OpCode::VariadicArgumentsPrepare,
+                varargs,
+                B::ZERO,
+                C::ZERO,
+                K::ZERO,
+            ),
             function: Self::execute_variadic_arguments_prepare,
         }
     }
 
     fn execute_move(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, src, _, _) = self.decode_abck();
-        let value = vm.get_stack(src)?.clone();
-        vm.set_stack(dst, value)
+        let value = vm.get_stack(*src)?.clone();
+        vm.set_stack(*dst, value)
     }
 
     fn execute_load_integer(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, value) = self.decode_asbx();
-        vm.set_stack(dst, Value::Integer(i64::from(value)))
+        vm.set_stack(*dst, Value::Integer(i64::from(*value)))
     }
 
     fn execute_load_float(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, value) = self.decode_asbx();
-        vm.set_stack(dst, Value::Float(value as f64))
+        vm.set_stack(*dst, Value::Float(*value as f64))
     }
 
     fn execute_load_constant(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, constant) = self.decode_abx();
 
         let closure = vm.get_running_closure();
-        let value = closure.constant(usize::try_from(constant)?)?;
-        vm.set_stack(dst, value)
+        let value = closure.constant(usize::try_from(*constant)?)?;
+        vm.set_stack(*dst, value)
     }
 
     fn execute_load_false(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, _, _, _) = self.decode_abck();
-        vm.set_stack(dst, Value::Boolean(false))
+        vm.set_stack(*dst, Value::Boolean(false))
     }
 
     fn execute_load_false_skip(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, _, _, _) = self.decode_abck();
         vm.jump(1)?;
-        vm.set_stack(dst, Value::Boolean(false))
+        vm.set_stack(*dst, Value::Boolean(false))
     }
 
     fn execute_load_true(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, _, _, _) = self.decode_abck();
-        vm.set_stack(dst, Value::Boolean(true))
+        vm.set_stack(*dst, Value::Boolean(true))
     }
 
     fn execute_load_nil(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, extras, _, _) = self.decode_abck();
         // If `extra` is 0, runs once
-        for dst in dst..=(dst + extras) {
+        for dst in *dst..=(*dst + *extras) {
             vm.set_stack(dst, Value::Nil)?;
         }
         Ok(())
@@ -865,15 +858,15 @@ impl Bytecode {
 
     fn execute_get_upvalue(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, upvalue, _, _) = self.decode_abck();
-        let upvalue = vm.get_upvalue(usize::from(upvalue))?;
-        vm.set_stack(dst, upvalue)
+        let upvalue = vm.get_upvalue(usize::from(*upvalue))?;
+        vm.set_stack(*dst, upvalue)
     }
 
     fn execute_set_upvalue(&self, vm: &mut Lua) -> Result<(), Error> {
         let (upvalue, value, _, _) = self.decode_abck();
 
-        let value = vm.get_stack(value).cloned()?;
-        vm.set_upvalue(usize::from(upvalue), value)?;
+        let value = vm.get_stack(*value).cloned()?;
+        vm.set_upvalue(usize::from(*upvalue), value)?;
 
         Ok(())
     }
@@ -881,22 +874,22 @@ impl Bytecode {
     fn execute_get_uptable(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, upvalue, key, _) = self.decode_abck();
 
-        let Value::Table(upvalue) = vm.get_upvalue(usize::from(upvalue))? else {
+        let Value::Table(upvalue) = vm.get_upvalue(usize::from(*upvalue))? else {
             return Err(Error::ExpectedTable);
         };
 
         let closure = vm.get_running_closure();
-        let key = closure.constant(usize::from(key))?;
+        let key = closure.constant(usize::from(*key))?;
         let value = upvalue.deref().borrow().get(ValueKey(key.clone())).clone();
 
-        vm.set_stack(dst, value)
+        vm.set_stack(*dst, value)
     }
 
     fn execute_get_table(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, table, src, _) = self.decode_abck();
 
-        if let Value::Table(table) = vm.get_stack(table)?.clone() {
-            let key = ValueKey::from(vm.get_stack(src)?.clone());
+        if let Value::Table(table) = vm.get_stack(*table)?.clone() {
+            let key = ValueKey::from(vm.get_stack(*src)?.clone());
             let bin_search = (*table)
                 .borrow()
                 .table
@@ -906,7 +899,7 @@ impl Bytecode {
                 Ok(i) => (*table).borrow().table[i].1.clone(),
                 Err(_) => Value::Nil,
             };
-            vm.set_stack(dst, value)
+            vm.set_stack(*dst, value)
         } else {
             Err(Error::ExpectedTable)
         }
@@ -915,8 +908,8 @@ impl Bytecode {
     fn execute_get_index(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, table, index, _) = self.decode_abck();
 
-        if let Value::Table(table) = vm.get_stack(table)?.clone() {
-            let value = if index == 0 {
+        if let Value::Table(table) = vm.get_stack(*table)?.clone() {
+            let value = if *index == 0 {
                 let bin_search = (*table)
                     .borrow()
                     .table
@@ -929,11 +922,11 @@ impl Bytecode {
                 (*table)
                     .borrow()
                     .array
-                    .get(usize::from(index) - 1)
+                    .get(usize::from(*index) - 1)
                     .cloned()
                     .unwrap_or(Value::Nil)
             };
-            vm.set_stack(dst, value)
+            vm.set_stack(*dst, value)
         } else {
             Err(Error::ExpectedTable)
         }
@@ -942,9 +935,9 @@ impl Bytecode {
     fn execute_get_field(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, table, key, _) = self.decode_abck();
 
-        if let Value::Table(table) = vm.get_stack(table)?.clone() {
+        if let Value::Table(table) = vm.get_stack(*table)?.clone() {
             let closure = vm.get_running_closure();
-            let key = ValueKey::from(closure.constant(usize::from(key))?);
+            let key = ValueKey::from(closure.constant(usize::from(*key))?);
             let bin_search = (*table)
                 .borrow()
                 .table
@@ -954,7 +947,7 @@ impl Bytecode {
                 Ok(i) => (*table).borrow().table[i].1.clone(),
                 Err(_) => Value::Nil,
             };
-            vm.set_stack(dst, value)
+            vm.set_stack(*dst, value)
         } else {
             Err(Error::ExpectedTable)
         }
@@ -964,14 +957,14 @@ impl Bytecode {
         let (upvalue, key, src, constant) = self.decode_abck();
 
         let running_program = vm.get_running_closure();
-        let key = running_program.constant(usize::from(key))?;
-        let value = if constant == 1 {
-            running_program.constant(usize::from(src))?
+        let key = running_program.constant(usize::from(*key))?;
+        let value = if *constant {
+            running_program.constant(usize::from(*src))?
         } else {
-            vm.get_stack(src)?.clone()
+            vm.get_stack(*src)?.clone()
         };
 
-        match vm.get_upvalue(usize::from(upvalue))? {
+        match vm.get_upvalue(usize::from(*upvalue))? {
             Value::Table(upvalue) => upvalue.borrow_mut().set(ValueKey(key), value),
             _ => Err(Error::ExpectedTable),
         }
@@ -980,13 +973,13 @@ impl Bytecode {
     fn execute_set_table(&self, vm: &mut Lua) -> Result<(), Error> {
         let (table, key, src, constant) = self.decode_abck();
 
-        if let Value::Table(table) = vm.get_stack(table)?.clone() {
+        if let Value::Table(table) = vm.get_stack(*table)?.clone() {
             let program = vm.get_running_closure();
-            let key = ValueKey::from(vm.get_stack(key)?.clone());
-            let value = if constant == 1 {
-                program.constant(usize::from(src))?
+            let key = ValueKey::from(vm.get_stack(*key)?.clone());
+            let value = if *constant {
+                program.constant(usize::from(*src))?
             } else {
-                vm.get_stack(src)?.clone()
+                vm.get_stack(*src)?.clone()
             };
 
             let binary_search = (*table)
@@ -1012,13 +1005,13 @@ impl Bytecode {
     fn execute_set_field(&self, vm: &mut Lua) -> Result<(), Error> {
         let (table, key, src, constant) = self.decode_abck();
 
-        if let Value::Table(table) = vm.get_stack(table)?.clone() {
+        if let Value::Table(table) = vm.get_stack(*table)?.clone() {
             let running_program = vm.get_running_closure();
-            let key = ValueKey::from(running_program.constant(usize::from(key))?);
-            let value = if constant == 1 {
-                running_program.constant(usize::from(src))?
+            let key = ValueKey::from(running_program.constant(usize::from(*key))?);
+            let value = if *constant {
+                running_program.constant(usize::from(*src))?
             } else {
-                vm.get_stack(src)?.clone()
+                vm.get_stack(*src)?.clone()
             };
 
             let binary_search = (*table)
@@ -1045,10 +1038,10 @@ impl Bytecode {
         let (dst, array_initial_size, table_initial_size, _) = self.decode_abck();
 
         vm.set_stack(
-            dst,
+            *dst,
             Value::Table(Rc::new(RefCell::new(Table::new(
-                usize::from(array_initial_size),
-                usize::from(table_initial_size),
+                usize::from(*array_initial_size),
+                usize::from(*table_initial_size),
             )))),
         )
     }
@@ -1056,11 +1049,11 @@ impl Bytecode {
     fn execute_table_self(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, table, key, _) = self.decode_abck();
 
-        if let Value::Table(table) = vm.get_stack(table).cloned()? {
-            vm.set_stack(dst + 1, Value::Table(table.clone()))?;
+        if let Value::Table(table) = vm.get_stack(*table).cloned()? {
+            vm.set_stack(*dst + 1, Value::Table(table.clone()))?;
 
             let program = vm.get_running_closure();
-            let key = ValueKey::from(program.constant(usize::from(key))?);
+            let key = ValueKey::from(program.constant(usize::from(*key))?);
             let bin_search = (*table)
                 .borrow()
                 .table
@@ -1070,7 +1063,7 @@ impl Bytecode {
                 Ok(i) => (*table).borrow().table[i].1.clone(),
                 Err(_) => Value::Nil,
             };
-            vm.set_stack(dst, value)
+            vm.set_stack(*dst, value)
         } else {
             Err(Error::ExpectedTable)
         }
@@ -1079,9 +1072,9 @@ impl Bytecode {
     fn execute_add_integer(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, lhs, int, _) = self.decode_absck();
 
-        let res = match &vm.get_stack(lhs)? {
-            Value::Integer(l) => Value::Integer(l + i64::from(int)),
-            Value::Float(l) => Value::Float(l + int as f64),
+        let res = match &vm.get_stack(*lhs)? {
+            Value::Integer(l) => Value::Integer(l + i64::from(*int)),
+            Value::Float(l) => Value::Float(l + *int as f64),
             lhs => {
                 return Err(Error::ArithmeticOperand(
                     "add",
@@ -1090,7 +1083,7 @@ impl Bytecode {
                 ));
             }
         };
-        vm.set_stack(dst, res)
+        vm.set_stack(*dst, res)
     }
 
     fn execute_add_constant(&self, vm: &mut Lua) -> Result<(), Error> {
@@ -1099,8 +1092,8 @@ impl Bytecode {
         let program = vm.get_running_closure();
 
         let res = match (
-            &vm.get_stack(lhs)?,
-            &program.constant(usize::from(constant))?,
+            &vm.get_stack(*lhs)?,
+            &program.constant(usize::from(*constant))?,
         ) {
             (Value::Integer(l), Value::Integer(r)) => Value::Integer(l + r),
             (Value::Integer(l), Value::Float(r)) => Value::Float(*l as f64 + r),
@@ -1114,7 +1107,7 @@ impl Bytecode {
                 ));
             }
         };
-        vm.set_stack(dst, res)
+        vm.set_stack(*dst, res)
     }
 
     fn execute_mul_constant(&self, vm: &mut Lua) -> Result<(), Error> {
@@ -1123,8 +1116,8 @@ impl Bytecode {
         let program = vm.get_running_closure();
 
         let res = match (
-            &vm.get_stack(lhs)?,
-            &program.constant(usize::from(constant))?,
+            &vm.get_stack(*lhs)?,
+            &program.constant(usize::from(*constant))?,
         ) {
             (Value::Integer(l), Value::Integer(r)) => Value::Integer(l * r),
             (Value::Integer(l), Value::Float(r)) => Value::Float(*l as f64 * r),
@@ -1138,13 +1131,13 @@ impl Bytecode {
                 ));
             }
         };
-        vm.set_stack(dst, res)
+        vm.set_stack(*dst, res)
     }
 
     fn execute_add(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, lhs, rhs, _) = self.decode_abck();
 
-        let res = match (&vm.get_stack(lhs)?, &vm.get_stack(rhs)?) {
+        let res = match (&vm.get_stack(*lhs)?, &vm.get_stack(*rhs)?) {
             (Value::Integer(l), Value::Integer(r)) => Value::Integer(l + r),
             (Value::Float(l), Value::Float(r)) => Value::Float(l + r),
             (Value::Integer(l), Value::Float(r)) => Value::Float(*l as f64 + r),
@@ -1157,13 +1150,13 @@ impl Bytecode {
                 ));
             }
         };
-        vm.set_stack(dst, res)
+        vm.set_stack(*dst, res)
     }
 
     fn execute_sub(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, lhs, rhs, _) = self.decode_abck();
 
-        let res = match (&vm.get_stack(lhs)?, &vm.get_stack(rhs)?) {
+        let res = match (&vm.get_stack(*lhs)?, &vm.get_stack(*rhs)?) {
             (Value::Integer(l), Value::Integer(r)) => Value::Integer(l - r),
             (Value::Float(l), Value::Float(r)) => Value::Float(l - r),
             (Value::Integer(l), Value::Float(r)) => Value::Float(*l as f64 - r),
@@ -1176,13 +1169,13 @@ impl Bytecode {
                 ));
             }
         };
-        vm.set_stack(dst, res)
+        vm.set_stack(*dst, res)
     }
 
     fn execute_mul(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, lhs, rhs, _) = self.decode_abck();
 
-        let res = match (&vm.get_stack(lhs)?, &vm.get_stack(rhs)?) {
+        let res = match (&vm.get_stack(*lhs)?, &vm.get_stack(*rhs)?) {
             (Value::Integer(l), Value::Integer(r)) => Value::Integer(l * r),
             (Value::Float(l), Value::Float(r)) => Value::Float(l * r),
             (Value::Integer(l), Value::Float(r)) => Value::Float(*l as f64 * r),
@@ -1195,13 +1188,13 @@ impl Bytecode {
                 ));
             }
         };
-        vm.set_stack(dst, res)
+        vm.set_stack(*dst, res)
     }
 
     fn execute_mod(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, lhs, rhs, _) = self.decode_abck();
 
-        let res = match (&vm.get_stack(lhs)?, &vm.get_stack(rhs)?) {
+        let res = match (&vm.get_stack(*lhs)?, &vm.get_stack(*rhs)?) {
             (Value::Integer(l), Value::Integer(r)) => Value::Integer(l % r),
             (Value::Float(l), Value::Float(r)) => Value::Float(l % r),
             (Value::Integer(l), Value::Float(r)) => Value::Float(*l as f64 % r),
@@ -1214,13 +1207,13 @@ impl Bytecode {
                 ));
             }
         };
-        vm.set_stack(dst, res)
+        vm.set_stack(*dst, res)
     }
 
     fn execute_pow(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, lhs, rhs, _) = self.decode_abck();
 
-        let res = match (&vm.get_stack(lhs)?, &vm.get_stack(rhs)?) {
+        let res = match (&vm.get_stack(*lhs)?, &vm.get_stack(*rhs)?) {
             (Value::Integer(l), Value::Integer(r)) => Value::Float((*l as f64).powf(*r as f64)),
             (Value::Float(l), Value::Float(r)) => Value::Float(l.powf(*r)),
             (Value::Integer(l), Value::Float(r)) => Value::Float((*l as f64).powf(*r)),
@@ -1233,13 +1226,13 @@ impl Bytecode {
                 ));
             }
         };
-        vm.set_stack(dst, res)
+        vm.set_stack(*dst, res)
     }
 
     fn execute_div(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, lhs, rhs, _) = self.decode_abck();
 
-        let res = match (&vm.get_stack(lhs)?, &vm.get_stack(rhs)?) {
+        let res = match (&vm.get_stack(*lhs)?, &vm.get_stack(*rhs)?) {
             (Value::Integer(l), Value::Integer(r)) => Value::Float(*l as f64 / *r as f64),
             (Value::Float(l), Value::Float(r)) => Value::Float(l / r),
             (Value::Integer(l), Value::Float(r)) => Value::Float(*l as f64 / r),
@@ -1252,13 +1245,13 @@ impl Bytecode {
                 ));
             }
         };
-        vm.set_stack(dst, res)
+        vm.set_stack(*dst, res)
     }
 
     fn execute_idiv(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, lhs, rhs, _) = self.decode_abck();
 
-        let res = match (&vm.get_stack(lhs)?, &vm.get_stack(rhs)?) {
+        let res = match (&vm.get_stack(*lhs)?, &vm.get_stack(*rhs)?) {
             (Value::Integer(l), Value::Integer(r)) => Value::Integer(l / r),
             (Value::Float(l), Value::Float(r)) => Value::Float((l / r).trunc()),
             (Value::Integer(l), Value::Float(r)) => Value::Float((*l as f64 / r).trunc()),
@@ -1271,13 +1264,13 @@ impl Bytecode {
                 ));
             }
         };
-        vm.set_stack(dst, res)
+        vm.set_stack(*dst, res)
     }
 
     fn execute_bit_and(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, lhs, rhs, _) = self.decode_abck();
 
-        let res = match (&vm.get_stack(lhs)?, &vm.get_stack(rhs)?) {
+        let res = match (&vm.get_stack(*lhs)?, &vm.get_stack(*rhs)?) {
             (Value::Integer(l), Value::Integer(r)) => Value::Integer(l & r),
             (lhs, rhs) => {
                 return Err(Error::BitwiseOperand(
@@ -1287,13 +1280,13 @@ impl Bytecode {
                 ));
             }
         };
-        vm.set_stack(dst, res)
+        vm.set_stack(*dst, res)
     }
 
     fn execute_bit_or(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, lhs, rhs, _) = self.decode_abck();
 
-        let res = match (&vm.get_stack(lhs)?, &vm.get_stack(rhs)?) {
+        let res = match (&vm.get_stack(*lhs)?, &vm.get_stack(*rhs)?) {
             (Value::Integer(l), Value::Integer(r)) => Value::Integer(l | r),
             (lhs, rhs) => {
                 return Err(Error::BitwiseOperand(
@@ -1303,13 +1296,13 @@ impl Bytecode {
                 ));
             }
         };
-        vm.set_stack(dst, res)
+        vm.set_stack(*dst, res)
     }
 
     fn execute_bit_xor(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, lhs, rhs, _) = self.decode_abck();
 
-        let res = match (&vm.get_stack(lhs)?, &vm.get_stack(rhs)?) {
+        let res = match (&vm.get_stack(*lhs)?, &vm.get_stack(*rhs)?) {
             (Value::Integer(l), Value::Integer(r)) => Value::Integer(l ^ r),
             (lhs, rhs) => {
                 return Err(Error::BitwiseOperand(
@@ -1319,13 +1312,13 @@ impl Bytecode {
                 ));
             }
         };
-        vm.set_stack(dst, res)
+        vm.set_stack(*dst, res)
     }
 
     fn execute_shift_left(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, lhs, rhs, _) = self.decode_abck();
 
-        let res = match (&vm.get_stack(lhs)?, &vm.get_stack(rhs)?) {
+        let res = match (&vm.get_stack(*lhs)?, &vm.get_stack(*rhs)?) {
             (Value::Integer(l), Value::Integer(r)) => Value::Integer(l << r),
             (lhs, rhs) => {
                 return Err(Error::BitwiseOperand(
@@ -1335,15 +1328,15 @@ impl Bytecode {
                 ));
             }
         };
-        vm.set_stack(dst, res)
+        vm.set_stack(*dst, res)
     }
 
     fn execute_shift_right(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, lhs, rhs, _) = self.decode_abck();
 
         let res = match (
-            &vm.get_stack(lhs)?.clone().try_int(),
-            &vm.get_stack(rhs)?.clone().try_int(),
+            &vm.get_stack(*lhs)?.clone().try_int(),
+            &vm.get_stack(*rhs)?.clone().try_int(),
         ) {
             (Value::Integer(l), Value::Integer(r)) => Value::Integer(l >> r),
             (lhs, rhs) => {
@@ -1354,57 +1347,57 @@ impl Bytecode {
                 ));
             }
         };
-        vm.set_stack(dst, res)
+        vm.set_stack(*dst, res)
     }
 
     fn execute_neg(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, rhs, _, _) = self.decode_abck();
 
-        let value = match vm.get_stack(rhs)? {
+        let value = match vm.get_stack(*rhs)? {
             Value::Integer(integer) => Value::Integer(-integer),
             Value::Float(float) => Value::Float(-float),
             _ => return Err(Error::InvalidNegOperand),
         };
-        vm.set_stack(dst, value)
+        vm.set_stack(*dst, value)
     }
 
     fn execute_bit_not(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, rhs, _, _) = self.decode_abck();
 
-        let value = match vm.get_stack(rhs)? {
+        let value = match vm.get_stack(*rhs)? {
             Value::Integer(integer) => Value::Integer(!integer),
             _ => return Err(Error::InvalidBitNotOperand),
         };
-        vm.set_stack(dst, value)
+        vm.set_stack(*dst, value)
     }
 
     fn execute_not(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, rhs, _, _) = self.decode_abck();
 
-        let value = match &vm.get_stack(rhs)? {
+        let value = match &vm.get_stack(*rhs)? {
             Value::Boolean(false) | Value::Nil => Value::Boolean(true),
             _ => Value::Boolean(false),
         };
-        vm.set_stack(dst, value)
+        vm.set_stack(*dst, value)
     }
 
     fn execute_len(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, rhs, _, _) = self.decode_abck();
 
-        let value = match &vm.get_stack(rhs)? {
+        let value = match &vm.get_stack(*rhs)? {
             Value::String(string) => Value::Integer(i64::try_from(string.len())?),
             Value::ShortString(string) => Value::Integer(i64::try_from(string.len())?),
             _ => return Err(Error::InvalidLenOperand),
         };
-        vm.set_stack(dst, value)
+        vm.set_stack(*dst, value)
     }
 
     fn execute_concat(&self, vm: &mut Lua) -> Result<(), Error> {
         let (first, count, _, _) = self.decode_abck();
 
-        let mut strings = Vec::with_capacity(usize::from(count));
+        let mut strings = Vec::with_capacity(usize::from(*count));
 
-        for src in first..(first + count) {
+        for src in *first..(*first + *count) {
             match &vm.get_stack(src)? {
                 Value::Integer(lhs) => strings.push(lhs.to_string()),
                 Value::Float(lhs) => strings.push(lhs.to_string()),
@@ -1415,7 +1408,7 @@ impl Bytecode {
         }
 
         let concatenated = strings.into_iter().collect::<String>();
-        vm.set_stack(first, concatenated.as_str().into())
+        vm.set_stack(*first, concatenated.as_str().into())
     }
 
     fn execute_close(&self, vm: &mut Lua) -> Result<(), Error> {
@@ -1428,7 +1421,7 @@ impl Bytecode {
             .enumerate()
             .filter_map(|(i, upvalue)| {
                 if let Upvalue::Open(stack) = *upvalue.borrow() {
-                    Some(i).filter(|_| stack > usize::from(first))
+                    Some(i).filter(|_| stack > usize::from(*first))
                 } else {
                     None
                 }
@@ -1449,16 +1442,16 @@ impl Bytecode {
     fn execute_jump(&self, vm: &mut Lua) -> Result<(), Error> {
         let jump = self.decode_sj();
 
-        vm.jump(isize::try_from(jump)?)
+        vm.jump(isize::try_from(*jump)?)
     }
 
     fn execute_less_than(&self, vm: &mut Lua) -> Result<(), Error> {
         let (lhs, rhs, _, test) = self.decode_abck();
 
-        let lhs = vm.get_stack(lhs)?;
-        let rhs = vm.get_stack(rhs)?;
+        let lhs = vm.get_stack(*lhs)?;
+        let rhs = vm.get_stack(*rhs)?;
 
-        Self::relational_comparison(lhs, rhs, |ordering| ordering == Ordering::Less, test == 1)
+        Self::relational_comparison(lhs, rhs, |ordering| ordering == Ordering::Less, *test)
             .and_then(|should_advance_pc| {
                 if should_advance_pc {
                     vm.jump(1)?;
@@ -1470,21 +1463,16 @@ impl Bytecode {
     fn execute_less_equal(&self, vm: &mut Lua) -> Result<(), Error> {
         let (lhs, rhs, _, test) = self.decode_abck();
 
-        let lhs = &vm.get_stack(lhs)?;
-        let rhs = &vm.get_stack(rhs)?;
+        let lhs = &vm.get_stack(*lhs)?;
+        let rhs = &vm.get_stack(*rhs)?;
 
-        Self::relational_comparison(
-            lhs,
-            rhs,
-            |ordering| ordering != Ordering::Greater,
-            test == 1,
-        )
-        .and_then(|should_advance_pc| {
-            if should_advance_pc {
-                vm.jump(1)?;
-            }
-            Ok(())
-        })
+        Self::relational_comparison(lhs, rhs, |ordering| ordering != Ordering::Greater, *test)
+            .and_then(|should_advance_pc| {
+                if should_advance_pc {
+                    vm.jump(1)?;
+                }
+                Ok(())
+            })
     }
 
     fn execute_equal_constant(&self, vm: &mut Lua) -> Result<(), Error> {
@@ -1492,10 +1480,10 @@ impl Bytecode {
 
         let program = vm.get_running_closure();
 
-        let lhs = vm.get_stack(register)?;
-        let rhs = &program.constant(usize::from(constant))?;
+        let lhs = vm.get_stack(*register)?;
+        let rhs = &program.constant(usize::from(*constant))?;
 
-        Self::relational_comparison(lhs, rhs, |ordering| ordering == Ordering::Equal, test == 1)
+        Self::relational_comparison(lhs, rhs, |ordering| ordering == Ordering::Equal, *test)
             .and_then(|should_advance_pc| {
                 if should_advance_pc {
                     vm.jump(1)?;
@@ -1507,44 +1495,54 @@ impl Bytecode {
     fn execute_equal_integer(&self, vm: &mut Lua) -> Result<(), Error> {
         let (register, integer, _, test) = self.decode_asbck();
 
-        let lhs = vm.get_stack(register)?;
-        let rhs = Value::Integer(i64::from(integer));
+        let lhs = vm.get_stack(*register)?;
+        let rhs = Value::Integer(i64::from(*integer));
 
-        Self::relational_comparison(lhs, &rhs, |ordering| ordering == Ordering::Equal, test == 1)
-            .and_then(|should_advance_pc| {
-                if should_advance_pc {
-                    vm.jump(1)?;
-                }
-                Ok(())
-            })
+        Self::relational_comparison(
+            lhs,
+            &rhs,
+            |ordering| ordering == Ordering::Equal,
+            test == K::ONE,
+        )
+        .and_then(|should_advance_pc| {
+            if should_advance_pc {
+                vm.jump(1)?;
+            }
+            Ok(())
+        })
     }
 
     fn execute_less_than_integer(&self, vm: &mut Lua) -> Result<(), Error> {
         let (register, integer, _, test) = self.decode_asbck();
 
-        let lhs = vm.get_stack(register)?;
-        let rhs = Value::Integer(i64::from(integer));
+        let lhs = vm.get_stack(*register)?;
+        let rhs = Value::Integer(i64::from(*integer));
 
-        Self::relational_comparison(lhs, &rhs, |ordering| ordering == Ordering::Less, test == 1)
-            .and_then(|should_advance_pc| {
-                if should_advance_pc {
-                    vm.jump(1)?;
-                }
-                Ok(())
-            })
+        Self::relational_comparison(
+            lhs,
+            &rhs,
+            |ordering| ordering == Ordering::Less,
+            test == K::ONE,
+        )
+        .and_then(|should_advance_pc| {
+            if should_advance_pc {
+                vm.jump(1)?;
+            }
+            Ok(())
+        })
     }
 
     fn execute_greater_than_integer(&self, vm: &mut Lua) -> Result<(), Error> {
         let (register, integer, _, test) = self.decode_asbck();
 
-        let lhs = vm.get_stack(register)?;
-        let rhs = Value::Integer(i64::from(integer));
+        let lhs = vm.get_stack(*register)?;
+        let rhs = Value::Integer(i64::from(*integer));
 
         Self::relational_comparison(
             lhs,
             &rhs,
             |ordering| ordering == Ordering::Greater,
-            test == 1,
+            test == K::ONE,
         )
         .and_then(|should_advance_pc| {
             if should_advance_pc {
@@ -1557,28 +1555,32 @@ impl Bytecode {
     fn execute_greater_equal_integer(&self, vm: &mut Lua) -> Result<(), Error> {
         let (register, integer, _, test) = self.decode_asbck();
 
-        let lhs = vm.get_stack(register)?;
-        let rhs = Value::Integer(i64::from(integer));
+        let lhs = vm.get_stack(*register)?;
+        let rhs = Value::Integer(i64::from(*integer));
 
-        Self::relational_comparison(lhs, &rhs, |ordering| ordering != Ordering::Less, test == 1)
-            .and_then(|should_advance_pc| {
-                if should_advance_pc {
-                    vm.jump(1)?;
-                }
-                Ok(())
-            })
+        Self::relational_comparison(
+            lhs,
+            &rhs,
+            |ordering| ordering != Ordering::Less,
+            test == K::ONE,
+        )
+        .and_then(|should_advance_pc| {
+            if should_advance_pc {
+                vm.jump(1)?;
+            }
+            Ok(())
+        })
     }
 
     fn execute_test(&self, vm: &mut Lua) -> Result<(), Error> {
         let (src, _, _, test) = self.decode_abck();
 
-        let cond = vm.get_stack(src)?;
+        let cond = vm.get_stack(*src)?;
         match (cond, test) {
-            (Value::Nil | Value::Boolean(false), 0) => (),
-            (Value::Nil | Value::Boolean(false), 1) => vm.jump(1)?,
-            (_, 1) => (),
-            (_, 0) => vm.jump(1)?,
-            (_, _) => unreachable!("Test is always 0 or 1."),
+            (Value::Nil | Value::Boolean(false), K::ZERO) => (),
+            (Value::Nil | Value::Boolean(false), K::ONE) => vm.jump(1)?,
+            (_, K::ONE) => (),
+            (_, K::ZERO) => vm.jump(1)?,
         };
 
         Ok(())
@@ -1587,11 +1589,11 @@ impl Bytecode {
     fn execute_call(&self, vm: &mut Lua) -> Result<(), Error> {
         let (func_index, in_items, out, _) = self.decode_abck();
 
-        let func_index_usize = usize::from(func_index);
-        let in_items = usize::from(in_items);
-        let out_params = usize::from(out);
+        let func_index_usize = usize::from(*func_index);
+        let in_items = usize::from(*in_items);
+        let out_params = usize::from(*out);
 
-        let func = &vm.get_stack(func_index)?;
+        let func = &vm.get_stack(*func_index)?;
         if let Value::Closure(closure) = func {
             match closure.closure_type() {
                 FunctionType::Native(closure) => {
@@ -1618,9 +1620,9 @@ impl Bytecode {
     fn execute_tail_call(&self, vm: &mut Lua) -> Result<(), Error> {
         let (func_index, args, out_params, _) = self.decode_abck();
 
-        let func_index_usize = usize::from(func_index);
-        let args = usize::from(args);
-        let out_params = usize::from(out_params);
+        let func_index_usize = usize::from(*func_index);
+        let args = usize::from(*args);
+        let out_params = usize::from(*out_params);
 
         let top_stack = vm.get_stack_frame();
         let tail_start = top_stack.stack_frame + func_index_usize;
@@ -1646,7 +1648,7 @@ impl Bytecode {
     fn execute_return(&self, vm: &mut Lua) -> Result<(), Error> {
         // TODO treat out params
         let (return_start, count, _, _) = self.decode_abck();
-        vm.drop_stack_frame(usize::from(return_start), usize::from(count - 1));
+        vm.drop_stack_frame(usize::from(*return_start), usize::from(*count - 1));
         Ok(())
     }
 
@@ -1657,18 +1659,23 @@ impl Bytecode {
 
     fn execute_one_return(&self, vm: &mut Lua) -> Result<(), Error> {
         let (return_loc, _, _, _) = self.decode_abck();
-        vm.drop_stack_frame(usize::from(return_loc), 1);
+        vm.drop_stack_frame(usize::from(*return_loc), 1);
         Ok(())
     }
 
     fn execute_for_loop(&self, vm: &mut Lua) -> Result<(), Error> {
         let (for_stack, jmp) = self.decode_abx();
 
-        if let Value::Integer(counter) = &mut vm.get_stack_mut(for_stack + 1)? {
+        if let Value::Integer(counter) = &mut vm.get_stack_mut(*for_stack + 1)? {
             if counter != &0 {
                 *counter -= 1;
-                Bytecode::add(for_stack + 3, for_stack + 3, for_stack + 2).execute(vm)?;
-                vm.jump(-isize::try_from(jmp)?)?;
+                Bytecode::add(
+                    (*for_stack + 3).into(),
+                    (*for_stack + 3).into(),
+                    (*for_stack + 2).into(),
+                )
+                .execute(vm)?;
+                vm.jump(-isize::try_from(*jmp)?)?;
             }
             Ok(())
         } else {
@@ -1680,9 +1687,9 @@ impl Bytecode {
     fn execute_for_prepare(&self, vm: &mut Lua) -> Result<(), Error> {
         let (for_stack, jmp) = self.decode_abx();
 
-        let init = vm.get_stack(for_stack)?;
-        let limit = vm.get_stack(for_stack + 1)?;
-        let step = vm.get_stack(for_stack + 2)?;
+        let init = vm.get_stack(*for_stack)?;
+        let limit = vm.get_stack(*for_stack + 1)?;
+        let step = vm.get_stack(*for_stack + 2)?;
 
         if let (&Value::Integer(init), &Value::Integer(step)) = (init, step) {
             if step == 0 {
@@ -1698,10 +1705,10 @@ impl Bytecode {
                 }
             };
 
-            vm.set_stack(for_stack + 1, Value::Integer(count))?;
-            vm.set_stack(for_stack + 3, Value::Integer(init))?;
+            vm.set_stack(*for_stack + 1, Value::Integer(count))?;
+            vm.set_stack(*for_stack + 3, Value::Integer(init))?;
             if count <= 0 {
-                vm.jump(isize::try_from(jmp)? + 1)?;
+                vm.jump(isize::try_from(*jmp)? + 1)?;
             }
             Ok(())
         } else {
@@ -1720,12 +1727,12 @@ impl Bytecode {
 
             let count = ((limit - init) / step).trunc();
 
-            vm.set_stack(for_stack, Value::Float(init))?;
-            vm.set_stack(for_stack + 1, Value::Integer(count as i64))?;
-            vm.set_stack(for_stack + 2, Value::Float(step))?;
-            vm.set_stack(for_stack + 3, Value::Float(init))?;
+            vm.set_stack(*for_stack, Value::Float(init))?;
+            vm.set_stack(*for_stack + 1, Value::Integer(count as i64))?;
+            vm.set_stack(*for_stack + 2, Value::Float(step))?;
+            vm.set_stack(*for_stack + 3, Value::Float(init))?;
             if count <= 0.0 {
-                vm.jump(isize::try_from(jmp)? + 1)?;
+                vm.jump(isize::try_from(*jmp)? + 1)?;
             }
             Ok(())
         }
@@ -1737,15 +1744,15 @@ impl Bytecode {
         let top_stack = vm.get_stack_frame();
 
         let table_items_start =
-            top_stack.stack_frame + top_stack.variadic_arguments + usize::from(table) + 1;
-        if let Value::Table(table) = vm.get_stack(table)?.clone() {
-            let values = if count == 0 {
+            top_stack.stack_frame + top_stack.variadic_arguments + usize::from(*table) + 1;
+        if let Value::Table(table) = vm.get_stack(*table)?.clone() {
+            let values = if *count == 0 {
                 let true_count = vm.stack.len() - table_items_start;
                 vm.stack
                     .drain(table_items_start..(table_items_start + true_count))
             } else {
                 vm.stack
-                    .drain(table_items_start..(table_items_start + usize::from(count)))
+                    .drain(table_items_start..(table_items_start + usize::from(*count)))
             };
 
             table.borrow_mut().array.extend(values);
@@ -1760,7 +1767,7 @@ impl Bytecode {
 
         let program = vm.get_running_closure();
 
-        let func = program.function(usize::try_from(func_id)?)?;
+        let func = program.function(usize::try_from(*func_id)?)?;
 
         let upvalues = func
             .program()
@@ -1771,7 +1778,7 @@ impl Bytecode {
 
         let closure = Value::Closure(Rc::new(Closure::new_lua(func, upvalues)));
 
-        vm.set_stack(dst, closure)
+        vm.set_stack(*dst, closure)
     }
 
     fn execute_variadic_arguments(&self, vm: &mut Lua) -> Result<(), Error> {
@@ -1781,22 +1788,24 @@ impl Bytecode {
 
         let variadics = top_stack.variadic_arguments;
 
-        if count == 0 {
+        if *count == 0 {
             let start = top_stack.stack_frame;
             let end = start + variadics;
 
             let move_vals = vm.stack[start..end].to_vec();
 
-            vm.stack.truncate(start + variadics + usize::from(register));
+            vm.stack
+                .truncate(start + variadics + usize::from(*register));
             vm.stack.extend(move_vals);
         } else {
-            let true_count = usize::from(count - 1);
+            let true_count = usize::from(*count - 1);
             let start = top_stack.stack_frame;
             let end = start + true_count.min(variadics);
 
             let move_vals = vm.stack[start..end].to_vec();
 
-            vm.stack.truncate(start + variadics + usize::from(register));
+            vm.stack
+                .truncate(start + variadics + usize::from(*register));
             vm.stack.extend(move_vals);
 
             if true_count > variadics {
@@ -1814,12 +1823,12 @@ impl Bytecode {
     }
 
     pub fn flip_test(&mut self) {
-        assert!(self.get_opcode().is_relational());
-        let op = self.get_opcode();
+        let op = OpCode::read(self.bytecode);
+        assert!(op.is_relational());
         let (a, b, c, test) = self.decode_abck();
-        assert_eq!(c, 0);
+        assert_eq!(c, C::ZERO);
 
-        self.bytecode = Self::encode_abck(op, a, b, c, test ^ 1);
+        self.bytecode = Self::encode_abck(op, a, b, c, test.flip());
     }
 
     fn relational_comparison(
@@ -1912,214 +1921,114 @@ impl Bytecode {
         Ok(())
     }
 
-    pub(crate) const fn encode_abck(op: OpCode, a: u8, b: u8, c: u8, k: u8) -> u32 {
+    pub(crate) fn encode_abck(op: OpCode, a: A, b: B, c: C, k: K) -> u32 {
         let mut bytecode = 0;
-        Self::set_opcode(&mut bytecode, op);
-        Self::set_a(&mut bytecode, a);
-        Self::set_b(&mut bytecode, b);
-        Self::set_c(&mut bytecode, c);
-        Self::set_k(&mut bytecode, k);
+        op.write(&mut bytecode);
+        a.write(&mut bytecode);
+        b.write(&mut bytecode);
+        c.write(&mut bytecode);
+        k.write(&mut bytecode);
         bytecode
     }
 
-    pub(crate) const fn encode_asbck(op: OpCode, a: u8, sb: i8, c: u8, k: u8) -> u32 {
+    pub(crate) fn encode_asbck(op: OpCode, a: A, sb: Sb, c: C, k: K) -> u32 {
         let mut bytecode = 0;
-        Self::set_opcode(&mut bytecode, op);
-        Self::set_a(&mut bytecode, a);
-        Self::set_sb(&mut bytecode, sb);
-        Self::set_c(&mut bytecode, c);
-        Self::set_k(&mut bytecode, k);
+        op.write(&mut bytecode);
+        a.write(&mut bytecode);
+        sb.write(&mut bytecode);
+        c.write(&mut bytecode);
+        k.write(&mut bytecode);
         bytecode
     }
 
-    pub(crate) const fn encode_absck(op: OpCode, a: u8, b: u8, sc: i8, k: u8) -> u32 {
+    pub(crate) fn encode_absck(op: OpCode, a: A, b: B, sc: Sc, k: K) -> u32 {
         let mut bytecode = 0;
-        Self::set_opcode(&mut bytecode, op);
-        Self::set_a(&mut bytecode, a);
-        Self::set_b(&mut bytecode, b);
-        Self::set_sc(&mut bytecode, sc);
-        Self::set_k(&mut bytecode, k);
+        op.write(&mut bytecode);
+        a.write(&mut bytecode);
+        b.write(&mut bytecode);
+        sc.write(&mut bytecode);
+        k.write(&mut bytecode);
         bytecode
     }
 
-    pub(crate) const fn encode_abx(op: OpCode, a: u8, bx: u32) -> u32 {
+    pub(crate) fn encode_abx(op: OpCode, a: A, bx: Bx) -> u32 {
         let mut bytecode = 0;
-        Self::set_opcode(&mut bytecode, op);
-        Self::set_a(&mut bytecode, a);
-        Self::set_bx(&mut bytecode, bx);
+        op.write(&mut bytecode);
+        a.write(&mut bytecode);
+        bx.write(&mut bytecode);
         bytecode
     }
 
-    pub(crate) const fn encode_asbx(op: OpCode, a: u8, sbx: i32) -> u32 {
+    pub(crate) fn encode_asbx(op: OpCode, a: A, sbx: Sbx) -> u32 {
         let mut bytecode = 0;
-        Self::set_opcode(&mut bytecode, op);
-        Self::set_a(&mut bytecode, a);
-        Self::set_sbx(&mut bytecode, sbx);
+        op.write(&mut bytecode);
+        a.write(&mut bytecode);
+        sbx.write(&mut bytecode);
         bytecode
     }
 
-    pub(crate) const fn encode_asj(op: OpCode, j: i32) -> u32 {
+    pub(crate) fn encode_asj(op: OpCode, j: Sj) -> u32 {
         let mut bytecode = 0;
-        Self::set_opcode(&mut bytecode, op);
-        Self::set_sj(&mut bytecode, j);
+        op.write(&mut bytecode);
+        j.write(&mut bytecode);
         bytecode
     }
 
-    pub(crate) const fn decode_abck(&self) -> (u8, u8, u8, u8) {
-        let a = self.get_a();
-        let b = self.get_b();
-        let c = self.get_c();
-        let k = self.get_k();
-        (a, b, c, k)
+    pub(crate) fn decode_abck(&self) -> (A, B, C, K) {
+        (
+            A::read(self.bytecode),
+            B::read(self.bytecode),
+            C::read(self.bytecode),
+            K::read(self.bytecode),
+        )
     }
 
-    pub(crate) const fn decode_asbck(&self) -> (u8, i8, u8, u8) {
-        let a = self.get_a();
-        let b = self.get_sb();
-        let c = self.get_c();
-        let k = self.get_k();
-        (a, b, c, k)
+    pub(crate) fn decode_asbck(&self) -> (A, Sb, C, K) {
+        (
+            A::read(self.bytecode),
+            Sb::read(self.bytecode),
+            C::read(self.bytecode),
+            K::read(self.bytecode),
+        )
     }
 
-    pub(crate) const fn decode_absck(&self) -> (u8, u8, i8, u8) {
-        let a = self.get_a();
-        let b = self.get_b();
-        let c = self.get_sc();
-        let k = self.get_k();
-        (a, b, c, k)
+    pub(crate) fn decode_absck(&self) -> (A, B, Sc, K) {
+        (
+            A::read(self.bytecode),
+            B::read(self.bytecode),
+            Sc::read(self.bytecode),
+            K::read(self.bytecode),
+        )
     }
 
-    pub(crate) const fn decode_abx(&self) -> (u8, u32) {
-        let a = self.get_a();
-        let b = self.get_bx();
-        (a, b)
+    pub(crate) fn decode_abx(&self) -> (A, Bx) {
+        (A::read(self.bytecode), Bx::read(self.bytecode))
     }
 
-    pub(crate) const fn decode_asbx(&self) -> (u8, i32) {
-        let a = self.get_a();
-        let b = self.get_sbx();
-        (a, b)
+    pub(crate) fn decode_asbx(&self) -> (A, Sbx) {
+        (A::read(self.bytecode), Sbx::read(self.bytecode))
     }
 
-    pub(crate) const fn decode_ax(&self) -> u32 {
-        (self.bytecode & 0xffffff80) >> A_SHIFT
+    pub(crate) fn decode_ax(&self) -> Ax {
+        Ax::read(self.bytecode)
     }
 
-    pub(crate) fn decode_sj(&self) -> i32 {
-        self.get_sj()
+    pub(crate) fn decode_sj(&self) -> Sj {
+        Sj::read(self.bytecode)
     }
+}
 
-    pub const fn get_opcode(&self) -> OpCode {
-        OpCode::from_id((self.bytecode & 0x7f) as u8)
-    }
+impl Deref for Bytecode {
+    type Target = u32;
 
-    const fn set_opcode(bytecode: &mut u32, op: OpCode) {
-        *bytecode |= (op as u8) as u32;
-    }
-
-    const fn get_a(&self) -> u8 {
-        ((self.bytecode & A_MASK) >> A_SHIFT) as u8
-    }
-
-    const fn set_a(bytecode: &mut u32, a: u8) {
-        *bytecode |= (a as u32) << A_SHIFT;
-    }
-
-    const fn get_b(&self) -> u8 {
-        ((self.bytecode & B_MASK) >> B_SHIFT) as u8
-    }
-
-    const fn set_b(bytecode: &mut u32, b: u8) {
-        *bytecode |= (b as u32) << B_SHIFT;
-    }
-
-    const fn get_c(&self) -> u8 {
-        ((self.bytecode & C_MASK) >> C_SHIFT) as u8
-    }
-
-    const fn set_c(bytecode: &mut u32, c: u8) {
-        *bytecode |= (c as u32) << C_SHIFT;
-    }
-
-    const fn get_k(&self) -> u8 {
-        ((self.bytecode & K_MASK) >> K_SHIFT) as u8
-    }
-
-    const fn set_k(bytecode: &mut u32, k: u8) {
-        assert!(k <= 1);
-        *bytecode |= (k as u32) << K_SHIFT;
-    }
-
-    const fn get_sb(&self) -> i8 {
-        let b = self.get_b();
-        if b > I8_OFFSET {
-            (b - I8_OFFSET) as i8
-        } else {
-            b as i8 - I8_OFFSET as i8
-        }
-    }
-
-    const fn set_sb(bytecode: &mut u32, sb: i8) {
-        let b = I8_OFFSET.saturating_add_signed(sb);
-        Self::set_b(bytecode, b);
-    }
-
-    const fn get_sc(&self) -> i8 {
-        let c = self.get_c();
-        if c > I8_OFFSET {
-            (c - I8_OFFSET) as i8
-        } else {
-            (c as i8) - (I8_OFFSET as i8)
-        }
-    }
-
-    const fn set_sc(bytecode: &mut u32, sc: i8) {
-        let c = I8_OFFSET.saturating_add_signed(sc);
-        Self::set_c(bytecode, c);
-    }
-
-    const fn get_bx(&self) -> u32 {
-        (self.bytecode & BX_MASK) >> BX_SHIFT
-    }
-
-    const fn set_bx(bytecode: &mut u32, bx: u32) {
-        assert!(bx <= BX_MAX);
-        *bytecode |= bx << BX_SHIFT;
-    }
-
-    const fn get_sbx(&self) -> i32 {
-        let bx = self.get_bx();
-        if bx > I17_OFFSET {
-            (bx - I17_OFFSET) as i32
-        } else {
-            bx as i32 - I17_OFFSET as i32
-        }
-    }
-
-    const fn set_sbx(bytecode: &mut u32, sbx: i32) {
-        let bx = I17_OFFSET.saturating_add_signed(sbx);
-        Self::set_bx(bytecode, bx);
-    }
-
-    const fn get_sj(&self) -> i32 {
-        let j = self.bytecode >> J_SHIFT;
-        if j > I25_OFFSET {
-            (j - I25_OFFSET) as i32
-        } else {
-            j as i32 - I25_OFFSET as i32
-        }
-    }
-
-    const fn set_sj(bytecode: &mut u32, sj: i32) {
-        let j = I25_OFFSET.saturating_add_signed(sj);
-        assert!(j <= J_MAX);
-        *bytecode |= j << J_SHIFT;
+    fn deref(&self) -> &Self::Target {
+        &self.bytecode
     }
 }
 
 impl Debug for Bytecode {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let op = self.get_opcode();
+        let op = OpCode::read(self.bytecode);
         match op {
             OpCode::ZeroReturn => {
                 write!(f, "{:?}", op)
@@ -2133,11 +2042,11 @@ impl Debug for Bytecode {
             | OpCode::OneReturn
             | OpCode::VariadicArgumentsPrepare => {
                 let (a, _, _, _) = self.decode_abck();
-                write!(f, "{:?}({})", op, a)
+                write!(f, "{:?}({})", op, *a)
             }
             OpCode::Test => {
                 let (a, _, _, k) = self.decode_abck();
-                write!(f, "{:?}({}, {})", op, a, k == 1)
+                write!(f, "{:?}({}, {})", op, *a, k == K::ONE)
             }
             OpCode::Move
             | OpCode::LoadNil
@@ -2149,7 +2058,7 @@ impl Debug for Bytecode {
             | OpCode::Len
             | OpCode::Concat => {
                 let (a, b, _, _) = self.decode_abck();
-                write!(f, "{:?}({}, {})", op, a, b)
+                write!(f, "{:?}({}, {})", op, *a, *b)
             }
             OpCode::Equal
             | OpCode::LessThan
@@ -2157,7 +2066,14 @@ impl Debug for Bytecode {
             | OpCode::EqualConstant
             | OpCode::TestSet => {
                 let (a, b, _, k) = self.decode_abck();
-                write!(f, "{:?}({}, {}{})", op, a, b, if k == 1 { "k" } else { "" })
+                write!(
+                    f,
+                    "{:?}({}, {}{})",
+                    op,
+                    *a,
+                    *b,
+                    if k == K::ONE { "k" } else { "" }
+                )
             }
             OpCode::EqualInteger
             | OpCode::LessThanInteger
@@ -2169,9 +2085,9 @@ impl Debug for Bytecode {
                     f,
                     "{:?}({}, {}{})",
                     op,
-                    a,
-                    sb,
-                    if k == 1 { "k" } else { "" }
+                    *a,
+                    *sb,
+                    if k == K::ONE { "k" } else { "" }
                 )
             }
             OpCode::LoadConstant
@@ -2182,11 +2098,11 @@ impl Debug for Bytecode {
             | OpCode::TailForLoop
             | OpCode::Closure => {
                 let (a, bx) = self.decode_abx();
-                write!(f, "{:?}({}, {})", op, a, bx)
+                write!(f, "{:?}({}, {})", op, *a, *bx)
             }
             OpCode::LoadInteger | OpCode::LoadFloat => {
                 let (a, sbx) = self.decode_asbx();
-                write!(f, "{:?}({}, {})", op, a, sbx)
+                write!(f, "{:?}({}, {})", op, *a, *sbx)
             }
             OpCode::GetUpTable
             | OpCode::GetTable
@@ -2218,15 +2134,15 @@ impl Debug for Bytecode {
             | OpCode::MetaMethod
             | OpCode::Call => {
                 let (a, b, c, _) = self.decode_abck();
-                write!(f, "{:?}({}, {}, {})", op, a, b, c)
+                write!(f, "{:?}({}, {}, {})", op, *a, *b, *c)
             }
             OpCode::MetaMethodInteger => {
                 let (a, sb, c, _) = self.decode_asbck();
-                write!(f, "{:?}({}, {}, {})", op, a, sb, c)
+                write!(f, "{:?}({}, {}, {})", op, *a, *sb, *c)
             }
             OpCode::AddInteger | OpCode::ShiftRightInteger | OpCode::ShiftLeftInteger => {
                 let (a, b, sc, _) = self.decode_absck();
-                write!(f, "{:?}({}, {}, {})", op, a, b, sc)
+                write!(f, "{:?}({}, {}, {})", op, *a, *b, *sc)
             }
             OpCode::SetUpTable
             | OpCode::SetTable
@@ -2242,23 +2158,23 @@ impl Debug for Bytecode {
                     f,
                     "{:?}({}, {}, {}{})",
                     op,
-                    a,
-                    b,
-                    c,
-                    if k == 1 { "k" } else { "" }
+                    *a,
+                    *b,
+                    *c,
+                    if k == K::ONE { "k" } else { "" }
                 )
             }
             OpCode::VariadicArguments => {
                 let (a, _, c, _) = self.decode_abck();
-                write!(f, "{:?}({}, {})", op, a, c)
+                write!(f, "{:?}({}, {})", op, *a, *c)
             }
             OpCode::ExtraArguments => {
                 let ax = self.decode_ax();
-                write!(f, "{:?}({})", op, ax)
+                write!(f, "{:?}({})", op, *ax)
             }
             OpCode::Jump => {
                 let sj = self.decode_sj();
-                write!(f, "{:?}({})", op, sj)
+                write!(f, "{:?}({})", op, *sj)
             }
         }
     }

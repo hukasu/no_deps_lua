@@ -1,3 +1,5 @@
+use super::arguments::BytecodeArgument;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum OpCode {
@@ -187,5 +189,15 @@ impl OpCode {
                 | OpCode::GreaterThanInteger
                 | OpCode::GreaterEqualInteger
         )
+    }
+}
+
+impl BytecodeArgument for OpCode {
+    fn write(&self, bytecode: &mut u32) {
+        *bytecode |= *self as u32;
+    }
+
+    fn read(bytecode: u32) -> Self {
+        Self::from_id((bytecode & 0x7f) as u8)
     }
 }
