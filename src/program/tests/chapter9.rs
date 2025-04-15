@@ -555,3 +555,178 @@ print(up1)
 
     crate::Lua::run_program(program).expect("Should run");
 }
+
+#[test]
+fn block_loop() {
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
+
+    let program = Program::parse(
+        r#"
+local foos = {}
+local bars = {}
+for i = 1,4 do
+    local up = 0
+    foos[i] = function()
+        up = up + 1
+	    return up
+    end
+    do
+        bars[i] = function()
+            i = i + 1
+            return i
+        end
+    end
+end
+
+print(foos[1](), foos[1](), "|", foos[4](), foos[4]())
+print(foos[1](), foos[1](), "|", foos[4](), foos[4]())
+print()
+print(bars[1](), bars[1](), "|", bars[4](), bars[4]())
+print(bars[1](), bars[1](), "|", bars[4](), bars[4]())
+"#,
+    )
+    .unwrap();
+
+    super::compare_program(
+        &program,
+        &[
+            Bytecode::variadic_arguments_prepare(0.into()),
+            // local foos = {}
+            Bytecode::new_table(0.into(), 0.into(), 0.into()),
+            // TODO EXTRAARG
+            // local bars = {}
+            Bytecode::new_table(1.into(), 0.into(), 0.into()),
+            // TODO EXTRAARG
+            // for i = 1,4 do
+            Bytecode::load_integer(2.into(), 1i8.into()),
+            Bytecode::load_integer(3.into(), 4i8.into()),
+            Bytecode::load_integer(4.into(), 1i8.into()),
+            Bytecode::for_prepare(2.into(), 7u8.into()),
+            //     local up = 0
+            Bytecode::load_integer(6.into(), 0i8.into()),
+            //     foos[i] = function()
+            Bytecode::closure(7.into(), 0u8.into()),
+            Bytecode::set_table(0.into(), 5.into(), 7.into(), false.into()),
+            //     do
+            //         bars[i] = function()
+            Bytecode::closure(7.into(), 1u8.into()),
+            Bytecode::set_table(1.into(), 5.into(), 7.into(), false.into()),
+            //     end
+            Bytecode::close(6.into()),
+            // end
+            Bytecode::close(5.into()),
+            Bytecode::for_loop(2.into(), 8u8.into()),
+            // print(foos[1](), foos[1](), "|", foos[4](), foos[4]())
+            Bytecode::get_uptable(2.into(), 0.into(), 0.into()),
+            Bytecode::get_index(3.into(), 0.into(), 1.into()),
+            Bytecode::call(3.into(), 1.into(), 2.into()),
+            Bytecode::get_index(4.into(), 0.into(), 1.into()),
+            Bytecode::call(4.into(), 1.into(), 2.into()),
+            Bytecode::load_constant(5.into(), 1u8.into()),
+            Bytecode::get_index(6.into(), 0.into(), 4.into()),
+            Bytecode::call(6.into(), 1.into(), 2.into()),
+            Bytecode::get_index(7.into(), 0.into(), 4.into()),
+            Bytecode::call(7.into(), 1.into(), 0.into()),
+            Bytecode::call(2.into(), 0.into(), 1.into()),
+            // print(foos[1](), foos[1](), "|", foos[4](), foos[4]())
+            Bytecode::get_uptable(2.into(), 0.into(), 0.into()),
+            Bytecode::get_index(3.into(), 0.into(), 1.into()),
+            Bytecode::call(3.into(), 1.into(), 2.into()),
+            Bytecode::get_index(4.into(), 0.into(), 1.into()),
+            Bytecode::call(4.into(), 1.into(), 2.into()),
+            Bytecode::load_constant(5.into(), 1u8.into()),
+            Bytecode::get_index(6.into(), 0.into(), 4.into()),
+            Bytecode::call(6.into(), 1.into(), 2.into()),
+            Bytecode::get_index(7.into(), 0.into(), 4.into()),
+            Bytecode::call(7.into(), 1.into(), 0.into()),
+            Bytecode::call(2.into(), 0.into(), 1.into()),
+            // print()
+            Bytecode::get_uptable(2.into(), 0.into(), 0.into()),
+            Bytecode::call(2.into(), 1.into(), 1.into()),
+            // print(bars[1](), bars[1](), "|", bars[4](), bars[4]())
+            Bytecode::get_uptable(2.into(), 0.into(), 0.into()),
+            Bytecode::get_index(3.into(), 1.into(), 1.into()),
+            Bytecode::call(3.into(), 1.into(), 2.into()),
+            Bytecode::get_index(4.into(), 1.into(), 1.into()),
+            Bytecode::call(4.into(), 1.into(), 2.into()),
+            Bytecode::load_constant(5.into(), 1u8.into()),
+            Bytecode::get_index(6.into(), 1.into(), 4.into()),
+            Bytecode::call(6.into(), 1.into(), 2.into()),
+            Bytecode::get_index(7.into(), 1.into(), 4.into()),
+            Bytecode::call(7.into(), 1.into(), 0.into()),
+            Bytecode::call(2.into(), 0.into(), 1.into()),
+            // print(bars[1](), bars[1](), "|", bars[4](), bars[4]())
+            Bytecode::get_uptable(2.into(), 0.into(), 0.into()),
+            Bytecode::get_index(3.into(), 1.into(), 1.into()),
+            Bytecode::call(3.into(), 1.into(), 2.into()),
+            Bytecode::get_index(4.into(), 1.into(), 1.into()),
+            Bytecode::call(4.into(), 1.into(), 2.into()),
+            Bytecode::load_constant(5.into(), 1u8.into()),
+            Bytecode::get_index(6.into(), 1.into(), 4.into()),
+            Bytecode::call(6.into(), 1.into(), 2.into()),
+            Bytecode::get_index(7.into(), 1.into(), 4.into()),
+            Bytecode::call(7.into(), 1.into(), 0.into()),
+            Bytecode::call(2.into(), 0.into(), 1.into()),
+            // EOF
+            Bytecode::return_bytecode(2.into(), 1.into(), 1.into()),
+        ],
+        &["print".into(), "|".into()],
+        &[
+            Local::new("foos".into(), 3, 63),
+            Local::new("bars".into(), 4, 63),
+            Local::new("?for_start".into(), 7, 16),
+            Local::new("?for_end".into(), 7, 16),
+            Local::new("?for_step".into(), 7, 16),
+            Local::new("i".into(), 8, 14),
+            Local::new("up".into(), 9, 13),
+        ],
+        &["_ENV".into()],
+        2,
+    );
+
+    let closure = super::get_closure_program(&program, 0);
+    super::compare_program(
+        closure,
+        &[
+            // function()
+            //     up = up + 1
+            Bytecode::get_upvalue(0.into(), 0.into()),
+            Bytecode::add_integer(0.into(), 0.into(), 1.into()),
+            // TODO MMBINI
+            Bytecode::set_upvalue(0.into(), 0.into()),
+            //     return up
+            Bytecode::get_upvalue(0.into(), 0.into()),
+            Bytecode::one_return(0.into()),
+            // end
+            Bytecode::zero_return(),
+        ],
+        &[],
+        &[],
+        &["up".into()],
+        0,
+    );
+
+    let closure = super::get_closure_program(&program, 1);
+    super::compare_program(
+        closure,
+        &[
+            // function()
+            //     i = i + 1
+            Bytecode::get_upvalue(0.into(), 0.into()),
+            Bytecode::add_integer(0.into(), 0.into(), 1.into()),
+            // TODO MMBINI
+            Bytecode::set_upvalue(0.into(), 0.into()),
+            //     return i
+            Bytecode::get_upvalue(0.into(), 0.into()),
+            Bytecode::one_return(0.into()),
+            // end
+            Bytecode::zero_return(),
+        ],
+        &[],
+        &[],
+        &["i".into()],
+        0,
+    );
+
+    crate::Lua::run_program(program).expect("Should run");
+}
