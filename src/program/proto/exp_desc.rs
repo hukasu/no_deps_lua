@@ -1024,13 +1024,21 @@ impl<'a> ExpDesc<'a> {
                     let (_, stack_top) = compile_stack.compile_context_mut().reserve_stack_top();
                     stack_top.discharge(arg, compile_stack)?;
 
-                    let Some(last_bytecode) = compile_stack.proto_mut().byte_codes.last_mut()
-                    else {
-                        unreachable!("Bytecodes should not be empty after discharging argument,");
-                    };
-                    if OpCode::read(**last_bytecode) == OpCode::VariadicArguments {
-                        let (a, _, _, _) = last_bytecode.decode_abck();
-                        *last_bytecode = Bytecode::variadic_arguments(a, 2.into());
+                    match compile_stack.proto_mut().byte_codes.last_mut() {
+                        Some(bytecode) => match OpCode::read(**bytecode) {
+                            OpCode::VariadicArguments => {
+                                let (register, _, _, _) = bytecode.decode_abck();
+                                *bytecode = Bytecode::variadic_arguments(register, 2.into());
+                            }
+                            OpCode::Call => {
+                                let (func, in_params, _, _) = bytecode.decode_abck();
+                                *bytecode = Bytecode::call(func, in_params, 2.into());
+                            }
+                            _ => (),
+                        },
+                        None => unreachable!(
+                            "Bytecodes should not be empty after discharging argument."
+                        ),
                     }
                 }
                 compile_stack.compile_context_mut().stack_top -= u8::try_from(args.len())?;
