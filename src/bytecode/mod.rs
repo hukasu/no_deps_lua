@@ -982,20 +982,37 @@ impl Bytecode {
                 vm.get_stack(*src)?.clone()
             };
 
-            let binary_search = (*table)
-                .borrow()
-                .table
-                .binary_search_by_key(&&key, |a| &a.0);
-            match binary_search {
-                Ok(i) => {
-                    let mut table_borrow = table.borrow_mut();
-                    let Some(table_value) = table_borrow.table.get_mut(i) else {
-                        unreachable!("Already tested existence of table value");
-                    };
-                    table_value.1 = value;
+            match key {
+                ValueKey(Value::Integer(index)) if index > 0 => {
+                    let array = &mut table.borrow_mut().array;
+                    let index = usize::try_from(index)? - 1;
+                    match index.cmp(&array.len()) {
+                        Ordering::Less => array[index] = value,
+                        Ordering::Equal => array.push(value),
+                        Ordering::Greater => {
+                            array.resize(index, Value::Nil);
+                            array.push(value);
+                        }
+                    }
                 }
-                Err(i) => table.borrow_mut().table.insert(i, (key, value)),
+                _ => {
+                    let binary_search = (*table)
+                        .borrow()
+                        .table
+                        .binary_search_by_key(&&key, |a| &a.0);
+                    match binary_search {
+                        Ok(i) => {
+                            let mut table_borrow = table.borrow_mut();
+                            let Some(table_value) = table_borrow.table.get_mut(i) else {
+                                unreachable!("Already tested existence of table value");
+                            };
+                            table_value.1 = value;
+                        }
+                        Err(i) => table.borrow_mut().table.insert(i, (key, value)),
+                    }
+                }
             }
+
             Ok(())
         } else {
             Err(Error::ExpectedTable)
