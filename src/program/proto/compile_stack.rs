@@ -492,6 +492,8 @@ impl<'a> CompileStack<'a> {
                 self.block(block)?;
                 self.compile_context_mut().var_args = cache_var_args;
 
+                // Close local variables
+                self.close_locals(locals + 4);
                 if self
                     .compile_context_mut()
                     .clear_captures_above(usize::from(loop_locals_stack_loc))
@@ -501,6 +503,8 @@ impl<'a> CompileStack<'a> {
                         .push(Bytecode::close(loop_locals_stack_loc.into()));
                 }
 
+                // Close loop counter
+                self.close_locals(locals + 3);
                 if self
                     .compile_context_mut()
                     .clear_captures_above(usize::from(loop_iterator_stack_loc))
@@ -509,9 +513,6 @@ impl<'a> CompileStack<'a> {
                         .byte_codes
                         .push(Bytecode::close(loop_iterator_stack_loc.into()));
                 }
-
-                // Close just the for variable
-                self.close_locals(locals + 3);
 
                 let end_bytecode = self.proto_mut().byte_codes.len();
                 self.proto_mut().byte_codes.push(Bytecode::for_loop(
