@@ -2029,7 +2029,7 @@ impl<'a> ExpDesc<'a> {
                 match compile_stack.compile_context_mut().find_name(table_name) {
                     Some(pos) => u8::try_from(pos).map_err(Error::from),
                     None => {
-                        self.discharge(&ExpDesc::Local(usize::from(location)), compile_stack)?;
+                        ExpDesc::Local(usize::from(location)).discharge(self, compile_stack)?;
                         Ok(location)
                     }
                 }
