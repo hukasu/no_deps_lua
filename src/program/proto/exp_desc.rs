@@ -1443,6 +1443,13 @@ impl<'a> ExpDesc<'a> {
 
                 self.discharge(&stack_exp, compile_stack)
             }
+            (_, _, _, src @ ExpDesc::Closure(_)) => {
+                let (_, stack_exp) = compile_stack.compile_context_mut().reserve_stack_top();
+                stack_exp.discharge(src, compile_stack)?;
+                compile_stack.compile_context_mut().stack_top -= 1;
+
+                self.discharge(&stack_exp, compile_stack)
+            }
             (_, Self::Name(key), true, _) => {
                 // Rewrite all access in the form `t.x` as `t["x"]`
                 let table_access = Self::TableAccess {
