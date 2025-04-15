@@ -477,7 +477,9 @@ impl<'a> CompileStack<'a> {
                 }
 
                 // Reserve 1 slot for counter
+                let loop_iterator_stack_loc = self.compile_context_mut().stack_top;
                 self.compile_context_mut().stack_top += 1;
+                let loop_locals_stack_loc = self.compile_context_mut().stack_top;
 
                 let counter_bytecode = self.proto_mut().byte_codes.len();
                 self.proto_mut()
@@ -489,6 +491,24 @@ impl<'a> CompileStack<'a> {
                 let cache_var_args = self.compile_context_mut().var_args.take();
                 self.block(block)?;
                 self.compile_context_mut().var_args = cache_var_args;
+
+                if self
+                    .compile_context_mut()
+                    .clear_captures_above(usize::from(loop_locals_stack_loc))
+                {
+                    self.proto_mut()
+                        .byte_codes
+                        .push(Bytecode::close(loop_locals_stack_loc.into()));
+                }
+
+                if self
+                    .compile_context_mut()
+                    .clear_captures_above(usize::from(loop_iterator_stack_loc))
+                {
+                    self.proto_mut()
+                        .byte_codes
+                        .push(Bytecode::close(loop_iterator_stack_loc.into()));
+                }
 
                 // Close just the for variable
                 self.close_locals(locals + 3);
