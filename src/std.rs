@@ -14,3 +14,11 @@ pub fn lib_print(vm: &mut Lua) -> i32 {
     log::info!(target: "no_deps_lua::vm", "{}", print_string);
     0
 }
+
+pub fn lib_type(vm: &mut crate::Lua) -> i32 {
+    let type_name = vm.get_stack(0).unwrap();
+    vm.set_stack(0, type_name.static_type_name().into())
+        .unwrap();
+
+    1
+}

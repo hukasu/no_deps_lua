@@ -45,10 +45,16 @@ impl Lua {
     pub fn run_program(main_program: Program) -> Result<(), Error> {
         let mut table = Table::new(0, 2);
 
-        table.table.extend([(
-            ValueKey("print".into()),
-            Value::from(std::lib_print as fn(&mut Lua) -> i32),
-        )]);
+        table.table.extend([
+            (
+                ValueKey("print".into()),
+                Value::from(std::lib_print as fn(&mut Lua) -> i32),
+            ),
+            (
+                ValueKey("type".into()),
+                Value::from(std::lib_type as fn(&mut Lua) -> i32),
+            ),
+        ]);
 
         Self::run_program_with_env(main_program, Rc::new(RefCell::new(table)))
     }

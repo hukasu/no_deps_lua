@@ -1,14 +1,4 @@
-use core::cell::RefCell;
-
-use alloc::rc::Rc;
-
-use crate::{
-    Error, Program,
-    bytecode::Bytecode,
-    program::Local,
-    table::Table,
-    value::{Value, ValueKey},
-};
+use crate::{Error, Program, bytecode::Bytecode, program::Local};
 
 #[test]
 fn base_function() {
@@ -542,27 +532,7 @@ print(type(function()end))
     let closure = super::get_closure_program(&program, 0);
     super::compare_program(closure, &[Bytecode::zero_return()], &[], &[], &[], 0);
 
-    pub fn lib_type(vm: &mut crate::Lua) -> i32 {
-        let type_name = vm.get_stack(0).unwrap();
-        vm.set_stack(0, type_name.static_type_name().into())
-            .unwrap();
-
-        1
-    }
-
-    let mut env = Table::new(0, 2);
-    env.set(
-        ValueKey::from(Value::from("print")),
-        Value::from(crate::std::lib_print as fn(&mut crate::Lua) -> i32),
-    )
-    .unwrap();
-    env.set(
-        ValueKey::from(Value::from("type")),
-        Value::from(lib_type as fn(&mut crate::Lua) -> i32),
-    )
-    .unwrap();
-
-    crate::Lua::run_program_with_env(program, Rc::new(RefCell::new(env))).expect("Should work");
+    crate::Lua::run_program(program).expect("Should work");
 }
 
 #[test]
