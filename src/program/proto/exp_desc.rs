@@ -1568,6 +1568,20 @@ impl<'a> ExpDesc<'a> {
                     ));
                 Ok(())
             }
+            // local t, k, a
+            // t[k] = a
+            (Self::Local(table), Self::Local(key), false, Self::Local(src)) => {
+                compile_stack
+                    .proto_mut()
+                    .byte_codes
+                    .push(Bytecode::set_table(
+                        u8::try_from(*table)?.into(),
+                        u8::try_from(*key)?.into(),
+                        u8::try_from(*src)?.into(),
+                        K::ZERO,
+                    ));
+                Ok(())
+            }
             // local t
             // t["x"] = 1
             (Self::Local(table), Self::String(key), false, Self::Integer(integer)) => {
