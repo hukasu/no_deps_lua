@@ -1,7 +1,5 @@
 use core::{fmt::Display, num::TryFromIntError};
 
-use alloc::boxed::Box;
-
 use crate::bytecode::arguments::BytecodeArgumentError;
 
 #[derive(Debug, PartialEq)]
@@ -37,7 +35,6 @@ pub enum Error {
     IntCoversion,
     GotoIntoScope,
     BytecodeArgument(BytecodeArgumentError),
-    NonSequentialLocalInitialization(Box<str>),
 }
 
 impl Display for Error {
@@ -126,13 +123,6 @@ impl Display for Error {
                     f,
                     "Failed to build bytecode due to an invalid argument. {}",
                     arg
-                )
-            }
-            Self::NonSequentialLocalInitialization(explist) => {
-                write!(
-                    f,
-                    "Local initialization need to have the locations in sequential order, but was {:?}.",
-                    explist
                 )
             }
         }
