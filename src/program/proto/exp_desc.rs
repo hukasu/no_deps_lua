@@ -519,6 +519,26 @@ impl<'a> ExpDesc<'a> {
 
                     Ok(())
                 }
+                (op, lhs @ Self::Local(_), rhs @ Self::Binop(_, _, _)) => {
+                    let mut used_stacks = 0;
+                    let rhs = if self == lhs {
+                        let (_, b) = compile_stack.compile_context_mut().reserve_stack_top();
+                        used_stacks += 1;
+                        b.discharge(rhs, compile_stack)?;
+                        b
+                    } else {
+                        self.discharge(rhs, compile_stack)?;
+                        self.clone()
+                    };
+
+                    self.discharge(
+                        &Self::Binop(*op, Box::new(lhs.clone()), Box::new(rhs)),
+                        compile_stack,
+                    )?;
+                    compile_stack.compile_context_mut().stack_top -= used_stacks;
+
+                    Ok(())
+                }
                 (Binop::Or, lhs, rhs) => {
                     self.discharge(lhs, compile_stack)?;
                     compile_stack
