@@ -2,10 +2,14 @@ use alloc::{format, string::ToString, vec::Vec};
 
 use crate::{Lua, value::Value};
 
-pub fn lib_print(vm: &mut Lua) -> i32 {
+fn get_args(vm: &mut Lua) -> &[Value] {
     let top_stack = vm.get_stack_frame();
     let args_start = top_stack.stack_frame;
-    let print_string = vm.stack[args_start..]
+    &vm.stack[args_start..]
+}
+
+pub fn lib_print(vm: &mut Lua) -> i32 {
+    let print_string = get_args(vm)
         .iter()
         .map(|value| value.to_string())
         .collect::<Vec<_>>()
@@ -16,10 +20,9 @@ pub fn lib_print(vm: &mut Lua) -> i32 {
 }
 
 pub fn lib_type(vm: &mut crate::Lua) -> i32 {
-    let type_name = vm.get_stack(0).unwrap();
-    vm.set_stack(0, type_name.static_type_name().into())
-        .unwrap();
-
+    let args = get_args(vm);
+    let type_name = args[0].static_type_name();
+    vm.set_stack(0, type_name.into()).unwrap();
     1
 }
 
@@ -38,9 +41,7 @@ pub fn lib_warn(vm: &mut Lua) -> i32 {
             return -1;
         }
     };
-    let top_stack = vm.get_stack_frame();
-    let args_start = top_stack.stack_frame;
-    let args = vm.stack[args_start..]
+    let args = get_args(vm)
         .iter()
         .map(|val| val.to_string())
         .collect::<Vec<_>>();
