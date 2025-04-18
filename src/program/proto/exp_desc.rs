@@ -760,6 +760,27 @@ impl<'a> ExpDesc<'a> {
 
                     Ok(())
                 }
+                (Binop::Equal, Self::Local(lhs), Self::Local(rhs)) => {
+                    compile_stack.proto_mut().byte_codes.push(Bytecode::equal(
+                        u8::try_from(*lhs)?,
+                        u8::try_from(*rhs)?,
+                        K::ONE,
+                    ));
+                    compile_stack
+                        .proto_mut()
+                        .byte_codes
+                        .push(Bytecode::jump(1i8));
+                    compile_stack
+                        .proto_mut()
+                        .byte_codes
+                        .push(Bytecode::load_false_skip(dst));
+                    compile_stack
+                        .proto_mut()
+                        .byte_codes
+                        .push(Bytecode::load_true(dst));
+
+                    Ok(())
+                }
                 (Binop::Equal, Self::Local(lhs), Self::String(rhs)) => {
                     let rhs = compile_stack.proto_mut().push_constant(*rhs)?;
                     compile_stack

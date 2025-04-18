@@ -701,6 +701,24 @@ impl Bytecode {
             function: Self::execute_jump,
         }
     }
+    /// `EQ`  
+    /// Performs equal (==) comparison between 2 registers.
+    ///
+    /// `lhs`: Location on stack of left operand  
+    /// `rhs`: Location on stack of light operand  
+    /// `test`: If it should test for `true` or `false`
+    pub fn equal(lst: impl Into<A>, rhs: impl Into<B>, test: impl Into<K>) -> Bytecode {
+        Bytecode {
+            bytecode: Self::encode_abck(
+                OpCode::Equal,
+                lst.into(),
+                rhs.into(),
+                C::ZERO,
+                test.into(),
+            ),
+            function: Self::execute_equal,
+        }
+    }
 
     /// `LT`  
     /// Performs less than (<) comparison between 2 registers.
@@ -1699,6 +1717,21 @@ impl Bytecode {
         let jump = self.decode_sj();
 
         vm.jump(isize::try_from(*jump)?)
+    }
+
+    fn execute_equal(&self, vm: &mut Lua) -> Result<(), Error> {
+        let (lhs, rhs, _, test) = self.decode_abck();
+
+        let lhs = vm.get_stack(*lhs)?;
+        let rhs = vm.get_stack(*rhs)?;
+
+        Self::relational_comparison(lhs, rhs, |ordering| ordering == Ordering::Equal, *test)
+            .and_then(|should_advance_pc| {
+                if should_advance_pc {
+                    vm.jump(1)?;
+                }
+                Ok(())
+            })
     }
 
     fn execute_less_than(&self, vm: &mut Lua) -> Result<(), Error> {
