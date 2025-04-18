@@ -47,6 +47,10 @@ impl Lua {
 
         table.table.extend([
             (
+                ValueKey("assert".into()),
+                Value::from(std::lib_assert as fn(&mut Lua) -> i32),
+            ),
+            (
                 ValueKey("print".into()),
                 Value::from(std::lib_print as fn(&mut Lua) -> i32),
             ),

@@ -1,4 +1,4 @@
-use alloc::{format, string::ToString, vec::Vec};
+use alloc::{borrow::ToOwned, string::ToString, vec::Vec};
 
 use crate::{Lua, value::Value};
 
@@ -6,6 +6,24 @@ fn get_args(vm: &mut Lua) -> &[Value] {
     let top_stack = vm.get_stack_frame();
     let args_start = top_stack.stack_frame;
     &vm.stack[args_start..]
+}
+
+pub fn lib_assert(vm: &mut Lua) -> i32 {
+    let args = get_args(vm);
+    if matches!(args[0], Value::Boolean(false) | Value::Nil) {
+        let message = if let Some(message) = args.get(1) {
+            message.to_string()
+        } else {
+            "assertion failed!".to_owned()
+        };
+        log::error!("{message}");
+        -1
+    } else {
+        let Ok(args_len) = i32::try_from(args.len()) else {
+            unreachable!("Should never have more arguments than can fit on a i32.");
+        };
+        args_len
+    }
 }
 
 pub fn lib_print(vm: &mut Lua) -> i32 {
