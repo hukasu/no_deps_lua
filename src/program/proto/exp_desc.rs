@@ -1379,11 +1379,17 @@ impl<'a> ExpDesc<'a> {
                     match src_explist.last() {
                         Some(ExpDesc::FunctionCall(_, _)) => {
                             for remaining in destinations[src_explist.len()..].iter() {
-                                if let Self::Name(_) = remaining {
-                                    let (_, stack_top) =
+                                match remaining {
+                                    Self::Name(_) => {
+                                        let (_, stack_top) =
+                                            compile_stack.compile_context_mut().reserve_stack_top();
+                                        reverse_sets.push((remaining.clone(), stack_top));
+                                        used_stack += 1;
+                                    }
+                                    Self::NewLocal => {
                                         compile_stack.compile_context_mut().reserve_stack_top();
-                                    reverse_sets.push((remaining.clone(), stack_top));
-                                    used_stack += 1;
+                                    }
+                                    _ => unreachable!(),
                                 }
                             }
 
