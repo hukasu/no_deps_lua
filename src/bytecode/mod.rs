@@ -45,9 +45,9 @@ impl Bytecode {
     ///
     /// `dst`: Location on the stack to store the value  
     /// `src`: Location on the stack to load the value
-    pub fn move_bytecode(dst: A, src: B) -> Bytecode {
+    pub fn move_bytecode(dst: impl Into<A>, src: impl Into<B>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::Move, dst, src, C::ZERO, K::ZERO),
+            bytecode: Self::encode_abck(OpCode::Move, dst.into(), src.into(), C::ZERO, K::ZERO),
             function: Self::execute_move,
         }
     }
@@ -58,9 +58,9 @@ impl Bytecode {
     /// `dst`: Location on the stack to place integer
     /// `integer`: Integer value to load into stack, this is limited
     /// 17 bits
-    pub fn load_integer(dst: A, integer: Sbx) -> Bytecode {
+    pub fn load_integer(dst: impl Into<A>, integer: impl Into<Sbx>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_asbx(OpCode::LoadInteger, dst, integer),
+            bytecode: Self::encode_asbx(OpCode::LoadInteger, dst.into(), integer.into()),
             function: Self::execute_load_integer,
         }
     }
@@ -71,9 +71,9 @@ impl Bytecode {
     /// `dst`: Location on the stack to place integer  
     /// `value`: Float value to load into stack, this is limited
     /// to a whole floats that can be expressed in 17 bits
-    pub fn load_float(dst: A, value: Sbx) -> Bytecode {
+    pub fn load_float(dst: impl Into<A>, value: impl Into<Sbx>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_asbx(OpCode::LoadFloat, dst, value),
+            bytecode: Self::encode_asbx(OpCode::LoadFloat, dst.into(), value.into()),
             function: Self::execute_load_float,
         }
     }
@@ -83,9 +83,9 @@ impl Bytecode {
     ///
     /// `dst`: Location on the stack to place constant  
     /// `constant`: Id of `constant`
-    pub fn load_constant(dst: A, constant: Bx) -> Bytecode {
+    pub fn load_constant(dst: impl Into<A>, constant: impl Into<Bx>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abx(OpCode::LoadConstant, dst, constant),
+            bytecode: Self::encode_abx(OpCode::LoadConstant, dst.into(), constant.into()),
             function: Self::execute_load_constant,
         }
     }
@@ -94,9 +94,9 @@ impl Bytecode {
     /// Loads a `false` value into the stack
     ///
     /// `dst`: Location on the stack to place boolean  
-    pub fn load_false(dst: A) -> Bytecode {
+    pub fn load_false(dst: impl Into<A>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::LoadFalse, dst, B::ZERO, C::ZERO, K::ZERO),
+            bytecode: Self::encode_abck(OpCode::LoadFalse, dst.into(), B::ZERO, C::ZERO, K::ZERO),
             function: Self::execute_load_false,
         }
     }
@@ -105,9 +105,15 @@ impl Bytecode {
     /// Loads a `false` value into the stack and skips next instruction
     ///
     /// `dst`: Location on the stack to place boolean
-    pub fn load_false_skip(dst: A) -> Bytecode {
+    pub fn load_false_skip(dst: impl Into<A>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::LoadFalseSkip, dst, B::ZERO, C::ZERO, K::ZERO),
+            bytecode: Self::encode_abck(
+                OpCode::LoadFalseSkip,
+                dst.into(),
+                B::ZERO,
+                C::ZERO,
+                K::ZERO,
+            ),
             function: Self::execute_load_false_skip,
         }
     }
@@ -116,9 +122,9 @@ impl Bytecode {
     /// Loads a `false` value into the stack
     ///
     /// `dst`: Location on the stack to place boolean  
-    pub fn load_true(dst: A) -> Bytecode {
+    pub fn load_true(dst: impl Into<A>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::LoadTrue, dst, B::ZERO, C::ZERO, K::ZERO),
+            bytecode: Self::encode_abck(OpCode::LoadTrue, dst.into(), B::ZERO, C::ZERO, K::ZERO),
             function: Self::execute_load_true,
         }
     }
@@ -128,9 +134,15 @@ impl Bytecode {
     ///
     /// `dst`: Location on the stack to place nil  
     /// `extras`: Extra number of `nil`s to load
-    pub fn load_nil(dst: A, extras: B) -> Bytecode {
+    pub fn load_nil(dst: impl Into<A>, extras: impl Into<B>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::LoadNil, dst, extras, C::ZERO, K::ZERO),
+            bytecode: Self::encode_abck(
+                OpCode::LoadNil,
+                dst.into(),
+                extras.into(),
+                C::ZERO,
+                K::ZERO,
+            ),
             function: Self::execute_load_nil,
         }
     }
@@ -140,9 +152,15 @@ impl Bytecode {
     ///
     /// `dst`: Location on stack to place the global  
     /// `upvalue`: Upvalue to load
-    pub fn get_upvalue(dst: A, upvalue: B) -> Bytecode {
+    pub fn get_upvalue(dst: impl Into<A>, upvalue: impl Into<B>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::GetUpValue, dst, upvalue, C::ZERO, K::ZERO),
+            bytecode: Self::encode_abck(
+                OpCode::GetUpValue,
+                dst.into(),
+                upvalue.into(),
+                C::ZERO,
+                K::ZERO,
+            ),
             function: Self::execute_get_upvalue,
         }
     }
@@ -152,9 +170,15 @@ impl Bytecode {
     ///
     /// `upvalue`: Upvalue to set  
     /// `value`: Value on to set upvalue to
-    pub fn set_upvalue(upvalue: A, value: B) -> Bytecode {
+    pub fn set_upvalue(upvalue: impl Into<A>, value: impl Into<B>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::SetUpValue, upvalue, value, C::ZERO, K::ZERO),
+            bytecode: Self::encode_abck(
+                OpCode::SetUpValue,
+                upvalue.into(),
+                value.into(),
+                C::ZERO,
+                K::ZERO,
+            ),
             function: Self::execute_set_upvalue,
         }
     }
@@ -165,9 +189,15 @@ impl Bytecode {
     /// `dst`: Location on stack to place the global  
     /// `upvalue`: Upvalue to collect the field from  
     /// `key`: Location on `constants` where the key into the table resides
-    pub fn get_uptable(dst: A, upvalue: B, key: C) -> Bytecode {
+    pub fn get_uptable(dst: impl Into<A>, upvalue: impl Into<B>, key: impl Into<C>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::GetUpTable, dst, upvalue, key, K::ZERO),
+            bytecode: Self::encode_abck(
+                OpCode::GetUpTable,
+                dst.into(),
+                upvalue.into(),
+                key.into(),
+                K::ZERO,
+            ),
             function: Self::execute_get_uptable,
         }
     }
@@ -178,9 +208,15 @@ impl Bytecode {
     /// `dst`: Location on the stack to store the table's value  
     /// `table`: Location of the table on the stack  
     /// `key`: Location of the name on the stack  
-    pub fn get_table(dst: A, table: B, key: C) -> Bytecode {
+    pub fn get_table(dst: impl Into<A>, table: impl Into<B>, key: impl Into<C>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::GetTable, dst, table, key, K::ZERO),
+            bytecode: Self::encode_abck(
+                OpCode::GetTable,
+                dst.into(),
+                table.into(),
+                key.into(),
+                K::ZERO,
+            ),
             function: Self::execute_get_table,
         }
     }
@@ -191,9 +227,15 @@ impl Bytecode {
     /// `dst`: Location on the stack to store the table's value  
     /// `table`: Location of the table on the stack  
     /// `index`: Index of the item to load
-    pub fn get_index(dst: A, table: B, index: C) -> Bytecode {
+    pub fn get_index(dst: impl Into<A>, table: impl Into<B>, index: impl Into<C>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::GetIndex, dst, table, index, K::ZERO),
+            bytecode: Self::encode_abck(
+                OpCode::GetIndex,
+                dst.into(),
+                table.into(),
+                index.into(),
+                K::ZERO,
+            ),
             function: Self::execute_get_index,
         }
     }
@@ -204,9 +246,15 @@ impl Bytecode {
     /// `dst`: Location on the stack to store the table's value  
     /// `table`: Location of the table on the stack  
     /// `key`: Location of the key on `constants`  
-    pub fn get_field(dst: A, table: B, index: C) -> Bytecode {
+    pub fn get_field(dst: impl Into<A>, table: impl Into<B>, index: impl Into<C>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::GetField, dst, table, index, K::ZERO),
+            bytecode: Self::encode_abck(
+                OpCode::GetField,
+                dst.into(),
+                table.into(),
+                index.into(),
+                K::ZERO,
+            ),
             function: Self::execute_get_field,
         }
     }
@@ -218,9 +266,20 @@ impl Bytecode {
     /// `key`: Location on `constants` where the key into the table reside  
     /// `src`: Location of the value  
     /// `constant`: Whether `src` is a value on `stack` or on `constants`
-    pub fn set_uptable(uptable: A, key: B, src: C, constant: K) -> Bytecode {
+    pub fn set_uptable(
+        uptable: impl Into<A>,
+        key: impl Into<B>,
+        src: impl Into<C>,
+        constant: impl Into<K>,
+    ) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::SetUpTable, uptable, key, src, constant),
+            bytecode: Self::encode_abck(
+                OpCode::SetUpTable,
+                uptable.into(),
+                key.into(),
+                src.into(),
+                constant.into(),
+            ),
             function: Self::execute_set_uptable,
         }
     }
@@ -233,9 +292,20 @@ impl Bytecode {
     /// as key  
     /// `src`: Location of the value  
     /// `constant`: Whether `src` is a value on `stack` or on `constants`
-    pub fn set_table(table: A, key: B, src: C, constant: K) -> Bytecode {
+    pub fn set_table(
+        table: impl Into<A>,
+        key: impl Into<B>,
+        src: impl Into<C>,
+        constant: impl Into<K>,
+    ) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::SetTable, table, key, src, constant),
+            bytecode: Self::encode_abck(
+                OpCode::SetTable,
+                table.into(),
+                key.into(),
+                src.into(),
+                constant.into(),
+            ),
             function: Self::execute_set_table,
         }
     }
@@ -247,9 +317,20 @@ impl Bytecode {
     /// `key`: Location of the name on `constants`  
     /// `src`: Location of the value  
     /// `constant`: Whether `src` is a value on `stack` or on `constants`
-    pub fn set_field(table: A, key: B, src: C, constant: K) -> Bytecode {
+    pub fn set_field(
+        table: impl Into<A>,
+        key: impl Into<B>,
+        src: impl Into<C>,
+        constant: impl Into<K>,
+    ) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::SetField, table, key, src, constant),
+            bytecode: Self::encode_abck(
+                OpCode::SetField,
+                table.into(),
+                key.into(),
+                src.into(),
+                constant.into(),
+            ),
             function: Self::execute_set_field,
         }
     }
@@ -260,9 +341,19 @@ impl Bytecode {
     /// `dst`: Location on the stack to store the table  
     /// `array_len`: Amount of items to allocate on the list  
     /// `table_len`: Amount of items to allocate for the map
-    pub fn new_table(dst: A, table_len: B, array_len: C) -> Bytecode {
+    pub fn new_table(
+        dst: impl Into<A>,
+        table_len: impl Into<B>,
+        array_len: impl Into<C>,
+    ) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::NewTable, dst, table_len, array_len, K::ZERO),
+            bytecode: Self::encode_abck(
+                OpCode::NewTable,
+                dst.into(),
+                table_len.into(),
+                array_len.into(),
+                K::ZERO,
+            ),
             function: Self::execute_new_table,
         }
     }
@@ -273,9 +364,15 @@ impl Bytecode {
     /// `dst`: Destination of the closure  
     /// `table`: Location of the table on the `stack`     
     /// `key`: Location of the key on `constants`  
-    pub fn table_self(dst: A, table: B, key: C) -> Bytecode {
+    pub fn table_self(dst: impl Into<A>, table: impl Into<B>, key: impl Into<C>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::TableSelf, dst, table, key, K::ZERO),
+            bytecode: Self::encode_abck(
+                OpCode::TableSelf,
+                dst.into(),
+                table.into(),
+                key.into(),
+                K::ZERO,
+            ),
             function: Self::execute_table_self,
         }
     }
@@ -286,9 +383,15 @@ impl Bytecode {
     /// `dst`: Location on stack to store result of operation  
     /// `lhs`: Location on stack of left-hand operand  
     /// `integer`: Integer value to add
-    pub fn add_integer(dst: A, lhs: B, integer: Sc) -> Bytecode {
+    pub fn add_integer(dst: impl Into<A>, lhs: impl Into<B>, integer: impl Into<Sc>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_absck(OpCode::AddInteger, dst, lhs, integer, K::ZERO),
+            bytecode: Self::encode_absck(
+                OpCode::AddInteger,
+                dst.into(),
+                lhs.into(),
+                integer.into(),
+                K::ZERO,
+            ),
             function: Self::execute_add_integer,
         }
     }
@@ -298,9 +401,15 @@ impl Bytecode {
     /// `dst`: Location on stack to store result of operation  
     /// `lhs`: Location on stack of left-hand operand  
     /// `constant`: Location on `constant` of right-hand operand
-    pub fn add_constant(dst: A, lhs: B, constant: C) -> Bytecode {
+    pub fn add_constant(dst: impl Into<A>, lhs: impl Into<B>, constant: impl Into<C>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::AddConstant, dst, lhs, constant, K::ZERO),
+            bytecode: Self::encode_abck(
+                OpCode::AddConstant,
+                dst.into(),
+                lhs.into(),
+                constant.into(),
+                K::ZERO,
+            ),
             function: Self::execute_add_constant,
         }
     }
@@ -311,9 +420,15 @@ impl Bytecode {
     /// `dst`: Location on stack to store result of operation  
     /// `lhs`: Location on stack of left-hand operand  
     /// `constant`: Location on `constant` of right-hand operand
-    pub fn mul_constant(dst: A, lhs: B, constant: C) -> Bytecode {
+    pub fn mul_constant(dst: impl Into<A>, lhs: impl Into<B>, constant: impl Into<C>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::MulConstant, dst, lhs, constant, K::ZERO),
+            bytecode: Self::encode_abck(
+                OpCode::MulConstant,
+                dst.into(),
+                lhs.into(),
+                constant.into(),
+                K::ZERO,
+            ),
             function: Self::execute_mul_constant,
         }
     }
@@ -324,9 +439,9 @@ impl Bytecode {
     /// `dst`: Location on stack to store result of operation  
     /// `lhs`: Location on stack of left-hand operand  
     /// `rhs`: Location on stack of right-hand operand
-    pub fn add(dst: A, lhs: B, rhs: C) -> Bytecode {
+    pub fn add(dst: impl Into<A>, lhs: impl Into<B>, rhs: impl Into<C>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::Add, dst, lhs, rhs, K::ZERO),
+            bytecode: Self::encode_abck(OpCode::Add, dst.into(), lhs.into(), rhs.into(), K::ZERO),
             function: Self::execute_add,
         }
     }
@@ -337,9 +452,9 @@ impl Bytecode {
     /// `dst`: Location on stack to store result of operation  
     /// `lhs`: Location on stack of left-hand operand  
     /// `rhs`: Location on stack of right-hand operand
-    pub fn sub(dst: A, lhs: B, rhs: C) -> Bytecode {
+    pub fn sub(dst: impl Into<A>, lhs: impl Into<B>, rhs: impl Into<C>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::Sub, dst, lhs, rhs, K::ZERO),
+            bytecode: Self::encode_abck(OpCode::Sub, dst.into(), lhs.into(), rhs.into(), K::ZERO),
             function: Self::execute_sub,
         }
     }
@@ -350,9 +465,9 @@ impl Bytecode {
     /// `dst`: Location on stack to store result of operation  
     /// `lhs`: Location on stack of left-hand operand  
     /// `rhs`: Location on stack of right-hand operand
-    pub fn mul(dst: A, lhs: B, rhs: C) -> Bytecode {
+    pub fn mul(dst: impl Into<A>, lhs: impl Into<B>, rhs: impl Into<C>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::Mul, dst, lhs, rhs, K::ZERO),
+            bytecode: Self::encode_abck(OpCode::Mul, dst.into(), lhs.into(), rhs.into(), K::ZERO),
             function: Self::execute_mul,
         }
     }
@@ -363,9 +478,9 @@ impl Bytecode {
     /// `dst`: Location on stack to store result of operation  
     /// `lhs`: Location on stack of left-hand operand  
     /// `rhs`: Location on stack of right-hand operand
-    pub fn mod_bytecode(dst: A, lhs: B, rhs: C) -> Bytecode {
+    pub fn mod_bytecode(dst: impl Into<A>, lhs: impl Into<B>, rhs: impl Into<C>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::Mod, dst, lhs, rhs, K::ZERO),
+            bytecode: Self::encode_abck(OpCode::Mod, dst.into(), lhs.into(), rhs.into(), K::ZERO),
             function: Self::execute_mod,
         }
     }
@@ -376,9 +491,9 @@ impl Bytecode {
     /// `dst`: Location on stack to store result of operation  
     /// `lhs`: Location on stack of left-hand operand  
     /// `rhs`: Location on stack of right-hand operand
-    pub fn pow(dst: A, lhs: B, rhs: C) -> Bytecode {
+    pub fn pow(dst: impl Into<A>, lhs: impl Into<B>, rhs: impl Into<C>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::Pow, dst, lhs, rhs, K::ZERO),
+            bytecode: Self::encode_abck(OpCode::Pow, dst.into(), lhs.into(), rhs.into(), K::ZERO),
             function: Self::execute_pow,
         }
     }
@@ -389,9 +504,9 @@ impl Bytecode {
     /// `dst`: Location on stack to store result of operation  
     /// `lhs`: Location on stack of left-hand operand  
     /// `rhs`: Location on stack of right-hand operand
-    pub fn div(dst: A, lhs: B, rhs: C) -> Bytecode {
+    pub fn div(dst: impl Into<A>, lhs: impl Into<B>, rhs: impl Into<C>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::Div, dst, lhs, rhs, K::ZERO),
+            bytecode: Self::encode_abck(OpCode::Div, dst.into(), lhs.into(), rhs.into(), K::ZERO),
             function: Self::execute_div,
         }
     }
@@ -402,9 +517,9 @@ impl Bytecode {
     /// `dst`: Location on stack to store result of operation  
     /// `lhs`: Location on stack of left-hand operand  
     /// `rhs`: Location on stack of right-hand operand
-    pub fn idiv(dst: A, lhs: B, rhs: C) -> Bytecode {
+    pub fn idiv(dst: impl Into<A>, lhs: impl Into<B>, rhs: impl Into<C>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::IDiv, dst, lhs, rhs, K::ZERO),
+            bytecode: Self::encode_abck(OpCode::IDiv, dst.into(), lhs.into(), rhs.into(), K::ZERO),
             function: Self::execute_idiv,
         }
     }
@@ -415,9 +530,15 @@ impl Bytecode {
     /// `dst`: Location on stack to store result of operation  
     /// `lhs`: Location on stack of left-hand operand  
     /// `rhs`: Location on stack of right-hand operand
-    pub fn bit_and(dst: A, lhs: B, rhs: C) -> Bytecode {
+    pub fn bit_and(dst: impl Into<A>, lhs: impl Into<B>, rhs: impl Into<C>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::BitAnd, dst, lhs, rhs, K::ZERO),
+            bytecode: Self::encode_abck(
+                OpCode::BitAnd,
+                dst.into(),
+                lhs.into(),
+                rhs.into(),
+                K::ZERO,
+            ),
             function: Self::execute_bit_and,
         }
     }
@@ -428,9 +549,9 @@ impl Bytecode {
     /// `dst`: Location on stack to store result of operation  
     /// `lhs`: Location on stack of left-hand operand  
     /// `rhs`: Location on stack of right-hand operand
-    pub fn bit_or(dst: A, lhs: B, rhs: C) -> Bytecode {
+    pub fn bit_or(dst: impl Into<A>, lhs: impl Into<B>, rhs: impl Into<C>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::BitOr, dst, lhs, rhs, K::ZERO),
+            bytecode: Self::encode_abck(OpCode::BitOr, dst.into(), lhs.into(), rhs.into(), K::ZERO),
             function: Self::execute_bit_or,
         }
     }
@@ -441,9 +562,15 @@ impl Bytecode {
     /// `dst`: Location on stack to store result of operation  
     /// `lhs`: Location on stack of left-hand operand  
     /// `rhs`: Location on stack of right-hand operand
-    pub fn bit_xor(dst: A, lhs: B, rhs: C) -> Bytecode {
+    pub fn bit_xor(dst: impl Into<A>, lhs: impl Into<B>, rhs: impl Into<C>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::BitXor, dst, lhs, rhs, K::ZERO),
+            bytecode: Self::encode_abck(
+                OpCode::BitXor,
+                dst.into(),
+                lhs.into(),
+                rhs.into(),
+                K::ZERO,
+            ),
             function: Self::execute_bit_xor,
         }
     }
@@ -454,9 +581,15 @@ impl Bytecode {
     /// `dst`: Location on stack to store result of operation  
     /// `lhs`: Location on stack of left-hand operand  
     /// `rhs`: Location on stack of right-hand operand
-    pub fn shift_left(dst: A, lhs: B, rhs: C) -> Bytecode {
+    pub fn shift_left(dst: impl Into<A>, lhs: impl Into<B>, rhs: impl Into<C>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::ShiftLeft, dst, lhs, rhs, K::ZERO),
+            bytecode: Self::encode_abck(
+                OpCode::ShiftLeft,
+                dst.into(),
+                lhs.into(),
+                rhs.into(),
+                K::ZERO,
+            ),
             function: Self::execute_shift_left,
         }
     }
@@ -467,9 +600,15 @@ impl Bytecode {
     /// `dst`: Location on stack to store result of operation  
     /// `lhs`: Location on stack of left-hand operand  
     /// `rhs`: Location on stack of right-hand operand
-    pub fn shift_right(dst: A, lhs: B, rhs: C) -> Bytecode {
+    pub fn shift_right(dst: impl Into<A>, lhs: impl Into<B>, rhs: impl Into<C>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::ShiftRight, dst, lhs, rhs, K::ZERO),
+            bytecode: Self::encode_abck(
+                OpCode::ShiftRight,
+                dst.into(),
+                lhs.into(),
+                rhs.into(),
+                K::ZERO,
+            ),
             function: Self::execute_shift_right,
         }
     }
@@ -479,9 +618,9 @@ impl Bytecode {
     ///
     /// `dst`: Location on stack to store result of operation  
     /// `src`: Location on stack to load value
-    pub fn neg(dst: A, rhs: B) -> Bytecode {
+    pub fn neg(dst: impl Into<A>, rhs: impl Into<B>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::Neg, dst, rhs, C::ZERO, K::ZERO),
+            bytecode: Self::encode_abck(OpCode::Neg, dst.into(), rhs.into(), C::ZERO, K::ZERO),
             function: Self::execute_neg,
         }
     }
@@ -491,9 +630,9 @@ impl Bytecode {
     ///
     /// `dst`: Location on stack to store result of operation  
     /// `src`: Location on stack to load value
-    pub fn bit_not(dst: A, rhs: B) -> Bytecode {
+    pub fn bit_not(dst: impl Into<A>, rhs: impl Into<B>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::BitNot, dst, rhs, C::ZERO, K::ZERO),
+            bytecode: Self::encode_abck(OpCode::BitNot, dst.into(), rhs.into(), C::ZERO, K::ZERO),
             function: Self::execute_bit_not,
         }
     }
@@ -503,9 +642,9 @@ impl Bytecode {
     ///
     /// `dst`: Location on stack to store result of operation  
     /// `src`: Location on stack to load value
-    pub fn not(dst: A, rhs: B) -> Bytecode {
+    pub fn not(dst: impl Into<A>, rhs: impl Into<B>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::Not, dst, rhs, C::ZERO, K::ZERO),
+            bytecode: Self::encode_abck(OpCode::Not, dst.into(), rhs.into(), C::ZERO, K::ZERO),
             function: Self::execute_not,
         }
     }
@@ -515,9 +654,9 @@ impl Bytecode {
     ///
     /// `dst`: Location on stack to store result of operation  
     /// `src`: Location on stack to load value
-    pub fn len(dst: A, rhs: B) -> Bytecode {
+    pub fn len(dst: impl Into<A>, rhs: impl Into<B>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::Len, dst, rhs, C::ZERO, K::ZERO),
+            bytecode: Self::encode_abck(OpCode::Len, dst.into(), rhs.into(), C::ZERO, K::ZERO),
             function: Self::execute_len,
         }
     }
@@ -528,9 +667,15 @@ impl Bytecode {
     /// `first`: Location on stack of first string, the result is
     /// stored here  
     /// `string_count`: Number of strings to concat
-    pub fn concat(first: A, count: B) -> Bytecode {
+    pub fn concat(first: impl Into<A>, count: impl Into<B>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::Concat, first, count, C::ZERO, K::ZERO),
+            bytecode: Self::encode_abck(
+                OpCode::Concat,
+                first.into(),
+                count.into(),
+                C::ZERO,
+                K::ZERO,
+            ),
             function: Self::execute_concat,
         }
     }
@@ -539,9 +684,9 @@ impl Bytecode {
     /// Closes an upvalue at the end of a block.
     ///
     /// `first`: Location on stack of first register to be closed
-    pub fn close(first: A) -> Bytecode {
+    pub fn close(first: impl Into<A>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::Close, first, B::ZERO, C::ZERO, K::ZERO),
+            bytecode: Self::encode_abck(OpCode::Close, first.into(), B::ZERO, C::ZERO, K::ZERO),
             function: Self::execute_close,
         }
     }
@@ -550,9 +695,9 @@ impl Bytecode {
     /// Performs jump.
     ///
     /// `jump`: Number of intructions to jump
-    pub fn jump(jump: Sj) -> Bytecode {
+    pub fn jump(jump: impl Into<Sj>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_asj(OpCode::Jump, jump),
+            bytecode: Self::encode_asj(OpCode::Jump, jump.into()),
             function: Self::execute_jump,
         }
     }
@@ -563,9 +708,15 @@ impl Bytecode {
     /// `lhs`: Location on stack of left operand  
     /// `rhs`: Location on stack of light operand  
     /// `test`: If it should test for `true` or `false`
-    pub fn less_than(lst: A, rhs: B, test: K) -> Bytecode {
+    pub fn less_than(lst: impl Into<A>, rhs: impl Into<B>, test: impl Into<K>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::LessThan, lst, rhs, C::ZERO, test),
+            bytecode: Self::encode_abck(
+                OpCode::LessThan,
+                lst.into(),
+                rhs.into(),
+                C::ZERO,
+                test.into(),
+            ),
             function: Self::execute_less_than,
         }
     }
@@ -576,9 +727,15 @@ impl Bytecode {
     /// `lhs`: Location on stack of left operand  
     /// `rhs`: Location on stack of light operand  
     /// `test`: If it should test for `true` or `false`
-    pub fn less_equal(lhs: A, rhs: B, test: K) -> Bytecode {
+    pub fn less_equal(lhs: impl Into<A>, rhs: impl Into<B>, test: impl Into<K>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::LessEqual, lhs, rhs, C::ZERO, test),
+            bytecode: Self::encode_abck(
+                OpCode::LessEqual,
+                lhs.into(),
+                rhs.into(),
+                C::ZERO,
+                test.into(),
+            ),
             function: Self::execute_less_equal,
         }
     }
@@ -589,9 +746,15 @@ impl Bytecode {
     /// `register`: Location on stack of left operand  
     /// `constant`: Id of constant  
     /// `test`: If it should test for `true` or `false`
-    pub fn equal_constant(lhs: A, rhs: B, test: K) -> Bytecode {
+    pub fn equal_constant(lhs: impl Into<A>, rhs: impl Into<B>, test: impl Into<K>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::EqualConstant, lhs, rhs, C::ZERO, test),
+            bytecode: Self::encode_abck(
+                OpCode::EqualConstant,
+                lhs.into(),
+                rhs.into(),
+                C::ZERO,
+                test.into(),
+            ),
             function: Self::execute_equal_constant,
         }
     }
@@ -602,9 +765,15 @@ impl Bytecode {
     /// `register`: Location on stack of left operand  
     /// `integer`: Integer constant  
     /// `test`: If it should test for `true` or `false`
-    pub fn equal_integer(lhs: A, rhs: Sb, test: K) -> Bytecode {
+    pub fn equal_integer(lhs: impl Into<A>, rhs: impl Into<Sb>, test: impl Into<K>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_asbck(OpCode::EqualInteger, lhs, rhs, C::ZERO, test),
+            bytecode: Self::encode_asbck(
+                OpCode::EqualInteger,
+                lhs.into(),
+                rhs.into(),
+                C::ZERO,
+                test.into(),
+            ),
             function: Self::execute_equal_integer,
         }
     }
@@ -615,9 +784,19 @@ impl Bytecode {
     /// `register`: Location on stack of left operand  
     /// `integer`: Integer constant of right operand  
     /// `test`: If it should test for `true` or `false`
-    pub fn less_than_integer(lhs: A, rhs: Sb, test: K) -> Bytecode {
+    pub fn less_than_integer(
+        lhs: impl Into<A>,
+        rhs: impl Into<Sb>,
+        test: impl Into<K>,
+    ) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_asbck(OpCode::LessThanInteger, lhs, rhs, C::ZERO, test),
+            bytecode: Self::encode_asbck(
+                OpCode::LessThanInteger,
+                lhs.into(),
+                rhs.into(),
+                C::ZERO,
+                test.into(),
+            ),
             function: Self::execute_less_than_integer,
         }
     }
@@ -628,9 +807,19 @@ impl Bytecode {
     /// `register`: Location on stack of left operand  
     /// `integer`: Integer constant of right operand  
     /// `test`: If it should test for `true` or `false`
-    pub fn greater_than_integer(lhs: A, rhs: Sb, test: K) -> Bytecode {
+    pub fn greater_than_integer(
+        lhs: impl Into<A>,
+        rhs: impl Into<Sb>,
+        test: impl Into<K>,
+    ) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_asbck(OpCode::GreaterThanInteger, lhs, rhs, C::ZERO, test),
+            bytecode: Self::encode_asbck(
+                OpCode::GreaterThanInteger,
+                lhs.into(),
+                rhs.into(),
+                C::ZERO,
+                test.into(),
+            ),
             function: Self::execute_greater_than_integer,
         }
     }
@@ -641,9 +830,19 @@ impl Bytecode {
     /// `register`: Location on stack of left operand  
     /// `integer`: Integer constant of right operand  
     /// `test`: If it should test for `true` or `false`
-    pub fn greater_equal_integer(lhs: A, rhs: Sb, test: K) -> Bytecode {
+    pub fn greater_equal_integer(
+        lhs: impl Into<A>,
+        rhs: impl Into<Sb>,
+        test: impl Into<K>,
+    ) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_asbck(OpCode::GreaterEqualInteger, lhs, rhs, C::ZERO, test),
+            bytecode: Self::encode_asbck(
+                OpCode::GreaterEqualInteger,
+                lhs.into(),
+                rhs.into(),
+                C::ZERO,
+                test.into(),
+            ),
             function: Self::execute_greater_equal_integer,
         }
     }
@@ -653,9 +852,15 @@ impl Bytecode {
     ///
     /// `register`: Location on stack of the value that if going to be tested  
     /// `test`: Test to perform  
-    pub fn test(register: A, test: K) -> Bytecode {
+    pub fn test(register: impl Into<A>, test: impl Into<K>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::Test, register, B::ZERO, C::ZERO, test),
+            bytecode: Self::encode_abck(
+                OpCode::Test,
+                register.into(),
+                B::ZERO,
+                C::ZERO,
+                test.into(),
+            ),
             function: Self::execute_test,
         }
     }
@@ -668,9 +873,15 @@ impl Bytecode {
     /// itself counts as one item, `0` means a variable number of items   
     /// `out`: How many items coming out of the function should be moved into
     /// the caller stack frame, `0` means all  
-    pub fn call(func: A, in_params: B, out_params: C) -> Bytecode {
+    pub fn call(func: impl Into<A>, in_params: impl Into<B>, out_params: impl Into<C>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::Call, func, in_params, out_params, K::ZERO),
+            bytecode: Self::encode_abck(
+                OpCode::Call,
+                func.into(),
+                in_params.into(),
+                out_params.into(),
+                K::ZERO,
+            ),
             function: Self::execute_call,
         }
     }
@@ -681,9 +892,15 @@ impl Bytecode {
     /// `func`: Location on the stack where the function was loaded  
     /// `args`: Count of arguments  
     /// `variadics`: Number of variadic arguments
-    pub fn tail_call(func: A, args: B, variadics: C) -> Bytecode {
+    pub fn tail_call(func: impl Into<A>, args: impl Into<B>, variadics: impl Into<C>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::TailCall, func, args, variadics, K::ZERO),
+            bytecode: Self::encode_abck(
+                OpCode::TailCall,
+                func.into(),
+                args.into(),
+                variadics.into(),
+                K::ZERO,
+            ),
             function: Self::execute_tail_call,
         }
     }
@@ -696,9 +913,19 @@ impl Bytecode {
     /// it by 1, if zero, return all items on stack  
     /// `varargs`: If `var_args` > 0, the function is has variadic arguments
     /// and the number of fixed arguments is `var_args - 1`
-    pub fn return_bytecode(register: A, count: B, varargs: C) -> Bytecode {
+    pub fn return_bytecode(
+        register: impl Into<A>,
+        count: impl Into<B>,
+        varargs: impl Into<C>,
+    ) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::Return, register, count, varargs, K::ZERO),
+            bytecode: Self::encode_abck(
+                OpCode::Return,
+                register.into(),
+                count.into(),
+                varargs.into(),
+                K::ZERO,
+            ),
             function: Self::execute_return,
         }
     }
@@ -715,9 +942,15 @@ impl Bytecode {
     /// Returns from function with 1 out values
     ///
     /// `return`: Location on stack of the returned value
-    pub fn one_return(register: A) -> Bytecode {
+    pub fn one_return(register: impl Into<A>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::OneReturn, register, B::ZERO, C::ZERO, K::ZERO),
+            bytecode: Self::encode_abck(
+                OpCode::OneReturn,
+                register.into(),
+                B::ZERO,
+                C::ZERO,
+                K::ZERO,
+            ),
             function: Self::execute_one_return,
         }
     }
@@ -727,9 +960,9 @@ impl Bytecode {
     ///
     /// `for`: Location on the stack counter information is stored  
     /// `jump`: Number of byte codes to jump to reach start of for block
-    pub fn for_loop(counter: A, jump: Bx) -> Bytecode {
+    pub fn for_loop(counter: impl Into<A>, jump: impl Into<Bx>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abx(OpCode::ForLoop, counter, jump),
+            bytecode: Self::encode_abx(OpCode::ForLoop, counter.into(), jump.into()),
             function: Self::execute_for_loop,
         }
     }
@@ -739,9 +972,9 @@ impl Bytecode {
     ///
     /// `for`: Location on the stack counter information is stored  
     /// `jump`: Number of byte codes to jump to reach end of for loop
-    pub fn for_prepare(counter: A, jump: Bx) -> Bytecode {
+    pub fn for_prepare(counter: impl Into<A>, jump: impl Into<Bx>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abx(OpCode::ForPrepare, counter, jump),
+            bytecode: Self::encode_abx(OpCode::ForPrepare, counter.into(), jump.into()),
             function: Self::execute_for_prepare,
         }
     }
@@ -752,9 +985,15 @@ impl Bytecode {
     /// `table`: Location of the table on the stack  
     /// `array_len`: Number of items on the stack to store  
     /// `c`: ?
-    pub fn set_list(table: A, array_len: B, c: C) -> Bytecode {
+    pub fn set_list(table: impl Into<A>, array_len: impl Into<B>, c: impl Into<C>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abck(OpCode::SetList, table, array_len, c, K::ZERO),
+            bytecode: Self::encode_abck(
+                OpCode::SetList,
+                table.into(),
+                array_len.into(),
+                c.into(),
+                K::ZERO,
+            ),
             function: Self::execute_set_list,
         }
     }
@@ -764,9 +1003,9 @@ impl Bytecode {
     ///
     /// `dst`: Stack location to store function reference  
     /// `func_id`: Id of function
-    pub fn closure(dst: A, func_id: Bx) -> Bytecode {
+    pub fn closure(dst: impl Into<A>, func_id: impl Into<Bx>) -> Bytecode {
         Bytecode {
-            bytecode: Self::encode_abx(OpCode::Closure, dst, func_id),
+            bytecode: Self::encode_abx(OpCode::Closure, dst.into(), func_id.into()),
             function: Self::execute_closure,
         }
     }
@@ -777,13 +1016,13 @@ impl Bytecode {
     /// `register`: First destination of variable arguments  
     /// `count`: Count of variable arguments, `0` means use all, other values
     /// are subtracted by `1`, i.e. the range is (register..(register + count - 1))
-    pub fn variadic_arguments(register: A, count: C) -> Bytecode {
+    pub fn variadic_arguments(register: impl Into<A>, count: impl Into<C>) -> Bytecode {
         Bytecode {
             bytecode: Self::encode_abck(
                 OpCode::VariadicArguments,
-                register,
+                register.into(),
                 B::ZERO,
-                count,
+                count.into(),
                 K::ZERO,
             ),
             function: Self::execute_variadic_arguments,
@@ -794,11 +1033,11 @@ impl Bytecode {
     /// Prepares the variadic arguments of the closure.
     ///
     /// `fixed`: Number of fixed arguments
-    pub fn variadic_arguments_prepare(varargs: A) -> Bytecode {
+    pub fn variadic_arguments_prepare(varargs: impl Into<A>) -> Bytecode {
         Bytecode {
             bytecode: Self::encode_abck(
                 OpCode::VariadicArgumentsPrepare,
-                varargs,
+                varargs.into(),
                 B::ZERO,
                 C::ZERO,
                 K::ZERO,
@@ -1686,12 +1925,7 @@ impl Bytecode {
         if let Value::Integer(counter) = &mut vm.get_stack_mut(*for_stack + 1)? {
             if counter != &0 {
                 *counter -= 1;
-                Bytecode::add(
-                    (*for_stack + 3).into(),
-                    (*for_stack + 3).into(),
-                    (*for_stack + 2).into(),
-                )
-                .execute(vm)?;
+                Bytecode::add(*for_stack + 3, *for_stack + 3, *for_stack + 2).execute(vm)?;
                 vm.jump(-isize::try_from(*jmp)?)?;
             }
             Ok(())

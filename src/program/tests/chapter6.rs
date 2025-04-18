@@ -22,33 +22,33 @@ print (a) -- should be nil
     super::compare_program(
         &program,
         &[
-            Bytecode::variadic_arguments_prepare(0.into()),
+            Bytecode::variadic_arguments_prepare(0),
             // if a then
-            Bytecode::get_uptable(0.into(), 0.into(), 0.into()),
-            Bytecode::test(0.into(), false.into()),
-            Bytecode::jump(3i8.into()),
+            Bytecode::get_uptable(0, 0, 0),
+            Bytecode::test(0, false),
+            Bytecode::jump(3i8),
             // print "skip this"
-            Bytecode::get_uptable(0.into(), 0.into(), 1.into()),
-            Bytecode::load_constant(1.into(), 2u8.into()),
-            Bytecode::call(0.into(), 2.into(), 1.into()),
+            Bytecode::get_uptable(0, 0, 1),
+            Bytecode::load_constant(1, 2u8),
+            Bytecode::call(0, 2, 1),
             // end
             // if print then
-            Bytecode::get_uptable(0.into(), 0.into(), 1.into()),
-            Bytecode::test(0.into(), false.into()),
-            Bytecode::jump(4i8.into()),
+            Bytecode::get_uptable(0, 0, 1),
+            Bytecode::test(0, false),
+            Bytecode::jump(4i8),
             // local a = "I am true"
-            Bytecode::load_constant(0.into(), 3u8.into()),
+            Bytecode::load_constant(0, 3u8),
             // print(a)
-            Bytecode::get_uptable(1.into(), 0.into(), 1.into()),
-            Bytecode::move_bytecode(2.into(), 0.into()),
-            Bytecode::call(1.into(), 2.into(), 1.into()),
+            Bytecode::get_uptable(1, 0, 1),
+            Bytecode::move_bytecode(2, 0),
+            Bytecode::call(1, 2, 1),
             // end
             // print (a) -- should be nil
-            Bytecode::get_uptable(0.into(), 0.into(), 1.into()),
-            Bytecode::get_uptable(1.into(), 0.into(), 0.into()),
-            Bytecode::call(0.into(), 2.into(), 1.into()),
+            Bytecode::get_uptable(0, 0, 1),
+            Bytecode::get_uptable(1, 0, 0),
+            Bytecode::call(0, 2, 1),
             // EOF
-            Bytecode::return_bytecode(0.into(), 1.into(), 1.into()),
+            Bytecode::return_bytecode(0, 1, 1),
         ],
         &[
             "a".into(),
@@ -97,65 +97,65 @@ end
     super::compare_program(
         &program,
         &[
-            Bytecode::variadic_arguments_prepare(0.into()),
+            Bytecode::variadic_arguments_prepare(0),
             // local a,b = 123
-            Bytecode::load_integer(0.into(), 123i8.into()),
-            Bytecode::load_nil(1.into(), 0.into()),
+            Bytecode::load_integer(0, 123i8),
+            Bytecode::load_nil(1, 0),
             // if b then
-            Bytecode::test(1.into(), false.into()),
-            Bytecode::jump(4i8.into()),
+            Bytecode::test(1, false),
+            Bytecode::jump(4i8),
             //   print "not here"
-            Bytecode::get_uptable(2.into(), 0.into(), 0.into()),
-            Bytecode::load_constant(3.into(), 1u8.into()),
-            Bytecode::call(2.into(), 2.into(), 1.into()),
-            Bytecode::jump(16i8.into()),
+            Bytecode::get_uptable(2, 0, 0),
+            Bytecode::load_constant(3, 1u8),
+            Bytecode::call(2, 2, 1),
+            Bytecode::jump(16i8),
             // elseif g then
-            Bytecode::get_uptable(2.into(), 0.into(), 2.into()),
-            Bytecode::test(2.into(), false.into()),
-            Bytecode::jump(4i8.into()),
+            Bytecode::get_uptable(2, 0, 2),
+            Bytecode::test(2, false),
+            Bytecode::jump(4i8),
             //   print "not here"
-            Bytecode::get_uptable(2.into(), 0.into(), 0.into()),
-            Bytecode::load_constant(3.into(), 1u8.into()),
-            Bytecode::call(2.into(), 2.into(), 1.into()),
-            Bytecode::jump(9i8.into()),
+            Bytecode::get_uptable(2, 0, 0),
+            Bytecode::load_constant(3, 1u8),
+            Bytecode::call(2, 2, 1),
+            Bytecode::jump(9i8),
             // elseif a then
-            Bytecode::test(0.into(), false.into()),
-            Bytecode::jump(4i8.into()),
+            Bytecode::test(0, false),
+            Bytecode::jump(4i8),
             //   print "yes, here"
-            Bytecode::get_uptable(2.into(), 0.into(), 0.into()),
-            Bytecode::load_constant(3.into(), 3u8.into()),
-            Bytecode::call(2.into(), 2.into(), 1.into()),
-            Bytecode::jump(3i8.into()),
+            Bytecode::get_uptable(2, 0, 0),
+            Bytecode::load_constant(3, 3u8),
+            Bytecode::call(2, 2, 1),
+            Bytecode::jump(3i8),
             // else
             //   print "not here"
-            Bytecode::get_uptable(2.into(), 0.into(), 0.into()),
-            Bytecode::load_constant(3.into(), 1u8.into()),
-            Bytecode::call(2.into(), 2.into(), 1.into()),
+            Bytecode::get_uptable(2, 0, 0),
+            Bytecode::load_constant(3, 1u8),
+            Bytecode::call(2, 2, 1),
             // end
             // if b then
-            Bytecode::test(1.into(), false.into()),
-            Bytecode::jump(4i8.into()),
+            Bytecode::test(1, false),
+            Bytecode::jump(4i8),
             //   print "not here"
-            Bytecode::get_uptable(2.into(), 0.into(), 0.into()),
-            Bytecode::load_constant(3.into(), 1u8.into()),
-            Bytecode::call(2.into(), 2.into(), 1.into()),
-            Bytecode::jump(3i8.into()),
+            Bytecode::get_uptable(2, 0, 0),
+            Bytecode::load_constant(3, 1u8),
+            Bytecode::call(2, 2, 1),
+            Bytecode::jump(3i8),
             // else
             //   print "yes, here"
-            Bytecode::get_uptable(2.into(), 0.into(), 0.into()),
-            Bytecode::load_constant(3.into(), 3u8.into()),
-            Bytecode::call(2.into(), 2.into(), 1.into()),
+            Bytecode::get_uptable(2, 0, 0),
+            Bytecode::load_constant(3, 3u8),
+            Bytecode::call(2, 2, 1),
             // end
             // if b then
-            Bytecode::test(1.into(), false.into()),
-            Bytecode::jump(3i8.into()),
+            Bytecode::test(1, false),
+            Bytecode::jump(3i8),
             //   print "yes, here"
-            Bytecode::get_uptable(2.into(), 0.into(), 0.into()),
-            Bytecode::load_constant(3.into(), 1u8.into()),
-            Bytecode::call(2.into(), 2.into(), 1.into()),
+            Bytecode::get_uptable(2, 0, 0),
+            Bytecode::load_constant(3, 1u8),
+            Bytecode::call(2, 2, 1),
             // end
             // EOF
-            Bytecode::return_bytecode(2.into(), 1.into(), 1.into()),
+            Bytecode::return_bytecode(2, 1, 1),
         ],
         &[
             "print".into(),
@@ -189,22 +189,22 @@ end
     super::compare_program(
         &program,
         &[
-            Bytecode::variadic_arguments_prepare(0.into()),
+            Bytecode::variadic_arguments_prepare(0),
             // local a = 123
-            Bytecode::load_integer(0.into(), 123i8.into()),
+            Bytecode::load_integer(0, 123i8),
             // while a do
-            Bytecode::test(0.into(), false.into()),
-            Bytecode::jump(5i8.into()),
+            Bytecode::test(0, false),
+            Bytecode::jump(5i8),
             //   print(a)
-            Bytecode::get_uptable(1.into(), 0.into(), 0.into()),
-            Bytecode::move_bytecode(2.into(), 0.into()),
-            Bytecode::call(1.into(), 2.into(), 1.into()),
+            Bytecode::get_uptable(1, 0, 0),
+            Bytecode::move_bytecode(2, 0),
+            Bytecode::call(1, 2, 1),
             //   a = not a
-            Bytecode::not(0.into(), 0.into()),
+            Bytecode::not(0, 0),
             // end
-            Bytecode::jump((-7i8).into()),
+            Bytecode::jump(-7i8),
             // EOF
-            Bytecode::return_bytecode(1.into(), 1.into(), 1.into()),
+            Bytecode::return_bytecode(1, 1, 1),
         ],
         &["print".into()],
         &[Local::new("a".into(), 3, 11)],
@@ -240,41 +240,41 @@ end
     super::compare_program(
         &program,
         &[
-            Bytecode::variadic_arguments_prepare(0.into()),
+            Bytecode::variadic_arguments_prepare(0),
             // local z = 1
-            Bytecode::load_integer(0.into(), 1i8.into()),
+            Bytecode::load_integer(0, 1i8),
             // while z do
-            Bytecode::test(0.into(), false.into()),
-            Bytecode::jump(18i8.into()),
+            Bytecode::test(0, false),
+            Bytecode::jump(18i8),
             //   while z do
-            Bytecode::test(0.into(), false.into()),
-            Bytecode::jump(8i8.into()),
+            Bytecode::test(0, false),
+            Bytecode::jump(8i8),
             //     print "break inner"
-            Bytecode::get_uptable(1.into(), 0.into(), 0.into()),
-            Bytecode::load_constant(2.into(), 1u8.into()),
-            Bytecode::call(1.into(), 2.into(), 1.into()),
+            Bytecode::get_uptable(1, 0, 0),
+            Bytecode::load_constant(2, 1u8),
+            Bytecode::call(1, 2, 1),
             //     break
-            Bytecode::jump(4i8.into()),
+            Bytecode::jump(4i8),
             //     print "unreachable inner"
-            Bytecode::get_uptable(1.into(), 0.into(), 0.into()),
-            Bytecode::load_constant(2.into(), 2u8.into()),
-            Bytecode::call(1.into(), 2.into(), 1.into()),
+            Bytecode::get_uptable(1, 0, 0),
+            Bytecode::load_constant(2, 2u8),
+            Bytecode::call(1, 2, 1),
             //   end
-            Bytecode::jump((-10i8).into()),
+            Bytecode::jump(-10i8),
             //   print "break outer"
-            Bytecode::get_uptable(1.into(), 0.into(), 0.into()),
-            Bytecode::load_constant(2.into(), 3u8.into()),
-            Bytecode::call(1.into(), 2.into(), 1.into()),
+            Bytecode::get_uptable(1, 0, 0),
+            Bytecode::load_constant(2, 3u8),
+            Bytecode::call(1, 2, 1),
             //   break
-            Bytecode::jump(4i8.into()),
+            Bytecode::jump(4i8),
             //   print "unreachable outer"
-            Bytecode::get_uptable(1.into(), 0.into(), 0.into()),
-            Bytecode::load_constant(2.into(), 4u8.into()),
-            Bytecode::call(1.into(), 2.into(), 1.into()),
+            Bytecode::get_uptable(1, 0, 0),
+            Bytecode::load_constant(2, 4u8),
+            Bytecode::call(1, 2, 1),
             // end
-            Bytecode::jump((-20i8).into()),
+            Bytecode::jump(-20i8),
             // EOF
-            Bytecode::return_bytecode(1.into(), 1.into(), 1.into()),
+            Bytecode::return_bytecode(1, 1, 1),
         ],
         &[
             "print".into(),
@@ -309,21 +309,21 @@ until a
     super::compare_program(
         &program,
         &[
-            Bytecode::variadic_arguments_prepare(0.into()),
+            Bytecode::variadic_arguments_prepare(0),
             // local a = false
-            Bytecode::load_false(0.into()),
+            Bytecode::load_false(0),
             // repeat
             //   print(a)
-            Bytecode::get_uptable(1.into(), 0.into(), 0.into()),
-            Bytecode::move_bytecode(2.into(), 0.into()),
-            Bytecode::call(1.into(), 2.into(), 1.into()),
+            Bytecode::get_uptable(1, 0, 0),
+            Bytecode::move_bytecode(2, 0),
+            Bytecode::call(1, 2, 1),
             //   a = not a
-            Bytecode::not(0.into(), 0.into()),
+            Bytecode::not(0, 0),
             // until a
-            Bytecode::test(0.into(), false.into()),
-            Bytecode::jump((-6i8).into()),
+            Bytecode::test(0, false),
+            Bytecode::jump(-6i8),
             // EOF
-            Bytecode::return_bytecode(1.into(), 1.into(), 1.into()),
+            Bytecode::return_bytecode(1, 1, 1),
         ],
         &["print".into()],
         &[Local::new("a".into(), 3, 10)],
@@ -372,67 +372,67 @@ end
     super::compare_program(
         &program,
         &[
-            Bytecode::variadic_arguments_prepare(0.into()),
+            Bytecode::variadic_arguments_prepare(0),
             // for i = 1, 3, 1 do
-            Bytecode::load_integer(0.into(), 1i8.into()),
-            Bytecode::load_integer(1.into(), 3i8.into()),
-            Bytecode::load_integer(2.into(), 1i8.into()),
-            Bytecode::for_prepare(0.into(), 3u8.into()),
+            Bytecode::load_integer(0, 1i8),
+            Bytecode::load_integer(1, 3i8),
+            Bytecode::load_integer(2, 1i8),
+            Bytecode::for_prepare(0, 3u8),
             //     print(i)
-            Bytecode::get_uptable(4.into(), 0.into(), 0.into()),
-            Bytecode::move_bytecode(5.into(), 3.into()),
-            Bytecode::call(4.into(), 2.into(), 1.into()),
+            Bytecode::get_uptable(4, 0, 0),
+            Bytecode::move_bytecode(5, 3),
+            Bytecode::call(4, 2, 1),
             // end
-            Bytecode::for_loop(0.into(), 4u8.into()),
+            Bytecode::for_loop(0, 4u8),
             // for i = 1, -2, -1 do
-            Bytecode::load_integer(0.into(), 1i8.into()),
-            Bytecode::load_integer(1.into(), (-2i8).into()),
-            Bytecode::load_integer(2.into(), (-1i8).into()),
-            Bytecode::for_prepare(0.into(), 3u8.into()),
+            Bytecode::load_integer(0, 1i8),
+            Bytecode::load_integer(1, -2i8),
+            Bytecode::load_integer(2, -1i8),
+            Bytecode::for_prepare(0, 3u8),
             //     print(i)
-            Bytecode::get_uptable(4.into(), 0.into(), 0.into()),
-            Bytecode::move_bytecode(5.into(), 3.into()),
-            Bytecode::call(4.into(), 2.into(), 1.into()),
+            Bytecode::get_uptable(4, 0, 0),
+            Bytecode::move_bytecode(5, 3),
+            Bytecode::call(4, 2, 1),
             // end
-            Bytecode::for_loop(0.into(), 4u8.into()),
+            Bytecode::for_loop(0, 4u8),
             // for i = 1, 3.2 do
-            Bytecode::load_integer(0.into(), 1i8.into()),
-            Bytecode::load_constant(1.into(), 1u8.into()),
-            Bytecode::load_integer(2.into(), 1i8.into()),
-            Bytecode::for_prepare(0.into(), 3u8.into()),
+            Bytecode::load_integer(0, 1i8),
+            Bytecode::load_constant(1, 1u8),
+            Bytecode::load_integer(2, 1i8),
+            Bytecode::for_prepare(0, 3u8),
             //     print(i)
-            Bytecode::get_uptable(4.into(), 0.into(), 0.into()),
-            Bytecode::move_bytecode(5.into(), 3.into()),
-            Bytecode::call(4.into(), 2.into(), 1.into()),
+            Bytecode::get_uptable(4, 0, 0),
+            Bytecode::move_bytecode(5, 3),
+            Bytecode::call(4, 2, 1),
             // end
-            Bytecode::for_loop(0.into(), 4u8.into()),
+            Bytecode::for_loop(0, 4u8),
             // for i = 1.0, 3 do
-            Bytecode::load_float(0.into(), 1i8.into()),
-            Bytecode::load_integer(1.into(), 3i8.into()),
-            Bytecode::load_integer(2.into(), 1i8.into()),
-            Bytecode::for_prepare(0.into(), 3u8.into()),
+            Bytecode::load_float(0, 1i8),
+            Bytecode::load_integer(1, 3i8),
+            Bytecode::load_integer(2, 1i8),
+            Bytecode::for_prepare(0, 3u8),
             //     print(i)
-            Bytecode::get_uptable(4.into(), 0.into(), 0.into()),
-            Bytecode::move_bytecode(5.into(), 3.into()),
-            Bytecode::call(4.into(), 2.into(), 1.into()),
+            Bytecode::get_uptable(4, 0, 0),
+            Bytecode::move_bytecode(5, 3),
+            Bytecode::call(4, 2, 1),
             // end
-            Bytecode::for_loop(0.into(), 4u8.into()),
+            Bytecode::for_loop(0, 4u8),
             // local max = 9223372036854775807
-            Bytecode::load_constant(0.into(), 2u8.into()),
+            Bytecode::load_constant(0, 2u8),
             // for i = max, max*10.0, -1 do
-            Bytecode::move_bytecode(1.into(), 0.into()),
-            Bytecode::mul_constant(2.into(), 0.into(), 3.into()),
+            Bytecode::move_bytecode(1, 0),
+            Bytecode::mul_constant(2, 0, 3),
             // TODO MMBINK
-            Bytecode::load_integer(3.into(), (-1i8).into()),
-            Bytecode::for_prepare(1.into(), 3u8.into()),
+            Bytecode::load_integer(3, -1i8),
+            Bytecode::for_prepare(1, 3u8),
             //     print (i)
-            Bytecode::get_uptable(5.into(), 0.into(), 0.into()),
-            Bytecode::move_bytecode(6.into(), 4.into()),
-            Bytecode::call(5.into(), 2.into(), 1.into()),
+            Bytecode::get_uptable(5, 0, 0),
+            Bytecode::move_bytecode(6, 4),
+            Bytecode::call(5, 2, 1),
             // end
-            Bytecode::for_loop(1.into(), 4u8.into()),
+            Bytecode::for_loop(1, 4u8),
             // EOF
-            Bytecode::return_bytecode(1.into(), 1.into(), 1.into()),
+            Bytecode::return_bytecode(1, 1, 1),
         ],
         &[
             "print".into(),
@@ -505,39 +505,39 @@ end
     super::compare_program(
         &program,
         &[
-            Bytecode::variadic_arguments_prepare(0.into()),
+            Bytecode::variadic_arguments_prepare(0),
             // print("block: 1")
-            Bytecode::get_uptable(0.into(), 0.into(), 0.into()),
-            Bytecode::load_constant(1.into(), 1u8.into()),
-            Bytecode::call(0.into(), 2.into(), 1.into()),
+            Bytecode::get_uptable(0, 0, 0),
+            Bytecode::load_constant(1, 1u8),
+            Bytecode::call(0, 2, 1),
             // goto label2
-            Bytecode::jump(4i8.into()),
+            Bytecode::jump(4i8),
             // print("block: 3")
-            Bytecode::get_uptable(0.into(), 0.into(), 0.into()),
-            Bytecode::load_constant(1.into(), 2u8.into()),
-            Bytecode::call(0.into(), 2.into(), 1.into()),
+            Bytecode::get_uptable(0, 0, 0),
+            Bytecode::load_constant(1, 2u8),
+            Bytecode::call(0, 2, 1),
             // goto label4
-            Bytecode::jump(4i8.into()),
+            Bytecode::jump(4i8),
             // do
             //   print("block: 2")
-            Bytecode::get_uptable(0.into(), 0.into(), 0.into()),
-            Bytecode::load_constant(1.into(), 3u8.into()),
-            Bytecode::call(0.into(), 2.into(), 1.into()),
+            Bytecode::get_uptable(0, 0, 0),
+            Bytecode::load_constant(1, 3u8),
+            Bytecode::call(0, 2, 1),
             //   goto label3 -- goto outer block
-            Bytecode::jump((-8i8).into()),
+            Bytecode::jump(-8i8),
             // end
             // print("block: 4")
-            Bytecode::get_uptable(0.into(), 0.into(), 0.into()),
-            Bytecode::load_constant(1.into(), 4u8.into()),
-            Bytecode::call(0.into(), 2.into(), 1.into()),
+            Bytecode::get_uptable(0, 0, 0),
+            Bytecode::load_constant(1, 4u8),
+            Bytecode::call(0, 2, 1),
             // do
             //   goto label
-            Bytecode::jump(1i8.into()),
+            Bytecode::jump(1i8),
             //   local a = 'local var'
-            Bytecode::load_constant(0.into(), 5u8.into()),
+            Bytecode::load_constant(0, 5u8),
             // end
             // EOF
-            Bytecode::return_bytecode(0.into(), 1.into(), 1.into()),
+            Bytecode::return_bytecode(0, 1, 1),
         ],
         &[
             "print".into(),
@@ -591,57 +591,57 @@ local c = 10
     super::compare_program(
         &program,
         &[
-            Bytecode::variadic_arguments_prepare(0.into()),
+            Bytecode::variadic_arguments_prepare(0),
             // local a = 5
-            Bytecode::load_integer(0.into(), 5i8.into()),
+            Bytecode::load_integer(0, 5i8),
             // if a > 10 then
-            Bytecode::greater_than_integer(0.into(), 10.into(), false.into()),
-            Bytecode::jump(2i8.into()),
+            Bytecode::greater_than_integer(0, 10, false),
+            Bytecode::jump(2i8),
             //     local b = 100
-            Bytecode::load_integer(1.into(), 100i8.into()),
-            Bytecode::jump(5i8.into()),
+            Bytecode::load_integer(1, 100i8),
+            Bytecode::jump(5i8),
             // elseif a < 0 then
-            Bytecode::less_than_integer(0.into(), 0.into(), false.into()),
-            Bytecode::jump(2i8.into()),
+            Bytecode::less_than_integer(0, 0, false),
+            Bytecode::jump(2i8),
             //     local b = 101
-            Bytecode::load_integer(1.into(), 101i8.into()),
-            Bytecode::jump(1i8.into()),
+            Bytecode::load_integer(1, 101i8),
+            Bytecode::jump(1i8),
             // else
             //     local b = 102
-            Bytecode::load_integer(1.into(), 102i8.into()),
+            Bytecode::load_integer(1, 102i8),
             // end
             // do
             //     local b = 103
-            Bytecode::load_integer(1.into(), 103i8.into()),
+            Bytecode::load_integer(1, 103i8),
             // end
             // for i = 1,2 do
-            Bytecode::load_integer(1.into(), 1i8.into()),
-            Bytecode::load_integer(2.into(), 2i8.into()),
-            Bytecode::load_integer(3.into(), 1i8.into()),
-            Bytecode::for_prepare(1.into(), 1u8.into()),
+            Bytecode::load_integer(1, 1i8),
+            Bytecode::load_integer(2, 2i8),
+            Bytecode::load_integer(3, 1i8),
+            Bytecode::for_prepare(1, 1u8),
             //     local b = 104
-            Bytecode::load_integer(5.into(), 104i8.into()),
+            Bytecode::load_integer(5, 104i8),
             // end
-            Bytecode::for_loop(1.into(), 2u8.into()),
+            Bytecode::for_loop(1, 2u8),
             // repeat
             //     local b = 105
-            Bytecode::load_integer(1.into(), 105i8.into()),
+            Bytecode::load_integer(1, 105i8),
             // until a > 0
-            Bytecode::greater_than_integer(0.into(), 0.into(), false.into()),
-            Bytecode::jump((-3i8).into()),
+            Bytecode::greater_than_integer(0, 0, false),
+            Bytecode::jump(-3i8),
             // while a > 0 do
-            Bytecode::greater_than_integer(0.into(), 0.into(), false.into()),
-            Bytecode::jump(3i8.into()),
+            Bytecode::greater_than_integer(0, 0, false),
+            Bytecode::jump(3i8),
             //     local b = 106
-            Bytecode::load_integer(1.into(), 106i8.into()),
+            Bytecode::load_integer(1, 106i8),
             //     break
-            Bytecode::jump(1i8.into()),
+            Bytecode::jump(1i8),
             // end
-            Bytecode::jump((-5i8).into()),
+            Bytecode::jump(-5i8),
             // local c = 10
-            Bytecode::load_integer(1.into(), 10i8.into()),
+            Bytecode::load_integer(1, 10i8),
             // EOF
-            Bytecode::return_bytecode(2.into(), 1.into(), 1.into()),
+            Bytecode::return_bytecode(2, 1, 1),
         ],
         &[],
         &[

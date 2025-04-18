@@ -23,41 +23,41 @@ print(t)
     super::compare_program(
         &program,
         &[
-            Bytecode::variadic_arguments_prepare(0.into()),
+            Bytecode::variadic_arguments_prepare(0),
             // local key = "key"
-            Bytecode::load_constant(0.into(), 0u8.into()),
+            Bytecode::load_constant(0, 0u8),
             // local t = {...}
-            Bytecode::new_table(1.into(), 3.into(), 3.into()),
+            Bytecode::new_table(1, 3, 3),
             // TODO EXTRAARG
             // 100, 200, 300;
-            Bytecode::load_integer(2.into(), 100i16.into()),
-            Bytecode::load_integer(3.into(), 200i16.into()),
-            Bytecode::load_integer(4.into(), 300i16.into()),
+            Bytecode::load_integer(2, 100i16),
+            Bytecode::load_integer(3, 200i16),
+            Bytecode::load_integer(4, 300i16),
             // x="hello", y="world";
-            Bytecode::set_field(1.into(), 1.into(), 2.into(), true.into()),
-            Bytecode::set_field(1.into(), 3.into(), 4.into(), true.into()),
+            Bytecode::set_field(1, 1, 2, true),
+            Bytecode::set_field(1, 3, 4, true),
             // [key]="val";
-            Bytecode::set_table(1.into(), 0.into(), 5.into(), true.into()),
+            Bytecode::set_table(1, 0, 5, true),
             // {...}
-            Bytecode::set_list(1.into(), 3.into(), 0.into()),
+            Bytecode::set_list(1, 3, 0),
             // print(t[1])
-            Bytecode::get_uptable(2.into(), 0.into(), 6.into()),
-            Bytecode::get_index(3.into(), 1.into(), 1.into()),
-            Bytecode::call(2.into(), 2.into(), 1.into()),
+            Bytecode::get_uptable(2, 0, 6),
+            Bytecode::get_index(3, 1, 1),
+            Bytecode::call(2, 2, 1),
             // print(t['x'])
-            Bytecode::get_uptable(2.into(), 0.into(), 6.into()),
-            Bytecode::get_field(3.into(), 1.into(), 1.into()),
-            Bytecode::call(2.into(), 2.into(), 1.into()),
+            Bytecode::get_uptable(2, 0, 6),
+            Bytecode::get_field(3, 1, 1),
+            Bytecode::call(2, 2, 1),
             // print(t.key)
-            Bytecode::get_uptable(2.into(), 0.into(), 6.into()),
-            Bytecode::get_field(3.into(), 1.into(), 0.into()),
-            Bytecode::call(2.into(), 2.into(), 1.into()),
+            Bytecode::get_uptable(2, 0, 6),
+            Bytecode::get_field(3, 1, 0),
+            Bytecode::call(2, 2, 1),
             // print(t)
-            Bytecode::get_uptable(2.into(), 0.into(), 6.into()),
-            Bytecode::move_bytecode(3.into(), 1.into()),
-            Bytecode::call(2.into(), 2.into(), 1.into()),
+            Bytecode::get_uptable(2, 0, 6),
+            Bytecode::move_bytecode(3, 1),
+            Bytecode::call(2, 2, 1),
             // EOF
-            Bytecode::return_bytecode(2.into(), 1.into(), 1.into()),
+            Bytecode::return_bytecode(2, 1, 1),
         ],
         &[
             "key".into(),
@@ -100,63 +100,63 @@ t.f(t[1000])
     super::compare_program(
         &program,
         &[
-            Bytecode::variadic_arguments_prepare(0.into()),
+            Bytecode::variadic_arguments_prepare(0),
             // local a,b = 100,200
-            Bytecode::load_integer(0.into(), 100i16.into()),
-            Bytecode::load_integer(1.into(), 200i16.into()),
+            Bytecode::load_integer(0, 100i16),
+            Bytecode::load_integer(1, 200i16),
             // t = {...}
-            Bytecode::new_table(2.into(), 2.into(), 3.into()),
+            Bytecode::new_table(2, 2, 3),
             // TODO EXTRAARG
             // k=300
-            Bytecode::set_field(2.into(), 1.into(), 2.into(), true.into()),
+            Bytecode::set_field(2, 1, 2, true),
             // z=a
-            Bytecode::set_field(2.into(), 3.into(), 0.into(), false.into()),
+            Bytecode::set_field(2, 3, 0, false),
             // 10,20,30
-            Bytecode::load_integer(3.into(), 10i8.into()),
-            Bytecode::load_integer(4.into(), 20i8.into()),
-            Bytecode::load_integer(5.into(), 30i8.into()),
-            Bytecode::set_list(2.into(), 3.into(), 0.into()),
+            Bytecode::load_integer(3, 10i8),
+            Bytecode::load_integer(4, 20i8),
+            Bytecode::load_integer(5, 30i8),
+            Bytecode::set_list(2, 3, 0),
             // t = {...}
-            Bytecode::set_uptable(0.into(), 0.into(), 2.into(), false.into()),
+            Bytecode::set_uptable(0, 0, 2, false),
             // t.k = 400 -- set
-            Bytecode::get_uptable(2.into(), 0.into(), 0.into()),
-            Bytecode::set_field(2.into(), 1.into(), 4.into(), true.into()),
+            Bytecode::get_uptable(2, 0, 0),
+            Bytecode::set_field(2, 1, 4, true),
             // t.x = t.z -- new
-            Bytecode::get_uptable(2.into(), 0.into(), 0.into()),
-            Bytecode::get_uptable(3.into(), 0.into(), 0.into()),
-            Bytecode::get_field(3.into(), 3.into(), 3.into()),
-            Bytecode::set_field(2.into(), 5.into(), 3.into(), false.into()),
+            Bytecode::get_uptable(2, 0, 0),
+            Bytecode::get_uptable(3, 0, 0),
+            Bytecode::get_field(3, 3, 3),
+            Bytecode::set_field(2, 5, 3, false),
             // t.f = print -- new
-            Bytecode::get_uptable(2.into(), 0.into(), 0.into()),
-            Bytecode::get_uptable(3.into(), 0.into(), 7.into()),
-            Bytecode::set_field(2.into(), 6.into(), 3.into(), false.into()),
+            Bytecode::get_uptable(2, 0, 0),
+            Bytecode::get_uptable(3, 0, 7),
+            Bytecode::set_field(2, 6, 3, false),
             // t.f(t.k)
-            Bytecode::get_uptable(2.into(), 0.into(), 0.into()),
-            Bytecode::get_field(2.into(), 2.into(), 6.into()),
-            Bytecode::get_uptable(3.into(), 0.into(), 0.into()),
-            Bytecode::get_field(3.into(), 3.into(), 1.into()),
-            Bytecode::call(2.into(), 2.into(), 1.into()),
+            Bytecode::get_uptable(2, 0, 0),
+            Bytecode::get_field(2, 2, 6),
+            Bytecode::get_uptable(3, 0, 0),
+            Bytecode::get_field(3, 3, 1),
+            Bytecode::call(2, 2, 1),
             // t.f(t.x)
-            Bytecode::get_uptable(2.into(), 0.into(), 0.into()),
-            Bytecode::get_field(2.into(), 2.into(), 6.into()),
-            Bytecode::get_uptable(3.into(), 0.into(), 0.into()),
-            Bytecode::get_field(3.into(), 3.into(), 5.into()),
-            Bytecode::call(2.into(), 2.into(), 1.into()),
+            Bytecode::get_uptable(2, 0, 0),
+            Bytecode::get_field(2, 2, 6),
+            Bytecode::get_uptable(3, 0, 0),
+            Bytecode::get_field(3, 3, 5),
+            Bytecode::call(2, 2, 1),
             // t.f(t[2])
-            Bytecode::get_uptable(2.into(), 0.into(), 0.into()),
-            Bytecode::get_field(2.into(), 2.into(), 6.into()),
-            Bytecode::get_uptable(3.into(), 0.into(), 0.into()),
-            Bytecode::get_index(3.into(), 3.into(), 2.into()),
-            Bytecode::call(2.into(), 2.into(), 1.into()),
+            Bytecode::get_uptable(2, 0, 0),
+            Bytecode::get_field(2, 2, 6),
+            Bytecode::get_uptable(3, 0, 0),
+            Bytecode::get_index(3, 3, 2),
+            Bytecode::call(2, 2, 1),
             // t.f(t[1000])
-            Bytecode::get_uptable(2.into(), 0.into(), 0.into()),
-            Bytecode::get_field(2.into(), 2.into(), 6.into()),
-            Bytecode::get_uptable(3.into(), 0.into(), 0.into()),
-            Bytecode::load_integer(4.into(), 1000i16.into()),
-            Bytecode::get_table(3.into(), 3.into(), 4.into()),
-            Bytecode::call(2.into(), 2.into(), 1.into()),
+            Bytecode::get_uptable(2, 0, 0),
+            Bytecode::get_field(2, 2, 6),
+            Bytecode::get_uptable(3, 0, 0),
+            Bytecode::load_integer(4, 1000i16),
+            Bytecode::get_table(3, 3, 4),
+            Bytecode::call(2, 2, 1),
             // EOF
-            Bytecode::return_bytecode(2.into(), 1.into(), 1.into()),
+            Bytecode::return_bytecode(2, 1, 1),
         ],
         &[
             "t".into(),

@@ -124,9 +124,7 @@ impl<'a> CompileStack<'a> {
                 if self.compile_context_mut().var_args.unwrap_or(false) {
                     self.proto_mut()
                         .byte_codes
-                        .push(Bytecode::variadic_arguments_prepare(
-                            u8::try_from(locals)?.into(),
-                        ));
+                        .push(Bytecode::variadic_arguments_prepare(u8::try_from(locals)?));
                 }
 
                 self.block_stat(block_stat)?;
@@ -159,7 +157,7 @@ impl<'a> CompileStack<'a> {
                             let Ok(jump) = i32::try_from((label_i - 1) - goto_i) else {
                                 return Some(Err(Error::LongJump));
                             };
-                            match jump.try_into() {
+                            match Sj::try_from(jump) {
                                 Ok(jump) => {
                                     proto.byte_codes[goto.bytecode] = Bytecode::jump(jump);
                                     None
@@ -302,7 +300,7 @@ impl<'a> CompileStack<'a> {
                 {
                     self.proto_mut()
                         .byte_codes
-                        .push(Bytecode::close(rewind_stack_top.into()));
+                        .push(Bytecode::close(rewind_stack_top));
                 }
 
                 Ok(())
@@ -338,11 +336,9 @@ impl<'a> CompileStack<'a> {
 
                 let end_of_cond = proto.byte_codes.len();
                 for jump in compile_context.jumps_to_block.drain(jump_to_block_count..) {
-                    proto.byte_codes[jump] = Bytecode::jump(
-                        i32::try_from(end_of_cond - jump)
-                            .map_err(|_| Error::LongJump)?
-                            .try_into()?,
-                    );
+                    proto.byte_codes[jump] = Bytecode::jump(Sj::try_from(
+                        i32::try_from(end_of_cond - jump).map_err(|_| Error::LongJump)?,
+                    )?);
                 }
 
                 let cache_var_args = self.compile_context_mut().var_args.take();
@@ -360,11 +356,9 @@ impl<'a> CompileStack<'a> {
 
                 let end_of_block = proto.byte_codes.len();
                 for jump in compile_context.jumps_to_end.drain(jump_to_end_count..) {
-                    proto.byte_codes[jump] = Bytecode::jump(
-                        i32::try_from(end_of_block - jump)
-                            .map_err(|_| Error::LongJump)?
-                            .try_into()?,
-                    );
+                    proto.byte_codes[jump] = Bytecode::jump(Sj::try_from(
+                        i32::try_from(end_of_block - jump).map_err(|_| Error::LongJump)?,
+                    )?);
                 }
 
                 core::mem::swap(&mut self.compile_context_mut().breaks, &mut cache_break);
@@ -374,20 +368,20 @@ impl<'a> CompileStack<'a> {
                     );
                 };
                 for break_bytecode in breaks {
-                    self.proto_mut().byte_codes[break_bytecode] = Bytecode::jump(
+                    self.proto_mut().byte_codes[break_bytecode] = Bytecode::jump(Sj::try_from(
                         i32::try_from(end_of_block - break_bytecode)
-                            .map_err(|_| Error::LongJump)?
-                            .try_into()?,
-                    );
+                            .map_err(|_| Error::LongJump)?,
+                    )?);
                 }
 
-                self.proto_mut().byte_codes.push(Bytecode::jump(
-                    i32::try_from(start_of_cond)
-                        .and_then(|lhs| i32::try_from(end_of_block + 1).map(|rhs| (lhs, rhs)))
-                        .map(|(lhs, rhs)| lhs - rhs)
-                        .map_err(|_| Error::LongJump)?
-                        .try_into()?,
-                ));
+                self.proto_mut()
+                    .byte_codes
+                    .push(Bytecode::jump(Sj::try_from(
+                        i32::try_from(start_of_cond)
+                            .and_then(|lhs| i32::try_from(end_of_block + 1).map(|rhs| (lhs, rhs)))
+                            .map(|(lhs, rhs)| lhs - rhs)
+                            .map_err(|_| Error::LongJump)?,
+                    )?));
 
                 Ok(())
             }
@@ -428,11 +422,10 @@ impl<'a> CompileStack<'a> {
                 );
 
                 let repeat_end = self.proto_mut().byte_codes.len();
-                self.proto_mut().byte_codes[jump_cache[0]] = Bytecode::jump(
+                self.proto_mut().byte_codes[jump_cache[0]] = Bytecode::jump(Sj::try_from(
                     i32::try_from(isize::try_from(repeat_start)? - isize::try_from(repeat_end)?)
-                        .map_err(|_| Error::LongJump)?
-                        .try_into()?,
-                );
+                        .map_err(|_| Error::LongJump)?,
+                )?);
 
                 Ok(())
             }
@@ -484,7 +477,7 @@ impl<'a> CompileStack<'a> {
                 let counter_bytecode = self.proto_mut().byte_codes.len();
                 self.proto_mut()
                     .byte_codes
-                    .push(Bytecode::for_prepare(for_stack.into(), Bx::ZERO));
+                    .push(Bytecode::for_prepare(for_stack, Bx::ZERO));
 
                 self.open_local(name);
 
@@ -500,7 +493,7 @@ impl<'a> CompileStack<'a> {
                 {
                     self.proto_mut()
                         .byte_codes
-                        .push(Bytecode::close(loop_locals_stack_loc.into()));
+                        .push(Bytecode::close(loop_locals_stack_loc));
                 }
 
                 // Close loop counter
@@ -511,17 +504,17 @@ impl<'a> CompileStack<'a> {
                 {
                     self.proto_mut()
                         .byte_codes
-                        .push(Bytecode::close(loop_iterator_stack_loc.into()));
+                        .push(Bytecode::close(loop_iterator_stack_loc));
                 }
 
                 let end_bytecode = self.proto_mut().byte_codes.len();
                 self.proto_mut().byte_codes.push(Bytecode::for_loop(
-                    for_stack.into(),
-                    u32::try_from(end_bytecode - counter_bytecode)?.try_into()?,
+                    for_stack,
+                    Bx::try_from(u32::try_from(end_bytecode - counter_bytecode)?)?,
                 ));
                 self.proto_mut().byte_codes[counter_bytecode] = Bytecode::for_prepare(
-                    for_stack.into(),
-                    u32::try_from(end_bytecode - (counter_bytecode + 1))?.try_into()?,
+                    for_stack,
+                    Bx::try_from(u32::try_from(end_bytecode - (counter_bytecode + 1))?)?,
                 );
 
                 // Close for states
@@ -569,9 +562,9 @@ impl<'a> CompileStack<'a> {
                             used_stack_top = true;
                             let constant = self.proto_mut().push_constant(head[0])?;
                             self.proto_mut().byte_codes.push(Bytecode::get_uptable(
-                                stack_loc.into(),
+                                stack_loc,
                                 B::ZERO,
-                                u8::try_from(constant)?.into(),
+                                u8::try_from(constant)?,
                             ));
                             stack_loc
                         };
@@ -841,9 +834,7 @@ impl<'a> CompileStack<'a> {
                         if let ExpDesc::Name(_) = last {
                             let dst = last.get_local_or_discharge_at_location(self, stack_loc)?;
 
-                            self.proto_mut()
-                                .byte_codes
-                                .push(Bytecode::one_return(dst.into()))
+                            self.proto_mut().byte_codes.push(Bytecode::one_return(dst))
                         } else {
                             stack_top.discharge(last, self)?;
 
@@ -861,18 +852,19 @@ impl<'a> CompileStack<'a> {
                                         C::ZERO,
                                     ));
                                     self.proto_mut().byte_codes.push(Bytecode::return_bytecode(
-                                        stack_loc.into(),
+                                        stack_loc,
                                         B::ZERO,
                                         C::ZERO,
                                     ));
                                 }
-                                ExpDesc::Closure(_) => self.proto_mut().byte_codes.push(
-                                    Bytecode::return_bytecode(stack_loc.into(), 2.into(), C::ZERO),
-                                ),
+                                ExpDesc::Closure(_) => self
+                                    .proto_mut()
+                                    .byte_codes
+                                    .push(Bytecode::return_bytecode(stack_loc, 2, C::ZERO)),
                                 _ => {
                                     self.proto_mut()
                                         .byte_codes
-                                        .push(Bytecode::one_return(stack_loc.into()));
+                                        .push(Bytecode::one_return(stack_loc));
                                 }
                             }
                         };
@@ -887,8 +879,8 @@ impl<'a> CompileStack<'a> {
                         self.compile_context_mut().stack_top -= u8::try_from(explist.len())?;
 
                         self.proto_mut().byte_codes.push(Bytecode::return_bytecode(
-                            return_start.into(),
-                            (u8::try_from(explist.len())? + 1).into(),
+                            return_start,
+                            u8::try_from(explist.len())? + 1,
                             C::ZERO,
                         ));
                     }
@@ -1763,11 +1755,9 @@ impl<'a> CompileStack<'a> {
 
             let start = proto.byte_codes.len() - 1;
             for jump in compile_context.jumps_to_block.drain(jump_to_block_count..) {
-                proto.byte_codes[jump] = Bytecode::jump(
-                    i32::try_from(start - jump)
-                        .map_err(|_| Error::LongJump)?
-                        .try_into()?,
-                );
+                proto.byte_codes[jump] = Bytecode::jump(Sj::try_from(
+                    i32::try_from(start - jump).map_err(|_| Error::LongJump)?,
+                )?);
             }
         }
 
@@ -1792,11 +1782,9 @@ impl<'a> CompileStack<'a> {
 
             let start = proto.byte_codes.len() - 1;
             for jump in compile_context.jumps_to_block.drain(jump_to_block_count..) {
-                proto.byte_codes[jump] = Bytecode::jump(
-                    i32::try_from(start - jump)
-                        .map_err(|_| Error::LongJump)?
-                        .try_into()?,
-                );
+                proto.byte_codes[jump] = Bytecode::jump(Sj::try_from(
+                    i32::try_from(start - jump).map_err(|_| Error::LongJump)?,
+                )?);
             }
             start
         };
@@ -1805,11 +1793,9 @@ impl<'a> CompileStack<'a> {
 
         let after_elses = self.proto_mut().byte_codes.len();
         let offset = if after_elses != jump_out_of_if + 1 {
-            self.proto_mut().byte_codes[jump_out_of_if] = Bytecode::jump(
-                i32::try_from(after_elses - jump_out_of_if - 1)
-                    .map_err(|_| Error::LongJump)?
-                    .try_into()?,
-            );
+            self.proto_mut().byte_codes[jump_out_of_if] = Bytecode::jump(Sj::try_from(
+                i32::try_from(after_elses - jump_out_of_if - 1).map_err(|_| Error::LongJump)?,
+            )?);
             0
         } else {
             self.proto_mut().byte_codes.pop();
@@ -1823,11 +1809,9 @@ impl<'a> CompileStack<'a> {
             } = self.frame_mut();
 
             for jump in compile_context.jumps_to_end.drain(jump_to_end_count..) {
-                proto.byte_codes[jump] = Bytecode::jump(
-                    i32::try_from(start_of_block - jump - offset)
-                        .map_err(|_| Error::LongJump)?
-                        .try_into()?,
-                );
+                proto.byte_codes[jump] = Bytecode::jump(Sj::try_from(
+                    i32::try_from(start_of_block - jump - offset).map_err(|_| Error::LongJump)?,
+                )?);
             }
         }
 
@@ -1896,16 +1880,14 @@ impl<'a> CompileStack<'a> {
             .filter(|bytecode| OpCode::read(***bytecode) == OpCode::TailCall)
             .is_some()
         {
-            self.proto_mut().byte_codes.push(Bytecode::return_bytecode(
-                locals.into(),
-                B::ZERO,
-                C::ZERO,
-            ));
+            self.proto_mut()
+                .byte_codes
+                .push(Bytecode::return_bytecode(locals, B::ZERO, C::ZERO));
         } else {
             self.proto_mut().byte_codes.push(Bytecode::return_bytecode(
-                locals.into(),
-                1.into(),
-                (fixed_arguments + 1).into(),
+                locals,
+                1,
+                fixed_arguments + 1,
             ));
         }
 

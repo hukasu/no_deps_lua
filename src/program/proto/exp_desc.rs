@@ -3,7 +3,7 @@ use alloc::{boxed::Box, format, vec::Vec};
 use crate::{
     bytecode::{
         OpCode,
-        arguments::{A, B, BytecodeArgument, C, K, Sbx, Sj},
+        arguments::{A, B, Bx, BytecodeArgument, C, K, Sbx, Sj},
     },
     ext::Unescape,
 };
@@ -161,14 +161,14 @@ impl<'a> ExpDesc<'a> {
                 compile_stack
                     .proto_mut()
                     .byte_codes
-                    .push(Bytecode::load_nil(dst.into(), 0.into()));
+                    .push(Bytecode::load_nil(dst, 0));
                 Ok(())
             }
             Self::Boolean(boolean) => {
                 let bytecode = if *boolean {
-                    Bytecode::load_true(dst.into())
+                    Bytecode::load_true(dst)
                 } else {
-                    Bytecode::load_false(dst.into())
+                    Bytecode::load_false(dst)
                 };
                 compile_stack.proto_mut().byte_codes.push(bytecode);
                 Ok(())
@@ -178,13 +178,13 @@ impl<'a> ExpDesc<'a> {
                     compile_stack
                         .proto_mut()
                         .byte_codes
-                        .push(Bytecode::load_integer(dst.into(), integer));
+                        .push(Bytecode::load_integer(dst, integer));
                 } else {
                     let constant = compile_stack.proto_mut().push_constant(*integer)?;
                     compile_stack
                         .proto_mut()
                         .byte_codes
-                        .push(Bytecode::load_constant(dst.into(), constant.try_into()?));
+                        .push(Bytecode::load_constant(dst, Bx::try_from(constant)?));
                 }
                 Ok(())
             }
@@ -193,14 +193,14 @@ impl<'a> ExpDesc<'a> {
                     compile_stack
                         .proto_mut()
                         .byte_codes
-                        .push(Bytecode::load_float(dst.into(), float));
+                        .push(Bytecode::load_float(dst, float));
                     Ok(())
                 } else {
                     let constant = compile_stack.proto_mut().push_constant(*float)?;
                     compile_stack
                         .proto_mut()
                         .byte_codes
-                        .push(Bytecode::load_constant(dst.into(), constant.try_into()?));
+                        .push(Bytecode::load_constant(dst, Bx::try_from(constant)?));
                     Ok(())
                 }
             }
@@ -212,7 +212,7 @@ impl<'a> ExpDesc<'a> {
                 compile_stack
                     .proto_mut()
                     .byte_codes
-                    .push(Bytecode::load_constant(dst.into(), constant.try_into()?));
+                    .push(Bytecode::load_constant(dst, Bx::try_from(constant)?));
                 Ok(())
             }
             Self::Name(name) => {
@@ -387,11 +387,7 @@ impl<'a> ExpDesc<'a> {
                         compile_stack
                             .proto_mut()
                             .byte_codes
-                            .push(Bytecode::add_integer(
-                                dst.into(),
-                                u8::try_from(*lhs)?.into(),
-                                rhs.into(),
-                            ));
+                            .push(Bytecode::add_integer(dst, u8::try_from(*lhs)?, rhs));
                         Ok(())
                     } else {
                         todo!()
@@ -399,9 +395,9 @@ impl<'a> ExpDesc<'a> {
                 }
                 (Binop::Add, Self::Local(lhs), Self::Local(rhs)) => {
                     compile_stack.proto_mut().byte_codes.push(Bytecode::add(
-                        dst.into(),
-                        u8::try_from(*lhs)?.into(),
-                        u8::try_from(*rhs)?.into(),
+                        dst,
+                        u8::try_from(*lhs)?,
+                        u8::try_from(*rhs)?,
                     ));
                     Ok(())
                 }
@@ -410,11 +406,7 @@ impl<'a> ExpDesc<'a> {
                         compile_stack
                             .proto_mut()
                             .byte_codes
-                            .push(Bytecode::add_integer(
-                                dst.into(),
-                                u8::try_from(*lhs)?.into(),
-                                (-rhs).into(),
-                            ));
+                            .push(Bytecode::add_integer(dst, u8::try_from(*lhs)?, -rhs));
                         Ok(())
                     } else {
                         todo!()
@@ -422,9 +414,9 @@ impl<'a> ExpDesc<'a> {
                 }
                 (Binop::Sub, Self::Local(lhs), Self::Local(rhs)) => {
                     compile_stack.proto_mut().byte_codes.push(Bytecode::sub(
-                        dst.into(),
-                        u8::try_from(*lhs)?.into(),
-                        u8::try_from(*rhs)?.into(),
+                        dst,
+                        u8::try_from(*lhs)?,
+                        u8::try_from(*rhs)?,
                     ));
                     Ok(())
                 }
@@ -434,17 +426,17 @@ impl<'a> ExpDesc<'a> {
                         .proto_mut()
                         .byte_codes
                         .push(Bytecode::mul_constant(
-                            dst.into(),
-                            u8::try_from(*lhs)?.into(),
-                            u8::try_from(rhs)?.into(),
+                            dst,
+                            u8::try_from(*lhs)?,
+                            u8::try_from(rhs)?,
                         ));
                     Ok(())
                 }
                 (Binop::Div, Self::Local(lhs), Self::Local(rhs)) => {
                     compile_stack.proto_mut().byte_codes.push(Bytecode::div(
-                        dst.into(),
-                        u8::try_from(*lhs)?.into(),
-                        u8::try_from(*rhs)?.into(),
+                        dst,
+                        u8::try_from(*lhs)?,
+                        u8::try_from(*rhs)?,
                     ));
                     Ok(())
                 }
@@ -453,9 +445,9 @@ impl<'a> ExpDesc<'a> {
                         .proto_mut()
                         .byte_codes
                         .push(Bytecode::shift_left(
-                            dst.into(),
-                            u8::try_from(*lhs)?.into(),
-                            u8::try_from(*rhs)?.into(),
+                            dst,
+                            u8::try_from(*lhs)?,
+                            u8::try_from(*rhs)?,
                         ));
                     Ok(())
                 }
@@ -464,9 +456,9 @@ impl<'a> ExpDesc<'a> {
                         .proto_mut()
                         .byte_codes
                         .push(Bytecode::shift_right(
-                            dst.into(),
-                            u8::try_from(*lhs)?.into(),
-                            u8::try_from(*rhs)?.into(),
+                            dst,
+                            u8::try_from(*lhs)?,
+                            u8::try_from(*rhs)?,
                         ));
                     Ok(())
                 }
@@ -496,7 +488,7 @@ impl<'a> ExpDesc<'a> {
                     compile_stack
                         .proto_mut()
                         .byte_codes
-                        .push(Bytecode::concat(u8::try_from(*lhs)?.into(), 2.into()));
+                        .push(Bytecode::concat(u8::try_from(*lhs)?, 2));
 
                     Ok(())
                 }
@@ -511,7 +503,7 @@ impl<'a> ExpDesc<'a> {
                     };
                     assert_eq!(OpCode::read(**last_bytecode), OpCode::Concat);
                     let (_, b, _, _) = last_bytecode.decode_abck();
-                    *last_bytecode = Bytecode::concat(u8::try_from(*lhs)?.into(), (*b + 1).into());
+                    *last_bytecode = Bytecode::concat(u8::try_from(*lhs)?, *b + 1);
 
                     Ok(())
                 }
@@ -520,7 +512,7 @@ impl<'a> ExpDesc<'a> {
                     compile_stack
                         .proto_mut()
                         .byte_codes
-                        .push(Bytecode::test(dst.into(), K::ONE));
+                        .push(Bytecode::test(dst, K::ONE));
                     let shortcircuit = compile_stack.proto_mut().byte_codes.len();
                     compile_stack
                         .proto_mut()
@@ -566,13 +558,13 @@ impl<'a> ExpDesc<'a> {
                     compile_stack
                         .proto_mut()
                         .byte_codes
-                        .push(Bytecode::load_false_skip(dst.into()));
+                        .push(Bytecode::load_false_skip(dst));
 
                     Self::resolve_jumps_to_end(jumps_to_end, compile_stack)?;
                     compile_stack
                         .proto_mut()
                         .byte_codes
-                        .push(Bytecode::load_true(dst.into()));
+                        .push(Bytecode::load_true(dst));
 
                     Ok(())
                 }
@@ -583,7 +575,7 @@ impl<'a> ExpDesc<'a> {
                     compile_stack
                         .proto_mut()
                         .byte_codes
-                        .push(Bytecode::test(dst.into(), K::ZERO));
+                        .push(Bytecode::test(dst, K::ZERO));
                     let shortcircuit = compile_stack.proto_mut().byte_codes.len();
                     compile_stack
                         .proto_mut()
@@ -603,22 +595,22 @@ impl<'a> ExpDesc<'a> {
                         .proto_mut()
                         .byte_codes
                         .push(Bytecode::less_than(
-                            u8::try_from(*lhs)?.into(),
-                            u8::try_from(*rhs)?.into(),
+                            u8::try_from(*lhs)?,
+                            u8::try_from(*rhs)?,
                             K::ONE,
                         ));
                     compile_stack
                         .proto_mut()
                         .byte_codes
-                        .push(Bytecode::jump(1i8.into()));
+                        .push(Bytecode::jump(1i8));
                     compile_stack
                         .proto_mut()
                         .byte_codes
-                        .push(Bytecode::load_false_skip(dst.into()));
+                        .push(Bytecode::load_false_skip(dst));
                     compile_stack
                         .proto_mut()
                         .byte_codes
-                        .push(Bytecode::load_true(dst.into()));
+                        .push(Bytecode::load_true(dst));
 
                     Ok(())
                 }
@@ -627,22 +619,22 @@ impl<'a> ExpDesc<'a> {
                         .proto_mut()
                         .byte_codes
                         .push(Bytecode::greater_than_integer(
-                            u8::try_from(*lhs)?.into(),
-                            i8::try_from(*rhs)?.into(),
+                            u8::try_from(*lhs)?,
+                            i8::try_from(*rhs)?,
                             K::ONE,
                         ));
                     compile_stack
                         .proto_mut()
                         .byte_codes
-                        .push(Bytecode::jump(1i8.into()));
+                        .push(Bytecode::jump(1i8));
                     compile_stack
                         .proto_mut()
                         .byte_codes
-                        .push(Bytecode::load_false_skip(dst.into()));
+                        .push(Bytecode::load_false_skip(dst));
                     compile_stack
                         .proto_mut()
                         .byte_codes
-                        .push(Bytecode::load_true(dst.into()));
+                        .push(Bytecode::load_true(dst));
 
                     Ok(())
                 }
@@ -651,22 +643,22 @@ impl<'a> ExpDesc<'a> {
                         .proto_mut()
                         .byte_codes
                         .push(Bytecode::less_than(
-                            u8::try_from(*rhs)?.into(),
-                            u8::try_from(*lhs)?.into(),
+                            u8::try_from(*rhs)?,
+                            u8::try_from(*lhs)?,
                             K::ONE,
                         ));
                     compile_stack
                         .proto_mut()
                         .byte_codes
-                        .push(Bytecode::jump(1i8.into()));
+                        .push(Bytecode::jump(1i8));
                     compile_stack
                         .proto_mut()
                         .byte_codes
-                        .push(Bytecode::load_false_skip(dst.into()));
+                        .push(Bytecode::load_false_skip(dst));
                     compile_stack
                         .proto_mut()
                         .byte_codes
-                        .push(Bytecode::load_true(dst.into()));
+                        .push(Bytecode::load_true(dst));
 
                     Ok(())
                 }
@@ -675,22 +667,22 @@ impl<'a> ExpDesc<'a> {
                         .proto_mut()
                         .byte_codes
                         .push(Bytecode::less_equal(
-                            u8::try_from(*lhs)?.into(),
-                            u8::try_from(*rhs)?.into(),
+                            u8::try_from(*lhs)?,
+                            u8::try_from(*rhs)?,
                             K::ONE,
                         ));
                     compile_stack
                         .proto_mut()
                         .byte_codes
-                        .push(Bytecode::jump(1i8.into()));
+                        .push(Bytecode::jump(1i8));
                     compile_stack
                         .proto_mut()
                         .byte_codes
-                        .push(Bytecode::load_false_skip(dst.into()));
+                        .push(Bytecode::load_false_skip(dst));
                     compile_stack
                         .proto_mut()
                         .byte_codes
-                        .push(Bytecode::load_true(dst.into()));
+                        .push(Bytecode::load_true(dst));
 
                     Ok(())
                 }
@@ -699,22 +691,22 @@ impl<'a> ExpDesc<'a> {
                         .proto_mut()
                         .byte_codes
                         .push(Bytecode::less_equal(
-                            u8::try_from(*rhs)?.into(),
-                            u8::try_from(*lhs)?.into(),
+                            u8::try_from(*rhs)?,
+                            u8::try_from(*lhs)?,
                             K::ONE,
                         ));
                     compile_stack
                         .proto_mut()
                         .byte_codes
-                        .push(Bytecode::jump(1i8.into()));
+                        .push(Bytecode::jump(1i8));
                     compile_stack
                         .proto_mut()
                         .byte_codes
-                        .push(Bytecode::load_false_skip(dst.into()));
+                        .push(Bytecode::load_false_skip(dst));
                     compile_stack
                         .proto_mut()
                         .byte_codes
-                        .push(Bytecode::load_true(dst.into()));
+                        .push(Bytecode::load_true(dst));
 
                     Ok(())
                 }
@@ -724,22 +716,22 @@ impl<'a> ExpDesc<'a> {
                         .proto_mut()
                         .byte_codes
                         .push(Bytecode::equal_constant(
-                            u8::try_from(*lhs)?.into(),
-                            u8::try_from(rhs)?.into(),
+                            u8::try_from(*lhs)?,
+                            u8::try_from(rhs)?,
                             K::ONE,
                         ));
                     compile_stack
                         .proto_mut()
                         .byte_codes
-                        .push(Bytecode::jump(1i8.into()));
+                        .push(Bytecode::jump(1i8));
                     compile_stack
                         .proto_mut()
                         .byte_codes
-                        .push(Bytecode::load_false_skip(dst.into()));
+                        .push(Bytecode::load_false_skip(dst));
                     compile_stack
                         .proto_mut()
                         .byte_codes
-                        .push(Bytecode::load_true(dst.into()));
+                        .push(Bytecode::load_true(dst));
 
                     Ok(())
                 }
@@ -751,7 +743,7 @@ impl<'a> ExpDesc<'a> {
                     compile_stack
                         .proto_mut()
                         .byte_codes
-                        .push(Bytecode::move_bytecode(dst.into(), local.into()));
+                        .push(Bytecode::move_bytecode(dst, local));
                 }
                 Ok(())
             }
@@ -761,9 +753,9 @@ impl<'a> ExpDesc<'a> {
                     .proto_mut()
                     .byte_codes
                     .push(Bytecode::get_uptable(
-                        dst.into(),
-                        u8::try_from(env)?.into(),
-                        u8::try_from(*global)?.into(),
+                        dst,
+                        u8::try_from(env)?,
+                        u8::try_from(*global)?,
                     ));
                 Ok(())
             }
@@ -771,10 +763,7 @@ impl<'a> ExpDesc<'a> {
                 compile_stack
                     .proto_mut()
                     .byte_codes
-                    .push(Bytecode::get_upvalue(
-                        dst.into(),
-                        u8::try_from(*upvalue)?.into(),
-                    ));
+                    .push(Bytecode::get_upvalue(dst, u8::try_from(*upvalue)?));
                 Ok(())
             }
             Self::Table(fields) => {
@@ -793,9 +782,9 @@ impl<'a> ExpDesc<'a> {
                     .proto_mut()
                     .byte_codes
                     .push(Bytecode::new_table(
-                        dst.into(),
-                        u8::try_from(fields.len() - array_count)?.into(),
-                        (u8::try_from(array_count)? - (last_array_field_is_variadic as u8)).into(),
+                        dst,
+                        u8::try_from(fields.len() - array_count)?,
+                        u8::try_from(array_count)? - (last_array_field_is_variadic as u8),
                     ));
 
                 let mut used_stack = 0;
@@ -818,7 +807,7 @@ impl<'a> ExpDesc<'a> {
                             };
                             if OpCode::read(**last_bytecode) == OpCode::VariadicArguments {
                                 let (a, _, _, _) = last_bytecode.decode_abck();
-                                *last_bytecode = Bytecode::variadic_arguments(a, 2.into());
+                                *last_bytecode = Bytecode::variadic_arguments(a, 2);
                                 last_variadic_bytecode =
                                     compile_stack.proto_mut().byte_codes.len() - 1;
                             }
@@ -858,7 +847,7 @@ impl<'a> ExpDesc<'a> {
                     compile_stack
                         .proto_mut()
                         .byte_codes
-                        .push(Bytecode::set_list(dst.into(), array_count.into(), C::ZERO));
+                        .push(Bytecode::set_list(dst, array_count, C::ZERO));
                 }
 
                 compile_stack.compile_context_mut().stack_top -= used_stack;
@@ -905,9 +894,9 @@ impl<'a> ExpDesc<'a> {
                         .proto_mut()
                         .byte_codes
                         .push(Bytecode::get_uptable(
-                            dst.into(),
-                            u8::try_from(*table)?.into(),
-                            u8::try_from(*global)?.into(),
+                            dst,
+                            u8::try_from(*table)?,
+                            u8::try_from(*global)?,
                         ));
                     Ok(())
                 }
@@ -916,11 +905,7 @@ impl<'a> ExpDesc<'a> {
                         compile_stack
                             .proto_mut()
                             .byte_codes
-                            .push(Bytecode::get_index(
-                                dst.into(),
-                                u8::try_from(*local_table)?.into(),
-                                index.into(),
-                            ));
+                            .push(Bytecode::get_index(dst, u8::try_from(*local_table)?, index));
                         Ok(())
                     } else {
                         let (_, stack_top) =
@@ -944,9 +929,9 @@ impl<'a> ExpDesc<'a> {
                         .proto_mut()
                         .byte_codes
                         .push(Bytecode::get_field(
-                            dst.into(),
-                            u8::try_from(*table)?.into(),
-                            u8::try_from(key)?.into(),
+                            dst,
+                            u8::try_from(*table)?,
+                            u8::try_from(key)?,
                         ));
                     Ok(())
                 }
@@ -955,9 +940,9 @@ impl<'a> ExpDesc<'a> {
                         .proto_mut()
                         .byte_codes
                         .push(Bytecode::get_table(
-                            dst.into(),
-                            u8::try_from(*table)?.into(),
-                            u8::try_from(*key)?.into(),
+                            dst,
+                            u8::try_from(*table)?,
+                            u8::try_from(*key)?,
                         ));
                     Ok(())
                 }
@@ -1011,8 +996,8 @@ impl<'a> ExpDesc<'a> {
             }
             Self::Closure(closure) => {
                 compile_stack.proto_mut().byte_codes.push(Bytecode::closure(
-                    dst.into(),
-                    u32::try_from(*closure)?.try_into()?,
+                    dst,
+                    Bx::try_from(u32::try_from(*closure)?)?,
                 ));
                 Ok(())
             }
@@ -1028,11 +1013,11 @@ impl<'a> ExpDesc<'a> {
                         Some(bytecode) => match OpCode::read(**bytecode) {
                             OpCode::VariadicArguments => {
                                 let (register, _, _, _) = bytecode.decode_abck();
-                                *bytecode = Bytecode::variadic_arguments(register, 2.into());
+                                *bytecode = Bytecode::variadic_arguments(register, 2);
                             }
                             OpCode::Call => {
                                 let (func, in_params, _, _) = bytecode.decode_abck();
-                                *bytecode = Bytecode::call(func, in_params, 2.into());
+                                *bytecode = Bytecode::call(func, in_params, 2);
                             }
                             _ => (),
                         },
@@ -1062,11 +1047,10 @@ impl<'a> ExpDesc<'a> {
 
                 Self::resolve_jumps_to_block(jumps_to_block, compile_stack)?;
 
-                compile_stack.proto_mut().byte_codes.push(Bytecode::call(
-                    dst.into(),
-                    in_params.into(),
-                    1.into(),
-                ));
+                compile_stack
+                    .proto_mut()
+                    .byte_codes
+                    .push(Bytecode::call(dst, in_params, 1));
 
                 Ok(())
             }
@@ -1080,11 +1064,7 @@ impl<'a> ExpDesc<'a> {
                 compile_stack
                     .proto_mut()
                     .byte_codes
-                    .push(Bytecode::table_self(
-                        dst.into(),
-                        dst.into(),
-                        u8::try_from(constant)?.into(),
-                    ));
+                    .push(Bytecode::table_self(dst, dst, u8::try_from(constant)?));
 
                 // reserve `self`
                 let (_, _) = compile_stack.compile_context_mut().reserve_stack_top();
@@ -1098,11 +1078,10 @@ impl<'a> ExpDesc<'a> {
 
                 compile_stack.compile_context_mut().stack_top -= used_stack;
 
-                compile_stack.proto_mut().byte_codes.push(Bytecode::call(
-                    dst.into(),
-                    (used_stack + 1).into(),
-                    1.into(),
-                ));
+                compile_stack
+                    .proto_mut()
+                    .byte_codes
+                    .push(Bytecode::call(dst, used_stack + 1, 1));
 
                 Ok(())
             }
@@ -1110,7 +1089,7 @@ impl<'a> ExpDesc<'a> {
                 compile_stack
                     .proto_mut()
                     .byte_codes
-                    .push(Bytecode::variadic_arguments(dst.into(), C::ZERO));
+                    .push(Bytecode::variadic_arguments(dst, C::ZERO));
                 Ok(())
             }
             other => unreachable!("{:?} can't be discharged into Local.", other),
@@ -1138,9 +1117,9 @@ impl<'a> ExpDesc<'a> {
                     .proto_mut()
                     .byte_codes
                     .push(Bytecode::set_uptable(
-                        u8::try_from(env)?.into(),
-                        global.into(),
-                        u8::try_from(constant)?.into(),
+                        u8::try_from(env)?,
+                        global,
+                        u8::try_from(constant)?,
                         K::ONE,
                     ));
                 Ok(())
@@ -1152,9 +1131,9 @@ impl<'a> ExpDesc<'a> {
                     .proto_mut()
                     .byte_codes
                     .push(Bytecode::set_uptable(
-                        u8::try_from(env)?.into(),
-                        global.into(),
-                        u8::try_from(constant)?.into(),
+                        u8::try_from(env)?,
+                        global,
+                        u8::try_from(constant)?,
                         K::ONE,
                     ));
                 Ok(())
@@ -1176,9 +1155,9 @@ impl<'a> ExpDesc<'a> {
                     .proto_mut()
                     .byte_codes
                     .push(Bytecode::set_uptable(
-                        u8::try_from(env)?.into(),
-                        global.into(),
-                        u8::try_from(*local)?.into(),
+                        u8::try_from(env)?,
+                        global,
+                        u8::try_from(*local)?,
                         K::ZERO,
                     ));
                 Ok(())
@@ -1215,8 +1194,8 @@ impl<'a> ExpDesc<'a> {
                 .proto_mut()
                 .byte_codes
                 .push(Bytecode::set_upvalue(
-                    u8::try_from(*upvalue)?.into(),
-                    u8::try_from(*local)?.into(),
+                    u8::try_from(*upvalue)?,
+                    u8::try_from(*local)?,
                 ));
         } else {
             let (stack_loc, stack_top) = compile_stack.compile_context_mut().reserve_stack_top();
@@ -1224,10 +1203,7 @@ impl<'a> ExpDesc<'a> {
             compile_stack
                 .proto_mut()
                 .byte_codes
-                .push(Bytecode::set_upvalue(
-                    u8::try_from(*upvalue)?.into(),
-                    stack_loc.into(),
-                ));
+                .push(Bytecode::set_upvalue(u8::try_from(*upvalue)?, stack_loc));
             compile_stack.compile_context_mut().stack_top -= 1;
         }
         Ok(())
@@ -1264,8 +1240,8 @@ impl<'a> ExpDesc<'a> {
                         .proto_mut()
                         .byte_codes
                         .push(Bytecode::load_nil(
-                            u8::try_from(dst)?.into(),
-                            u8::try_from(explist.len() - 1)?.into(),
+                            u8::try_from(dst)?,
+                            u8::try_from(explist.len() - 1)?,
                         ));
                     Ok(())
                 } else {
@@ -1372,7 +1348,7 @@ impl<'a> ExpDesc<'a> {
                             *last_bytecode = Bytecode::call(
                                 function,
                                 in_params,
-                                u8::try_from(explist.len() - src_explist.len() + 2)?.into(),
+                                u8::try_from(explist.len() - src_explist.len() + 2)?,
                             );
                         }
                         Some(ExpDesc::VariadicArguments) => {
@@ -1395,7 +1371,7 @@ impl<'a> ExpDesc<'a> {
                             let (register, _, _, _) = last_bytecode.decode_abck();
                             *last_bytecode = Bytecode::variadic_arguments(
                                 register,
-                                u8::try_from(explist.len() - src_explist.len() + 2)?.into(),
+                                u8::try_from(explist.len() - src_explist.len() + 2)?,
                             );
                         }
                         Some(_) => {
@@ -1554,9 +1530,9 @@ impl<'a> ExpDesc<'a> {
                     .proto_mut()
                     .byte_codes
                     .push(Bytecode::set_table(
-                        u8::try_from(*table)?.into(),
-                        u8::try_from(*key)?.into(),
-                        u8::try_from(constant)?.into(),
+                        u8::try_from(*table)?,
+                        u8::try_from(*key)?,
+                        u8::try_from(constant)?,
                         K::ONE,
                     ));
                 Ok(())
@@ -1569,9 +1545,9 @@ impl<'a> ExpDesc<'a> {
                     .proto_mut()
                     .byte_codes
                     .push(Bytecode::set_table(
-                        u8::try_from(*table)?.into(),
-                        u8::try_from(*key)?.into(),
-                        u8::try_from(constant)?.into(),
+                        u8::try_from(*table)?,
+                        u8::try_from(*key)?,
+                        u8::try_from(constant)?,
                         K::ONE,
                     ));
                 Ok(())
@@ -1583,9 +1559,9 @@ impl<'a> ExpDesc<'a> {
                     .proto_mut()
                     .byte_codes
                     .push(Bytecode::set_table(
-                        u8::try_from(*table)?.into(),
-                        u8::try_from(*key)?.into(),
-                        u8::try_from(*src)?.into(),
+                        u8::try_from(*table)?,
+                        u8::try_from(*key)?,
+                        u8::try_from(*src)?,
                         K::ZERO,
                     ));
                 Ok(())
@@ -1599,9 +1575,9 @@ impl<'a> ExpDesc<'a> {
                     .proto_mut()
                     .byte_codes
                     .push(Bytecode::set_field(
-                        u8::try_from(*table)?.into(),
-                        u8::try_from(key_constant)?.into(),
-                        u8::try_from(constant)?.into(),
+                        u8::try_from(*table)?,
+                        u8::try_from(key_constant)?,
+                        u8::try_from(constant)?,
                         K::ONE,
                     ));
                 Ok(())
@@ -1615,9 +1591,9 @@ impl<'a> ExpDesc<'a> {
                     .proto_mut()
                     .byte_codes
                     .push(Bytecode::set_field(
-                        u8::try_from(*table)?.into(),
-                        u8::try_from(key_constant)?.into(),
-                        u8::try_from(constant)?.into(),
+                        u8::try_from(*table)?,
+                        u8::try_from(key_constant)?,
+                        u8::try_from(constant)?,
                         K::ONE,
                     ));
                 Ok(())
@@ -1630,9 +1606,9 @@ impl<'a> ExpDesc<'a> {
                     .proto_mut()
                     .byte_codes
                     .push(Bytecode::set_field(
-                        u8::try_from(*table)?.into(),
-                        u8::try_from(key_constant)?.into(),
-                        u8::try_from(*src)?.into(),
+                        u8::try_from(*table)?,
+                        u8::try_from(key_constant)?,
+                        u8::try_from(*src)?,
                         K::ZERO,
                     ));
                 Ok(())
@@ -1779,9 +1755,9 @@ impl<'a> ExpDesc<'a> {
                             .proto_mut()
                             .byte_codes
                             .push(Bytecode::less_than_integer(
-                                u8::try_from(*local)?.into(),
-                                integer.into(),
-                                (*if_condition).into(),
+                                u8::try_from(*local)?,
+                                integer,
+                                *if_condition,
                             ));
 
                         let jump = compile_stack.proto_mut().byte_codes.len();
@@ -1817,9 +1793,9 @@ impl<'a> ExpDesc<'a> {
                             .proto_mut()
                             .byte_codes
                             .push(Bytecode::greater_than_integer(
-                                u8::try_from(*local)?.into(),
-                                integer.into(),
-                                (*if_condition).into(),
+                                u8::try_from(*local)?,
+                                integer,
+                                *if_condition,
                             ));
 
                         let jump = compile_stack.proto_mut().byte_codes.len();
@@ -1854,9 +1830,9 @@ impl<'a> ExpDesc<'a> {
                         .proto_mut()
                         .byte_codes
                         .push(Bytecode::less_than(
-                            u8::try_from(*rhs)?.into(),
-                            u8::try_from(*lhs)?.into(),
-                            (*if_condition).into(),
+                            u8::try_from(*rhs)?,
+                            u8::try_from(*lhs)?,
+                            *if_condition,
                         ));
                     let jump = compile_stack.proto_mut().byte_codes.len();
                     compile_stack
@@ -1889,9 +1865,9 @@ impl<'a> ExpDesc<'a> {
                         .proto_mut()
                         .byte_codes
                         .push(Bytecode::less_equal(
-                            u8::try_from(*lhs)?.into(),
-                            u8::try_from(*rhs)?.into(),
-                            (*if_condition).into(),
+                            u8::try_from(*lhs)?,
+                            u8::try_from(*rhs)?,
+                            *if_condition,
                         ));
                     let jump = compile_stack.proto_mut().byte_codes.len();
                     compile_stack
@@ -1914,9 +1890,9 @@ impl<'a> ExpDesc<'a> {
                         .proto_mut()
                         .byte_codes
                         .push(Bytecode::greater_equal_integer(
-                            u8::try_from(*lhs)?.into(),
-                            i8::try_from(*integer)?.into(),
-                            (*if_condition).into(),
+                            u8::try_from(*lhs)?,
+                            i8::try_from(*integer)?,
+                            *if_condition,
                         ));
                     let jump = compile_stack.proto_mut().byte_codes.len();
                     compile_stack
@@ -1940,9 +1916,9 @@ impl<'a> ExpDesc<'a> {
                         .proto_mut()
                         .byte_codes
                         .push(Bytecode::equal_constant(
-                            u8::try_from(*lhs)?.into(),
-                            u8::try_from(constant)?.into(),
-                            (*if_condition).into(),
+                            u8::try_from(*lhs)?,
+                            u8::try_from(constant)?,
+                            *if_condition,
                         ));
                     let jump = compile_stack.proto_mut().byte_codes.len();
                     compile_stack
@@ -1966,9 +1942,9 @@ impl<'a> ExpDesc<'a> {
                         .proto_mut()
                         .byte_codes
                         .push(Bytecode::equal_constant(
-                            u8::try_from(*lhs)?.into(),
-                            u8::try_from(constant)?.into(),
-                            (*if_condition).into(),
+                            u8::try_from(*lhs)?,
+                            u8::try_from(constant)?,
+                            *if_condition,
                         ));
                     let jump = compile_stack.proto_mut().byte_codes.len();
                     compile_stack
@@ -1989,10 +1965,10 @@ impl<'a> ExpDesc<'a> {
                 _ => unimplemented!("Can't discharge binary operation {:?}.", src),
             },
             Self::Local(local) => {
-                compile_stack.proto_mut().byte_codes.push(Bytecode::test(
-                    u8::try_from(*local)?.into(),
-                    (*if_condition).into(),
-                ));
+                compile_stack
+                    .proto_mut()
+                    .byte_codes
+                    .push(Bytecode::test(u8::try_from(*local)?, *if_condition));
                 let jump = compile_stack.proto_mut().byte_codes.len();
                 compile_stack
                     .proto_mut()
@@ -2056,11 +2032,9 @@ impl<'a> ExpDesc<'a> {
             .collect::<Vec<_>>();
         let jump_dst = proto.byte_codes.len();
         for jump in jumps_to_block {
-            proto.byte_codes[jump] = Bytecode::jump(
-                i32::try_from(jump_dst - jump - 1)
-                    .map_err(|_| Error::LongJump)?
-                    .try_into()?,
-            );
+            proto.byte_codes[jump] = Bytecode::jump(Sj::try_from(
+                i32::try_from(jump_dst - jump - 1).map_err(|_| Error::LongJump)?,
+            )?);
         }
         Ok(())
     }
@@ -2080,11 +2054,9 @@ impl<'a> ExpDesc<'a> {
             .collect::<Vec<_>>();
         let jump_dst = proto.byte_codes.len();
         for jump in jumps_to_end {
-            proto.byte_codes[jump] = Bytecode::jump(
-                i32::try_from(jump_dst - jump - 1)
-                    .map_err(|_| Error::LongJump)?
-                    .try_into()?,
-            );
+            proto.byte_codes[jump] = Bytecode::jump(Sj::try_from(
+                i32::try_from(jump_dst - jump - 1).map_err(|_| Error::LongJump)?,
+            )?);
         }
         Ok(())
     }
