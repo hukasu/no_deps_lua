@@ -630,15 +630,8 @@ impl<'a> CompileStack<'a> {
                 let namelist = self.attnamelist(attnamelist)?;
                 let explist = self.stat_attexplist(stat_attexplist)?;
 
-                let dst_locals = namelist
-                    .iter()
-                    .map(|_| {
-                        let (_, loc) = self.compile_context_mut().reserve_stack_top();
-                        loc
-                    })
-                    .collect::<Vec<_>>();
-
-                ExpDesc::ExpList(dst_locals).discharge(&ExpDesc::ExpList(explist), self)?;
+                ExpDesc::ExpList(vec![ExpDesc::NewLocal; namelist.len()])
+                    .discharge(&ExpDesc::ExpList(explist), self)?;
 
                 // Adding the new names into `locals` to prevent
                 // referencing the new name when you could be trying to shadow a

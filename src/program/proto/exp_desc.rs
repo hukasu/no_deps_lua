@@ -26,6 +26,7 @@ pub enum ExpDesc<'a> {
     LongName(&'a str),
     Unop(fn(A, B) -> Bytecode, Box<ExpDesc<'a>>),
     Binop(Binop, Box<ExpDesc<'a>>, Box<ExpDesc<'a>>),
+    NewLocal,
     Local(usize),
     Global(usize),
     Upvalue(usize),
@@ -65,6 +66,7 @@ impl<'a> ExpDesc<'a> {
         match self {
             Self::Name(_) => self.discharge_into_name(src, compile_stack),
             Self::LongName(_) => self.discharge_into_long_name(src, compile_stack),
+            Self::NewLocal => self.discharge_into_new_local(src, compile_stack),
             Self::Local(_) => self.discharge_into_local(src, compile_stack),
             Self::Global(_) => self.discharge_into_global(src, compile_stack),
             Self::Upvalue(_) => self.discharge_into_upvalue(src, compile_stack),
@@ -141,6 +143,22 @@ impl<'a> ExpDesc<'a> {
         compile_stack.compile_context_mut().stack_top -= 2;
 
         Ok(())
+    }
+
+    fn discharge_into_new_local(
+        &self,
+        src: &ExpDesc<'a>,
+        compile_stack: &mut CompileStack<'a>,
+    ) -> Result<(), Error> {
+        let ExpDesc::NewLocal = &self else {
+            unreachable!(
+                "Destination of `discharge_into_new_local` must be `ExpDesc::NewLocal`, but was {:?}.",
+                self
+            );
+        };
+
+        let (_, local) = compile_stack.compile_context_mut().reserve_stack_top();
+        local.discharge(src, compile_stack)
     }
 
     fn discharge_into_local(
@@ -1246,7 +1264,7 @@ impl<'a> ExpDesc<'a> {
         src: &ExpDesc<'a>,
         compile_stack: &mut CompileStack<'a>,
     ) -> Result<(), Error> {
-        let Self::ExpList(explist) = self else {
+        let Self::ExpList(destinations) = self else {
             unreachable!(
                 "Destination of `discharge_into_explist` must be `ExpDesc::Explist`, but was {:?}.",
                 self
@@ -1256,34 +1274,32 @@ impl<'a> ExpDesc<'a> {
         match src {
             Self::ExpList(src_explist) => {
                 if src_explist.is_empty() {
-                    let Some(dst) = explist.iter().rev().try_fold(usize::MAX, |prev, cur| {
-                        let ExpDesc::Local(i) = cur else {
-                            unreachable!("Detination of empty local initialization need to be Local, but was {:?}.", cur);  
-                        };
-                        Some(*i).filter(|i| if prev == usize::MAX {
-                            true
-                        } else {
-                            i + 1 == prev
-                        })
-                    }) else {
-                        return Err(Error::NonSequentialLocalInitialization(format!{"{:?}",explist}.into_boxed_str()));
-                    };
+                    debug_assert!(
+                        destinations
+                            .iter()
+                            .all(|dst| matches!(dst, ExpDesc::NewLocal)),
+                        "The only case where `src_explist` should be empty is on the definition of uninitialized locals."
+                    );
+                    let dst = compile_stack.compile_context_mut().stack_top;
+                    for _ in destinations.iter() {
+                        compile_stack.compile_context_mut().reserve_stack_top();
+                    }
                     compile_stack
                         .proto_mut()
                         .byte_codes
                         .push(Bytecode::load_nil(
-                            u8::try_from(dst)?,
-                            u8::try_from(explist.len() - 1)?,
+                            dst,
+                            u8::try_from(destinations.len() - 1)?,
                         ));
                     Ok(())
                 } else {
                     let mut used_stack = 0;
                     let mut reverse_sets = Vec::new();
 
-                    if explist.len() == 1 && src_explist.len() == 1 {
-                        explist[0].discharge(&src_explist[0], compile_stack)?;
+                    if destinations.len() == 1 && src_explist.len() == 1 {
+                        destinations[0].discharge(&src_explist[0], compile_stack)?;
                     } else {
-                        for lhs_exp in explist.iter() {
+                        for lhs_exp in destinations.iter() {
                             if let Self::Name(name) = lhs_exp {
                                 if compile_stack
                                     .view()
@@ -1298,7 +1314,7 @@ impl<'a> ExpDesc<'a> {
                         }
 
                         let mut first = true;
-                        for (dst, src) in explist.iter().zip(src_explist.iter()) {
+                        for (dst, src) in destinations.iter().zip(src_explist.iter()) {
                             match dst {
                                 ExpDesc::Name(name) => {
                                     let Some(dst_name) = compile_stack
@@ -1341,7 +1357,9 @@ impl<'a> ExpDesc<'a> {
                                         dst_name.discharge(&src, compile_stack)?;
                                     }
                                 }
-                                local @ ExpDesc::Local(_) => {
+                                ExpDesc::NewLocal => {
+                                    let (_, local) =
+                                        compile_stack.compile_context_mut().reserve_stack_top();
                                     local.discharge(src, compile_stack)?;
                                 }
                                 ExpDesc::TableAccess {
@@ -1350,7 +1368,7 @@ impl<'a> ExpDesc<'a> {
                                     record: _,
                                 } => dst.discharge(src, compile_stack)?,
                                 _ => unreachable!(
-                                    "Varlist expressions should always be Name or TableAccess, but was {:?}.",
+                                    "Varlist expressions should always be Name, TableAccess, or a new local initialization, but was {:?}.",
                                     dst
                                 ),
                             }
@@ -1360,7 +1378,7 @@ impl<'a> ExpDesc<'a> {
 
                     match src_explist.last() {
                         Some(ExpDesc::FunctionCall(_, _)) => {
-                            for remaining in explist[src_explist.len()..].iter() {
+                            for remaining in destinations[src_explist.len()..].iter() {
                                 if let Self::Name(_) = remaining {
                                     let (_, stack_top) =
                                         compile_stack.compile_context_mut().reserve_stack_top();
@@ -1380,16 +1398,22 @@ impl<'a> ExpDesc<'a> {
                             *last_bytecode = Bytecode::call(
                                 function,
                                 in_params,
-                                u8::try_from(explist.len() - src_explist.len() + 2)?,
+                                u8::try_from(destinations.len() - src_explist.len() + 2)?,
                             );
                         }
                         Some(ExpDesc::VariadicArguments) => {
-                            for remaining in explist[src_explist.len()..].iter() {
-                                if let Self::Name(_) = remaining {
-                                    let (_, stack_top) =
+                            for remaining in destinations[src_explist.len()..].iter() {
+                                match remaining {
+                                    Self::Name(_) => {
+                                        let (_, stack_top) =
+                                            compile_stack.compile_context_mut().reserve_stack_top();
+                                        reverse_sets.push((remaining.clone(), stack_top));
+                                        used_stack += 1;
+                                    }
+                                    Self::NewLocal => {
                                         compile_stack.compile_context_mut().reserve_stack_top();
-                                    reverse_sets.push((remaining.clone(), stack_top));
-                                    used_stack += 1;
+                                    }
+                                    _ => unreachable!(),
                                 }
                             }
 
@@ -1403,11 +1427,11 @@ impl<'a> ExpDesc<'a> {
                             let (register, _, _, _) = last_bytecode.decode_abck();
                             *last_bytecode = Bytecode::variadic_arguments(
                                 register,
-                                u8::try_from(explist.len() - src_explist.len() + 2)?,
+                                u8::try_from(destinations.len() - src_explist.len() + 2)?,
                             );
                         }
                         Some(_) => {
-                            for dst in explist[src_explist.len()..].iter() {
+                            for dst in destinations[src_explist.len()..].iter() {
                                 if matches!(dst, Self::Global(_)) {
                                     let (_, stack_top) =
                                         compile_stack.compile_context_mut().reserve_stack_top();
