@@ -6,6 +6,7 @@ use crate::{bytecode::Bytecode, value::Value};
 
 use super::{Local, Program};
 
+mod basic;
 mod chapter1;
 mod chapter2;
 mod chapter3;

@@ -16,7 +16,7 @@ mod value;
 
 extern crate alloc;
 
-use alloc::{rc::Rc, vec::Vec};
+use alloc::{rc::Rc, vec, vec::Vec};
 use core::{
     cell::RefCell,
     cmp::Ordering,
@@ -53,6 +53,15 @@ impl Lua {
             (
                 ValueKey("type".into()),
                 Value::from(std::lib_type as fn(&mut Lua) -> i32),
+            ),
+            (
+                ValueKey("warn".into()),
+                Value::Closure(Rc::new(Closure::new_native(
+                    std::lib_warn,
+                    vec![Rc::new(RefCell::new(Upvalue::Closed(Value::Boolean(
+                        false,
+                    ))))],
+                ))),
             ),
         ]);
 
