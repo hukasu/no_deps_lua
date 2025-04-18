@@ -22,17 +22,11 @@ impl<const N: usize> StackStr<N> {
     }
 
     pub fn len(&self) -> usize {
-        let mut start = 0;
-        let mut end = N;
-        while start != end {
-            let mid = start + ((end - start) / 2);
-            if self.buffer[mid] == b'\0' {
-                end = mid;
-            } else {
-                start = mid + 1;
-            }
-        }
-        start
+        self.buffer
+            .iter()
+            .rposition(|c| *c != b'\0')
+            .map(|pos| pos + 1)
+            .unwrap_or_default()
     }
 }
 
@@ -105,6 +99,12 @@ mod tests {
         assert_eq!(stack_str.len(), 10);
 
         let stack_str = StackStr::<15>::new("aaaaaaaaaaaaaaa").unwrap();
+        assert_eq!(stack_str.len(), 15);
+
+        let stack_str = StackStr::<15>::new("aaaaaaa\0aaaaaaa").unwrap();
+        assert_eq!(stack_str.len(), 15);
+
+        let stack_str = StackStr::<15>::new("aaaaaaaa\0aaaaaa").unwrap();
         assert_eq!(stack_str.len(), 15);
     }
 
