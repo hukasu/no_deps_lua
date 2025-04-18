@@ -420,6 +420,18 @@ impl<'a> ExpDesc<'a> {
                     ));
                     Ok(())
                 }
+                (Binop::Mul, Self::Local(lhs), Self::Integer(rhs)) => {
+                    let rhs = compile_stack.proto_mut().push_constant(*rhs)?;
+                    compile_stack
+                        .proto_mut()
+                        .byte_codes
+                        .push(Bytecode::mul_constant(
+                            dst,
+                            u8::try_from(*lhs)?,
+                            u8::try_from(rhs)?,
+                        ));
+                    Ok(())
+                }
                 (Binop::Mul, Self::Local(lhs), Self::Float(rhs)) => {
                     let rhs = compile_stack.proto_mut().push_constant(*rhs)?;
                     compile_stack
