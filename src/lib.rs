@@ -2,6 +2,7 @@
 
 mod bytecode;
 mod closure;
+pub mod environment;
 mod error;
 mod ext;
 mod function;
@@ -16,8 +17,7 @@ mod value;
 
 extern crate alloc;
 
-use alloc::{rc::Rc, vec, vec::Vec};
-use closure::NativeClosure;
+use alloc::{rc::Rc, vec::Vec};
 use core::{
     cell::RefCell,
     cmp::Ordering,
@@ -27,10 +27,10 @@ use core::{
 use self::{
     bytecode::Bytecode,
     closure::{Closure, Upvalue},
+    environment::Environment,
     function::Function,
     stack_frame::StackFrame,
-    table::Table,
-    value::{Value, ValueKey},
+    value::Value,
 };
 pub use self::{error::Error, program::Program};
 
@@ -44,47 +44,20 @@ pub struct Lua {
 impl Lua {
     /// Runs program with default environment
     pub fn run_program(main_program: Program) -> Result<(), Error> {
-        let mut table = Table::new(0, 2);
-
-        table.table.extend([
-            (
-                ValueKey("assert".into()),
-                Value::from(std::lib_assert as NativeClosure),
-            ),
-            (
-                ValueKey("print".into()),
-                Value::from(std::lib_print as NativeClosure),
-            ),
-            (
-                ValueKey("type".into()),
-                Value::from(std::lib_type as NativeClosure),
-            ),
-            (
-                ValueKey("warn".into()),
-                Value::Closure(Rc::new(Closure::new_native(
-                    std::lib_warn,
-                    vec![Rc::new(RefCell::new(Upvalue::Closed(Value::Boolean(
-                        false,
-                    ))))],
-                ))),
-            ),
-        ]);
-
-        Self::run_program_with_env(main_program, Rc::new(RefCell::new(table)))
+        Self::run_program_with_env(main_program, Environment::default())
     }
 
     /// Runs program with given environment
-    pub fn run_program_with_env(
-        main_program: Program,
-        env: Rc<RefCell<Table>>,
-    ) -> Result<(), Error> {
+    pub fn run_program_with_env(main_program: Program, env: Environment) -> Result<(), Error> {
         log::trace!("Running program");
 
         let mut vm = Lua::default();
 
         vm.stack.push(Value::Closure(Rc::new(Closure::new_lua(
             Rc::new(Function::new(main_program, 0, true)),
-            Vec::from_iter([Rc::new(RefCell::new(Upvalue::Closed(Value::Table(env))))]),
+            Vec::from_iter([Rc::new(RefCell::new(Upvalue::Closed(Value::Table(
+                (*env).clone(),
+            ))))]),
         ))));
         vm.prepare_new_stack_frame(0, 0, 0, 0);
 

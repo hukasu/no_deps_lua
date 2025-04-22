@@ -194,7 +194,7 @@ mod tests {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 /// A wrapper around value so that it can be ordered on a [`Vec`] and
 /// be searched using `binary_search`
 pub struct ValueKey(pub Value);
