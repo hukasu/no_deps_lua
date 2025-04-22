@@ -2048,10 +2048,15 @@ impl Bytecode {
 
     fn execute_closure(&self, vm: &mut Lua) -> Result<(), Error> {
         let (dst, func_id) = self.decode_abx();
+        let func_id = usize::try_from(*func_id)?;
 
         let program = vm.get_running_closure();
 
-        let func = program.function(usize::try_from(*func_id)?)?;
+        let Ok(func) = program.function(func_id).inspect_err(|err| {
+            log::error!("{}", err);
+        }) else {
+            return Err(Error::Expected(func_id, "closure", "nil"));
+        };
 
         let upvalues = func
             .program()

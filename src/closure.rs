@@ -1,4 +1,4 @@
-use core::cell::RefCell;
+use core::{cell::RefCell, fmt::Display};
 
 use alloc::{rc::Rc, vec::Vec};
 
@@ -62,15 +62,21 @@ impl Closure {
         }
     }
 
-    pub fn function(&self, function_index: usize) -> Result<Rc<Function>, Error> {
+    pub fn function(&self, function_index: usize) -> Result<Rc<Function>, ClosureFunctionError> {
         match &self.closure_type {
-            FunctionType::Native(_) => Err(Error::FunctionDoesNotExist(function_index, 0)),
+            FunctionType::Native(_) => Err(ClosureFunctionError {
+                func_index: function_index,
+                native: true,
+                function_count: 0,
+            }),
             FunctionType::Lua(function) => function
                 .program()
                 .functions
                 .get(function_index)
-                .ok_or_else(|| {
-                    Error::FunctionDoesNotExist(function_index, function.program().functions.len())
+                .ok_or_else(|| ClosureFunctionError {
+                    func_index: function_index,
+                    native: false,
+                    function_count: function.program().functions.len(),
                 })
                 .cloned(),
         }
@@ -98,5 +104,87 @@ impl Upvalue {
             }
             Upvalue::Closed(_) => unreachable!("Called `close` on a already closed Upvalue."),
         }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct ClosureFunctionError {
+    func_index: usize,
+    native: bool,
+    function_count: usize,
+}
+
+impl Display for ClosureFunctionError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        if self.native {
+            write!(f, "Can't fetch a function from a native closure.")
+        } else {
+            write!(
+                f,
+                "Can't fetch function at position {}, there are only {} functions in closure's program.",
+                self.func_index, self.function_count
+            )
+        }
+    }
+}
+
+impl core::error::Error for ClosureFunctionError {}
+
+#[cfg(test)]
+mod tests {
+    use alloc::vec;
+
+    use crate::std;
+
+    use super::*;
+
+    #[test]
+    fn closure_function() {
+        let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
+        let native = Closure::new_native(std::lib_print, vec![]);
+        assert_eq!(
+            native.function(0).unwrap_err(),
+            ClosureFunctionError {
+                func_index: 0,
+                native: true,
+                function_count: 0
+            }
+        );
+        assert_eq!(
+            native.function(1).unwrap_err(),
+            ClosureFunctionError {
+                func_index: 1,
+                native: true,
+                function_count: 0
+            }
+        );
+        assert_eq!(
+            native.function(1000).unwrap_err(),
+            ClosureFunctionError {
+                func_index: 1000,
+                native: true,
+                function_count: 0
+            }
+        );
+
+        let program = Program::parse("function a() end").unwrap();
+        let lua = Closure::new_lua(Rc::new(Function::new(program, 0, false)), vec![]);
+        assert!(lua.function(0).is_ok());
+        assert_eq!(
+            lua.function(1).unwrap_err(),
+            ClosureFunctionError {
+                func_index: 1,
+                native: false,
+                function_count: 1
+            }
+        );
+        assert_eq!(
+            lua.function(1000).unwrap_err(),
+            ClosureFunctionError {
+                func_index: 1000,
+                native: false,
+                function_count: 1
+            }
+        );
     }
 }

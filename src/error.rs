@@ -6,6 +6,7 @@ use crate::value::Value;
 pub enum Error {
     InvalidGlobalKey(Value),
     InvalidFunction(Value),
+    Expected(usize, &'static str, &'static str),
     ExpectedBoolean(&'static str),
     ExpectedName,
     ExpectedTable,
@@ -29,7 +30,6 @@ pub enum Error {
     InvalidJump,
     UpvalueDoesNotExist,
     ConstantDoesNotExist(usize, usize),
-    FunctionDoesNotExist(usize, usize),
     Assertion,
 }
 
@@ -41,6 +41,11 @@ impl Display for Error {
             Self::ExpectedBoolean(type_name) => {
                 write!(f, "Expected a boolean, but was {}.", type_name)
             }
+            Self::Expected(loc, expected, was) => write!(
+                f,
+                "Expected a {} at stack {}, but was {}.",
+                expected, loc, was
+            ),
             Self::ExpectedName => write!(f, "Expected global or local name."),
             Self::ExpectedTable => write!(f, "Tried accessing a value as a Table."),
             Self::InvalidLenOperand => write!(f, "Len can only operate over String."),
@@ -70,11 +75,6 @@ impl Display for Error {
             Self::ConstantDoesNotExist(constant, len) => write!(
                 f,
                 "Program does not have constant at position '{}', it has '{}' constants.",
-                constant, len
-            ),
-            Self::FunctionDoesNotExist(constant, len) => write!(
-                f,
-                "Program does not have function at position '{}', it has '{}' functions.",
                 constant, len
             ),
             Self::Assertion => write!(f, "There was an assertion failure."),
