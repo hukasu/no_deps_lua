@@ -1,6 +1,6 @@
 use alloc::{borrow::ToOwned, string::ToString, vec::Vec};
 
-use crate::{Lua, value::Value};
+use crate::{Error, Lua, closure::NativeClosureReturn, value::Value};
 
 fn get_args(vm: &mut Lua) -> &[Value] {
     let top_stack = vm.get_stack_frame();
@@ -8,7 +8,7 @@ fn get_args(vm: &mut Lua) -> &[Value] {
     &vm.stack[args_start..]
 }
 
-pub fn lib_assert(vm: &mut Lua) -> i32 {
+pub fn lib_assert(vm: &mut Lua) -> NativeClosureReturn {
     let args = get_args(vm);
     if matches!(args[0], Value::Boolean(false) | Value::Nil) {
         let message = if let Some(message) = args.get(1) {
@@ -17,16 +17,13 @@ pub fn lib_assert(vm: &mut Lua) -> i32 {
             "assertion failed!".to_owned()
         };
         log::error!("{message}");
-        -1
+        Err(Error::Assertion)
     } else {
-        let Ok(args_len) = i32::try_from(args.len()) else {
-            unreachable!("Should never have more arguments than can fit on a i32.");
-        };
-        args_len
+        Ok(args.len())
     }
 }
 
-pub fn lib_print(vm: &mut Lua) -> i32 {
+pub fn lib_print(vm: &mut Lua) -> NativeClosureReturn {
     let print_string = get_args(vm)
         .iter()
         .map(|value| value.to_string())
@@ -34,29 +31,25 @@ pub fn lib_print(vm: &mut Lua) -> i32 {
         .join("\t");
 
     log::info!(target: "no_deps_lua::vm", "{}", print_string);
-    0
+    Ok(0)
 }
 
-pub fn lib_type(vm: &mut crate::Lua) -> i32 {
+pub fn lib_type(vm: &mut crate::Lua) -> NativeClosureReturn {
     let args = get_args(vm);
     let type_name = args[0].static_type_name();
-    vm.set_stack(0, type_name.into()).unwrap();
-    1
+    vm.set_stack(0, type_name.into())?;
+    Ok(1)
 }
 
-pub fn lib_warn(vm: &mut Lua) -> i32 {
-    let switch = match vm.get_upvalue(0) {
-        Ok(Value::Boolean(switch)) => switch,
-        Ok(other) => {
+pub fn lib_warn(vm: &mut Lua) -> NativeClosureReturn {
+    let switch = match vm.get_upvalue(0)? {
+        Value::Boolean(switch) => switch,
+        other => {
             log::error!(
                 "`lib_warn`'s upvalue should be a boolean, but was {}.",
                 other
             );
-            return -1;
-        }
-        Err(_) => {
-            log::error!("`lib_warn` did not have a upvalue.");
-            return -1;
+            return Err(Error::ExpectedBoolean(other.static_type_name()));
         }
     };
     let args = get_args(vm)
@@ -65,17 +58,15 @@ pub fn lib_warn(vm: &mut Lua) -> i32 {
         .collect::<Vec<_>>();
     match (args.as_slice(), switch) {
         ([single], false) if single == "@on" => {
-            if let Err(err) = vm.set_upvalue(0, true) {
+            vm.set_upvalue(0, true).inspect_err(|err| {
                 log::error!("Failed to update `lib_warn`'s upvalue due to `{:?}`.", err);
-                return -1;
-            }
+            })?;
             log::trace!("Warn logging enabled.");
         }
         ([single], true) if single == "@off" => {
-            if let Err(err) = vm.set_upvalue(0, false) {
+            vm.set_upvalue(0, false).inspect_err(|err| {
                 log::error!("Failed to update `lib_warn`'s upvalue due to `{:?}`.", err);
-                return -1;
-            }
+            })?;
             log::trace!("Warn logging disabled.");
         }
         (args, true) => {
@@ -84,5 +75,5 @@ pub fn lib_warn(vm: &mut Lua) -> i32 {
         }
         (_, false) => (),
     }
-    0
+    Ok(0)
 }

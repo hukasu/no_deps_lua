@@ -157,11 +157,8 @@ assert(a > b, "a was smaller than b")
 
     // TODO improve this when there is better error handling
     match crate::Lua::run_program(program) {
-        Ok(_) => panic!("Should fail"),
-        Err(Error::IntegerConversion) => (),
-        Err(err) => panic!(
-            "Should fail with IntegerConversion, but failed with {}",
-            err
-        ),
+        Ok(_) => panic!("Should fail."),
+        Err(Error::Assertion) => (),
+        Err(err) => panic!("Should fail with Assertion, but failed with `{}`.", err),
     }
 }

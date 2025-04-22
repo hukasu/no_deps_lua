@@ -4,7 +4,8 @@ use alloc::{rc::Rc, vec::Vec};
 
 use crate::{Error, Lua, Program, function::Function, value::Value};
 
-pub type NativeClosure = fn(&mut Lua) -> i32;
+pub type NativeClosure = fn(&mut Lua) -> NativeClosureReturn;
+pub type NativeClosureReturn = Result<usize, Error>;
 
 #[derive(Debug)]
 pub struct Closure {

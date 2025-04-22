@@ -2150,7 +2150,7 @@ impl Bytecode {
 
         vm.prepare_new_stack_frame(func_index, args, out_params, 0);
 
-        let returns = usize::try_from(func(vm))?;
+        let returns = func(vm)?;
 
         vm.drop_stack_frame(0, returns);
 
