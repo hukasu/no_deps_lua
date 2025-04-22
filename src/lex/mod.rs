@@ -37,6 +37,149 @@ impl<'a> Lex<'a> {
     pub fn remaining(&self) -> usize {
         self.program.len() - self.seek
     }
+
+    fn make_name(&self, name: &'a str, start: usize) -> Option<Result<Lexeme<'a>, Error>> {
+        match name {
+            "and" => Some(Ok(Lexeme {
+                line: self.line,
+                column: self.column,
+                start,
+                lexeme_type: LexemeType::And,
+            })),
+            "break" => Some(Ok(Lexeme {
+                line: self.line,
+                column: self.column,
+                start,
+                lexeme_type: LexemeType::Break,
+            })),
+            "do" => Some(Ok(Lexeme {
+                line: self.line,
+                column: self.column,
+                start,
+                lexeme_type: LexemeType::Do,
+            })),
+            "else" => Some(Ok(Lexeme {
+                line: self.line,
+                column: self.column,
+                start,
+                lexeme_type: LexemeType::Else,
+            })),
+            "elseif" => Some(Ok(Lexeme {
+                line: self.line,
+                column: self.column,
+                start,
+                lexeme_type: LexemeType::Elseif,
+            })),
+            "end" => Some(Ok(Lexeme {
+                line: self.line,
+                column: self.column,
+                start,
+                lexeme_type: LexemeType::End,
+            })),
+            "false" => Some(Ok(Lexeme {
+                line: self.line,
+                column: self.column,
+                start,
+                lexeme_type: LexemeType::False,
+            })),
+            "for" => Some(Ok(Lexeme {
+                line: self.line,
+                column: self.column,
+                start,
+                lexeme_type: LexemeType::For,
+            })),
+            "function" => Some(Ok(Lexeme {
+                line: self.line,
+                column: self.column,
+                start,
+                lexeme_type: LexemeType::Function,
+            })),
+            "goto" => Some(Ok(Lexeme {
+                line: self.line,
+                column: self.column,
+                start,
+                lexeme_type: LexemeType::Goto,
+            })),
+            "if" => Some(Ok(Lexeme {
+                line: self.line,
+                column: self.column,
+                start,
+                lexeme_type: LexemeType::If,
+            })),
+            "in" => Some(Ok(Lexeme {
+                line: self.line,
+                column: self.column,
+                start,
+                lexeme_type: LexemeType::In,
+            })),
+            "local" => Some(Ok(Lexeme {
+                line: self.line,
+                column: self.column,
+                start,
+                lexeme_type: LexemeType::Local,
+            })),
+            "nil" => Some(Ok(Lexeme {
+                line: self.line,
+                column: self.column,
+                start,
+                lexeme_type: LexemeType::Nil,
+            })),
+            "not" => Some(Ok(Lexeme {
+                line: self.line,
+                column: self.column,
+                start,
+                lexeme_type: LexemeType::Not,
+            })),
+            "or" => Some(Ok(Lexeme {
+                line: self.line,
+                column: self.column,
+                start,
+                lexeme_type: LexemeType::Or,
+            })),
+            "repeat" => Some(Ok(Lexeme {
+                line: self.line,
+                column: self.column,
+                start,
+                lexeme_type: LexemeType::Repeat,
+            })),
+            "return" => Some(Ok(Lexeme {
+                line: self.line,
+                column: self.column,
+                start,
+                lexeme_type: LexemeType::Return,
+            })),
+            "then" => Some(Ok(Lexeme {
+                line: self.line,
+                column: self.column,
+                start,
+                lexeme_type: LexemeType::Then,
+            })),
+            "true" => Some(Ok(Lexeme {
+                line: self.line,
+                column: self.column,
+                start,
+                lexeme_type: LexemeType::True,
+            })),
+            "until" => Some(Ok(Lexeme {
+                line: self.line,
+                column: self.column,
+                start,
+                lexeme_type: LexemeType::Until,
+            })),
+            "while" => Some(Ok(Lexeme {
+                line: self.line,
+                column: self.column,
+                start,
+                lexeme_type: LexemeType::While,
+            })),
+            other => Some(Ok(Lexeme {
+                line: self.line,
+                column: self.column,
+                start,
+                lexeme_type: LexemeType::Name(other),
+            })),
+        }
+    }
 }
 
 impl<'a> Iterator for Lex<'a> {
@@ -53,14 +196,23 @@ impl<'a> Iterator for Lex<'a> {
             }
 
             let Some(char) = self.chars.next() else {
-                self.start = usize::MAX;
+                if self.start != self.seek {
+                    let start = self.start;
 
-                break Some(Ok(Lexeme {
-                    line: self.line,
-                    column: self.column,
-                    start: self.seek,
-                    lexeme_type: LexemeType::Eof,
-                }));
+                    self.start = self.seek;
+                    let name = &self.program[start..self.seek];
+
+                    break self.make_name(name, start);
+                } else {
+                    self.start = usize::MAX;
+
+                    break Some(Ok(Lexeme {
+                        line: self.line,
+                        column: self.column,
+                        start: self.seek,
+                        lexeme_type: LexemeType::Eof,
+                    }));
+                }
             };
 
             self.seek += char.len_utf8();
@@ -466,193 +618,7 @@ impl<'a> Iterator for Lex<'a> {
                             _ => {
                                 let start = self.start;
                                 let name = &self.program[start..self.seek];
-                                match name {
-                                    "and" => {
-                                        break 'lexer Some(Ok(Lexeme {
-                                            line: self.line,
-                                            column: self.column,
-                                            start,
-                                            lexeme_type: LexemeType::And,
-                                        }));
-                                    }
-                                    "break" => {
-                                        break 'lexer Some(Ok(Lexeme {
-                                            line: self.line,
-                                            column: self.column,
-                                            start,
-                                            lexeme_type: LexemeType::Break,
-                                        }));
-                                    }
-                                    "do" => {
-                                        break 'lexer Some(Ok(Lexeme {
-                                            line: self.line,
-                                            column: self.column,
-                                            start,
-                                            lexeme_type: LexemeType::Do,
-                                        }));
-                                    }
-                                    "else" => {
-                                        break 'lexer Some(Ok(Lexeme {
-                                            line: self.line,
-                                            column: self.column,
-                                            start,
-                                            lexeme_type: LexemeType::Else,
-                                        }));
-                                    }
-                                    "elseif" => {
-                                        break 'lexer Some(Ok(Lexeme {
-                                            line: self.line,
-                                            column: self.column,
-                                            start,
-                                            lexeme_type: LexemeType::Elseif,
-                                        }));
-                                    }
-
-                                    "end" => {
-                                        break 'lexer Some(Ok(Lexeme {
-                                            line: self.line,
-                                            column: self.column,
-                                            start,
-                                            lexeme_type: LexemeType::End,
-                                        }));
-                                    }
-                                    "false" => {
-                                        break 'lexer Some(Ok(Lexeme {
-                                            line: self.line,
-                                            column: self.column,
-                                            start,
-                                            lexeme_type: LexemeType::False,
-                                        }));
-                                    }
-                                    "for" => {
-                                        break 'lexer Some(Ok(Lexeme {
-                                            line: self.line,
-                                            column: self.column,
-                                            start,
-                                            lexeme_type: LexemeType::For,
-                                        }));
-                                    }
-                                    "function" => {
-                                        break 'lexer Some(Ok(Lexeme {
-                                            line: self.line,
-                                            column: self.column,
-                                            start,
-                                            lexeme_type: LexemeType::Function,
-                                        }));
-                                    }
-                                    "goto" => {
-                                        break 'lexer Some(Ok(Lexeme {
-                                            line: self.line,
-                                            column: self.column,
-                                            start,
-                                            lexeme_type: LexemeType::Goto,
-                                        }));
-                                    }
-                                    "if" => {
-                                        break 'lexer Some(Ok(Lexeme {
-                                            line: self.line,
-                                            column: self.column,
-                                            start,
-                                            lexeme_type: LexemeType::If,
-                                        }));
-                                    }
-                                    "in" => {
-                                        break 'lexer Some(Ok(Lexeme {
-                                            line: self.line,
-                                            column: self.column,
-                                            start,
-                                            lexeme_type: LexemeType::In,
-                                        }));
-                                    }
-                                    "local" => {
-                                        break 'lexer Some(Ok(Lexeme {
-                                            line: self.line,
-                                            column: self.column,
-                                            start,
-                                            lexeme_type: LexemeType::Local,
-                                        }));
-                                    }
-                                    "nil" => {
-                                        break 'lexer Some(Ok(Lexeme {
-                                            line: self.line,
-                                            column: self.column,
-                                            start,
-                                            lexeme_type: LexemeType::Nil,
-                                        }));
-                                    }
-                                    "not" => {
-                                        break 'lexer Some(Ok(Lexeme {
-                                            line: self.line,
-                                            column: self.column,
-                                            start,
-                                            lexeme_type: LexemeType::Not,
-                                        }));
-                                    }
-                                    "or" => {
-                                        break 'lexer Some(Ok(Lexeme {
-                                            line: self.line,
-                                            column: self.column,
-                                            start,
-                                            lexeme_type: LexemeType::Or,
-                                        }));
-                                    }
-                                    "repeat" => {
-                                        break 'lexer Some(Ok(Lexeme {
-                                            line: self.line,
-                                            column: self.column,
-                                            start,
-                                            lexeme_type: LexemeType::Repeat,
-                                        }));
-                                    }
-                                    "return" => {
-                                        break 'lexer Some(Ok(Lexeme {
-                                            line: self.line,
-                                            column: self.column,
-                                            start,
-                                            lexeme_type: LexemeType::Return,
-                                        }));
-                                    }
-                                    "then" => {
-                                        break 'lexer Some(Ok(Lexeme {
-                                            line: self.line,
-                                            column: self.column,
-                                            start,
-                                            lexeme_type: LexemeType::Then,
-                                        }));
-                                    }
-                                    "true" => {
-                                        break 'lexer Some(Ok(Lexeme {
-                                            line: self.line,
-                                            column: self.column,
-                                            start,
-                                            lexeme_type: LexemeType::True,
-                                        }));
-                                    }
-                                    "until" => {
-                                        break 'lexer Some(Ok(Lexeme {
-                                            line: self.line,
-                                            column: self.column,
-                                            start,
-                                            lexeme_type: LexemeType::Until,
-                                        }));
-                                    }
-                                    "while" => {
-                                        break 'lexer Some(Ok(Lexeme {
-                                            line: self.line,
-                                            column: self.column,
-                                            start,
-                                            lexeme_type: LexemeType::While,
-                                        }));
-                                    }
-                                    other => {
-                                        break 'lexer Some(Ok(Lexeme {
-                                            line: self.line,
-                                            column: self.column,
-                                            start,
-                                            lexeme_type: LexemeType::Name(other),
-                                        }));
-                                    }
-                                }
+                                break 'lexer self.make_name(name, start);
                             }
                         }
                     }
@@ -690,7 +656,7 @@ impl<'a> Iterator for Lex<'a> {
                                     line: self.line,
                                     column: self.column,
                                 }),
-                        )
+                        );
                     }
                 },
                 '1'..='9' => {
