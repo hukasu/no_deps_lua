@@ -1,24 +1,29 @@
 mod error;
 mod lexeme;
+mod states;
 #[cfg(test)]
 mod tests;
 
+use alloc::{vec, vec::Vec};
 use core::{iter::Peekable, str::Chars};
+use error::ErrorKind;
+use states::StateError;
 
+use self::states::State;
 pub use self::{
-    error::{Error, ErrorKind},
+    error::Error,
     lexeme::{Lexeme, LexemeType},
 };
 
 pub struct Lex<'a> {
     program: &'a str,
     chars: Peekable<Chars<'a>>,
+    state: State,
     /// Current `char` being read
     seek: usize,
     /// Start of lexeme being considered
     start: usize,
-    line: usize,
-    column: usize,
+    lines: Vec<usize>,
 }
 
 impl<'a> Lex<'a> {
@@ -26,10 +31,10 @@ impl<'a> Lex<'a> {
         Self {
             program: data,
             chars: data.chars().peekable(),
+            state: State::Start,
             seek: 0,
             start: 0,
-            line: 0,
-            column: 0,
+            lines: vec![0],
         }
     }
 
@@ -38,146 +43,149 @@ impl<'a> Lex<'a> {
         self.program.len() - self.seek
     }
 
-    fn make_name(&self, name: &'a str, start: usize) -> Option<Result<Lexeme<'a>, Error>> {
-        match name {
-            "and" => Some(Ok(Lexeme {
-                line: self.line,
-                column: self.column,
-                start,
-                lexeme_type: LexemeType::And,
-            })),
-            "break" => Some(Ok(Lexeme {
-                line: self.line,
-                column: self.column,
-                start,
-                lexeme_type: LexemeType::Break,
-            })),
-            "do" => Some(Ok(Lexeme {
-                line: self.line,
-                column: self.column,
-                start,
-                lexeme_type: LexemeType::Do,
-            })),
-            "else" => Some(Ok(Lexeme {
-                line: self.line,
-                column: self.column,
-                start,
-                lexeme_type: LexemeType::Else,
-            })),
-            "elseif" => Some(Ok(Lexeme {
-                line: self.line,
-                column: self.column,
-                start,
-                lexeme_type: LexemeType::Elseif,
-            })),
-            "end" => Some(Ok(Lexeme {
-                line: self.line,
-                column: self.column,
-                start,
-                lexeme_type: LexemeType::End,
-            })),
-            "false" => Some(Ok(Lexeme {
-                line: self.line,
-                column: self.column,
-                start,
-                lexeme_type: LexemeType::False,
-            })),
-            "for" => Some(Ok(Lexeme {
-                line: self.line,
-                column: self.column,
-                start,
-                lexeme_type: LexemeType::For,
-            })),
-            "function" => Some(Ok(Lexeme {
-                line: self.line,
-                column: self.column,
-                start,
-                lexeme_type: LexemeType::Function,
-            })),
-            "goto" => Some(Ok(Lexeme {
-                line: self.line,
-                column: self.column,
-                start,
-                lexeme_type: LexemeType::Goto,
-            })),
-            "if" => Some(Ok(Lexeme {
-                line: self.line,
-                column: self.column,
-                start,
-                lexeme_type: LexemeType::If,
-            })),
-            "in" => Some(Ok(Lexeme {
-                line: self.line,
-                column: self.column,
-                start,
-                lexeme_type: LexemeType::In,
-            })),
-            "local" => Some(Ok(Lexeme {
-                line: self.line,
-                column: self.column,
-                start,
-                lexeme_type: LexemeType::Local,
-            })),
-            "nil" => Some(Ok(Lexeme {
-                line: self.line,
-                column: self.column,
-                start,
-                lexeme_type: LexemeType::Nil,
-            })),
-            "not" => Some(Ok(Lexeme {
-                line: self.line,
-                column: self.column,
-                start,
-                lexeme_type: LexemeType::Not,
-            })),
-            "or" => Some(Ok(Lexeme {
-                line: self.line,
-                column: self.column,
-                start,
-                lexeme_type: LexemeType::Or,
-            })),
-            "repeat" => Some(Ok(Lexeme {
-                line: self.line,
-                column: self.column,
-                start,
-                lexeme_type: LexemeType::Repeat,
-            })),
-            "return" => Some(Ok(Lexeme {
-                line: self.line,
-                column: self.column,
-                start,
-                lexeme_type: LexemeType::Return,
-            })),
-            "then" => Some(Ok(Lexeme {
-                line: self.line,
-                column: self.column,
-                start,
-                lexeme_type: LexemeType::Then,
-            })),
-            "true" => Some(Ok(Lexeme {
-                line: self.line,
-                column: self.column,
-                start,
-                lexeme_type: LexemeType::True,
-            })),
-            "until" => Some(Ok(Lexeme {
-                line: self.line,
-                column: self.column,
-                start,
-                lexeme_type: LexemeType::Until,
-            })),
-            "while" => Some(Ok(Lexeme {
-                line: self.line,
-                column: self.column,
-                start,
-                lexeme_type: LexemeType::While,
-            })),
-            other => Some(Ok(Lexeme {
-                line: self.line,
-                column: self.column,
-                start,
-                lexeme_type: LexemeType::Name(other),
-            })),
+    fn build_lexeme(&self, state: State) -> Option<Result<Lexeme<'a>, Error>> {
+        let mut line = self.lines.len() - 1;
+        let column = {
+            let mut rev = self.lines.iter().rev();
+            if let Some(column) = rev.next().filter(|column| **column != 0) {
+                *column
+            } else {
+                let Some(column) = rev.next() else {
+                    unreachable!(
+                        "Lexer must have read more than one line for it to have the current line at column 0."
+                    );
+                };
+                line -= 1;
+                *column
+            }
+        };
+
+        let make_lexeme = |lexeme_type| Lexeme {
+            line,
+            column: column - 1,
+            start: self.start - 1,
+            lexeme_type,
+        };
+
+        match state {
+            State::Start | State::ShortComment => None,
+            State::Add => Some(Ok(make_lexeme(LexemeType::Add))),
+            State::Sub => Some(Ok(make_lexeme(LexemeType::Sub))),
+            State::Mul => Some(Ok(make_lexeme(LexemeType::Mul))),
+            State::Div => Some(Ok(make_lexeme(LexemeType::Div))),
+            State::Concat => Some(Ok(make_lexeme(LexemeType::Concat))),
+            State::BitAnd => Some(Ok(make_lexeme(LexemeType::BitAnd))),
+            State::BitOr => Some(Ok(make_lexeme(LexemeType::BitOr))),
+            State::BitXor => Some(Ok(make_lexeme(LexemeType::BitXor))),
+            State::ShiftRight => Some(Ok(make_lexeme(LexemeType::ShiftR))),
+            State::ShiftLeft => Some(Ok(make_lexeme(LexemeType::ShiftL))),
+            State::Len => Some(Ok(make_lexeme(LexemeType::Len))),
+            State::Assign => Some(Ok(make_lexeme(LexemeType::Assign))),
+            State::Less => Some(Ok(make_lexeme(LexemeType::Less))),
+            State::LessEqual => Some(Ok(make_lexeme(LexemeType::Leq))),
+            State::Greater => Some(Ok(make_lexeme(LexemeType::Greater))),
+            State::GreaterEqual => Some(Ok(make_lexeme(LexemeType::Geq))),
+            State::Equal => Some(Ok(make_lexeme(LexemeType::Eq))),
+            State::NotEqual => Some(Ok(make_lexeme(LexemeType::Neq))),
+            State::LParen => Some(Ok(make_lexeme(LexemeType::LParen))),
+            State::RParen => Some(Ok(make_lexeme(LexemeType::RParen))),
+            State::LSquare => Some(Ok(make_lexeme(LexemeType::LSquare))),
+            State::RSquare => Some(Ok(make_lexeme(LexemeType::RSquare))),
+            State::LCurly => Some(Ok(make_lexeme(LexemeType::LCurly))),
+            State::RCurly => Some(Ok(make_lexeme(LexemeType::RCurly))),
+            State::Comma => Some(Ok(make_lexeme(LexemeType::Comma))),
+            State::Colon => Some(Ok(make_lexeme(LexemeType::Colon))),
+            State::DoubleColon => Some(Ok(make_lexeme(LexemeType::DoubleColon))),
+            State::SemiColon => Some(Ok(make_lexeme(LexemeType::SemiColon))),
+            State::Dot => Some(Ok(make_lexeme(LexemeType::Dot))),
+            State::Dots => Some(Ok(make_lexeme(LexemeType::Dots))),
+            State::Number => {
+                let start = self.start - 1;
+                let end = self.seek - 1;
+                let data = &self.program[start..end];
+                let Ok(integer) = data.parse() else {
+                    return Some(Err(Error {
+                        kind: ErrorKind::ParseInt,
+                        line,
+                        column: column - 1,
+                    }));
+                };
+
+                Some(Ok(make_lexeme(LexemeType::Integer(integer))))
+            }
+            State::Float => {
+                let start = self.start - 1;
+                let end = self.seek - 1;
+                let data = &self.program[start..end];
+                let Ok(float) = data.parse() else {
+                    return Some(Err(Error {
+                        kind: ErrorKind::ParseFloat,
+                        line,
+                        column: column - 1,
+                    }));
+                };
+
+                Some(Ok(make_lexeme(LexemeType::Float(float))))
+            }
+            State::String(quotes)
+            | State::StringAscii(quotes, _, _)
+            | State::StringUtf8(quotes, 2) => {
+                let start = self.start - 1;
+                let end = self.seek - 1;
+                let data = &self.program[start..end].trim_matches(quotes);
+
+                Some(Ok(Lexeme {
+                    line,
+                    column,
+                    start,
+                    lexeme_type: LexemeType::String(data),
+                }))
+            }
+            State::Name => {
+                let start = self.start - 1;
+                let end = if self.state == State::Eof {
+                    self.seek
+                } else {
+                    self.seek - 1
+                };
+                let data = &self.program[start..end];
+
+                let make_lexeme = |lexeme_type| Lexeme {
+                    line,
+                    column: column - 1,
+                    start,
+                    lexeme_type,
+                };
+
+                match data {
+                    "and" => Some(Ok(make_lexeme(LexemeType::And))),
+                    "break" => Some(Ok(make_lexeme(LexemeType::Break))),
+                    "do" => Some(Ok(make_lexeme(LexemeType::Do))),
+                    "else" => Some(Ok(make_lexeme(LexemeType::Else))),
+                    "elseif" => Some(Ok(make_lexeme(LexemeType::Elseif))),
+                    "end" => Some(Ok(make_lexeme(LexemeType::End))),
+                    "false" => Some(Ok(make_lexeme(LexemeType::False))),
+                    "for" => Some(Ok(make_lexeme(LexemeType::For))),
+                    "function" => Some(Ok(make_lexeme(LexemeType::Function))),
+                    "goto" => Some(Ok(make_lexeme(LexemeType::Goto))),
+                    "if" => Some(Ok(make_lexeme(LexemeType::If))),
+                    "in" => Some(Ok(make_lexeme(LexemeType::In))),
+                    "local" => Some(Ok(make_lexeme(LexemeType::Local))),
+                    "nil" => Some(Ok(make_lexeme(LexemeType::Nil))),
+                    "not" => Some(Ok(make_lexeme(LexemeType::Not))),
+                    "or" => Some(Ok(make_lexeme(LexemeType::Or))),
+                    "repeat" => Some(Ok(make_lexeme(LexemeType::Repeat))),
+                    "return" => Some(Ok(make_lexeme(LexemeType::Return))),
+                    "then" => Some(Ok(make_lexeme(LexemeType::Then))),
+                    "true" => Some(Ok(make_lexeme(LexemeType::True))),
+                    "until" => Some(Ok(make_lexeme(LexemeType::Until))),
+                    "while" => Some(Ok(make_lexeme(LexemeType::While))),
+                    _ => Some(Ok(make_lexeme(LexemeType::Name(data)))),
+                }
+            }
+            other => {
+                unimplemented!("{:?}", other);
+            }
         }
     }
 }
@@ -190,543 +198,65 @@ impl<'a> Iterator for Lex<'a> {
     where
         Self: 'a,
     {
-        'lexer: loop {
+        loop {
             if self.start == usize::MAX {
                 break None;
             }
 
-            let Some(char) = self.chars.next() else {
-                let start = self.start;
-                let name = &self.program[start..self.seek];
-                if !name.trim().is_empty() {
-                    self.start = self.seek;
-                    break self.make_name(name, start);
+            let consumed = if let Some(c) = self.chars.next() {
+                self.seek += c.len_utf8();
+                if let Some(column) = self.lines.last_mut() {
+                    *column += c.len_utf8();
                 } else {
-                    self.start = usize::MAX;
-                    break Some(Ok(Lexeme {
-                        line: self.line,
-                        column: self.column,
-                        start: self.seek,
-                        lexeme_type: LexemeType::Eof,
-                    }));
+                    unreachable!("List of line columns should never be empty.");
                 }
+                if c == '\n' {
+                    self.lines.push(0);
+                }
+                self.state.consume(c)
+            } else if self.start != self.seek {
+                self.state.consume_eof()
+            } else {
+                let start = self.start;
+                self.start = usize::MAX;
+
+                break Some(Ok(Lexeme {
+                    line: self.lines.len() - 1,
+                    column: self.lines.last().copied().unwrap_or_default(),
+                    start,
+                    lexeme_type: LexemeType::Eof,
+                }));
             };
 
-            self.seek += char.len_utf8();
-            self.start = self.seek - 1;
-            self.column += 1;
+            match consumed {
+                Ok(consumed) => {
+                    if let Some(state) = consumed {
+                        let lexeme = self.build_lexeme(state);
+                        self.start = self.seek;
 
-            match char {
-                '+' => {
-                    break Some(Ok(Lexeme {
-                        line: self.line,
-                        column: self.column,
-                        start: self.start,
-                        lexeme_type: LexemeType::Add,
-                    }));
-                }
-                '-' => match self.chars.peek() {
-                    Some('-') => {
-                        while let Some(c) = self.chars.peek().copied() {
-                            if c == '\n' {
-                                break;
-                            }
-                            self.chars.next();
-                            self.seek += c.len_utf8();
-                            self.start += c.len_utf8();
-                            self.column += 1;
+                        if lexeme.is_some() {
+                            break lexeme;
                         }
                     }
-                    _ => {
-                        break Some(Ok(Lexeme {
-                            line: self.line,
-                            column: self.column,
-                            start: self.start,
-                            lexeme_type: LexemeType::Sub,
-                        }));
-                    }
-                },
-                '*' => {
-                    break Some(Ok(Lexeme {
-                        line: self.line,
-                        column: self.column,
-                        start: self.start,
-                        lexeme_type: LexemeType::Mul,
-                    }));
                 }
-                '/' => match self.chars.peek() {
-                    Some('/') => {
-                        self.chars.next();
-                        self.seek += 1;
-                        self.start += 1;
-                        self.column += 1;
-                        break Some(Ok(Lexeme {
-                            line: self.line,
-                            column: self.column - 1,
-                            start: self.start,
-                            lexeme_type: LexemeType::Idiv,
-                        }));
-                    }
-                    _ => {
-                        break Some(Ok(Lexeme {
-                            line: self.line,
-                            column: self.column,
-                            start: self.start,
-                            lexeme_type: LexemeType::Div,
-                        }));
-                    }
-                },
-                '%' => {
-                    break Some(Ok(Lexeme {
-                        line: self.line,
-                        column: self.column,
-                        start: self.start,
-                        lexeme_type: LexemeType::Mod,
-                    }));
-                }
-                '^' => {
-                    break Some(Ok(Lexeme {
-                        line: self.line,
-                        column: self.column,
-                        start: self.start,
-                        lexeme_type: LexemeType::Pow,
-                    }));
-                }
-                '#' => {
-                    break Some(Ok(Lexeme {
-                        line: self.line,
-                        column: self.column,
-                        start: self.start,
-                        lexeme_type: LexemeType::Len,
-                    }));
-                }
-                '&' => {
-                    break Some(Ok(Lexeme {
-                        line: self.line,
-                        column: self.column,
-                        start: self.start,
-                        lexeme_type: LexemeType::BitAnd,
-                    }));
-                }
-                '|' => {
-                    break Some(Ok(Lexeme {
-                        line: self.line,
-                        column: self.column,
-                        start: self.start,
-                        lexeme_type: LexemeType::BitOr,
-                    }));
-                }
-                '~' => match self.chars.peek() {
-                    Some('=') => {
-                        self.chars.next();
-                        self.seek += 1;
-                        self.start += 1;
-                        self.column += 1;
-                        break Some(Ok(Lexeme {
-                            line: self.line,
-                            column: self.column - 1,
-                            start: self.start,
-                            lexeme_type: LexemeType::Neq,
-                        }));
-                    }
-                    _ => {
-                        break Some(Ok(Lexeme {
-                            line: self.line,
-                            column: self.column,
-                            start: self.start,
-                            lexeme_type: LexemeType::BitXor,
-                        }));
-                    }
-                },
-                '<' => match self.chars.peek() {
-                    Some('<') => {
-                        self.chars.next();
-                        self.seek += 1;
-                        self.start += 1;
-                        self.column += 1;
-                        break Some(Ok(Lexeme {
-                            line: self.line,
-                            column: self.column - 1,
-                            start: self.start,
-                            lexeme_type: LexemeType::ShiftL,
-                        }));
-                    }
-                    Some('=') => {
-                        self.chars.next();
-                        self.seek += 1;
-                        self.start += 1;
-                        self.column += 1;
-                        break Some(Ok(Lexeme {
-                            line: self.line,
-                            column: self.column - 1,
-                            start: self.start,
-                            lexeme_type: LexemeType::Leq,
-                        }));
-                    }
-                    _ => {
-                        break Some(Ok(Lexeme {
-                            line: self.line,
-                            column: self.column,
-                            start: self.start,
-                            lexeme_type: LexemeType::Less,
-                        }));
-                    }
-                },
-                '>' => match self.chars.peek() {
-                    Some('>') => {
-                        self.chars.next();
-                        self.seek += 1;
-                        self.start += 1;
-                        self.column += 1;
-                        break Some(Ok(Lexeme {
-                            line: self.line,
-                            column: self.column - 1,
-                            start: self.start,
-                            lexeme_type: LexemeType::ShiftR,
-                        }));
-                    }
-                    Some('=') => {
-                        self.chars.next();
-                        self.seek += 1;
-                        self.start += 1;
-                        self.column += 1;
-                        break Some(Ok(Lexeme {
-                            line: self.line,
-                            column: self.column - 1,
-                            start: self.start,
-                            lexeme_type: LexemeType::Geq,
-                        }));
-                    }
-                    _ => {
-                        break Some(Ok(Lexeme {
-                            line: self.line,
-                            column: self.column,
-                            start: self.start,
-                            lexeme_type: LexemeType::Greater,
-                        }));
-                    }
-                },
-                '=' => match self.chars.peek() {
-                    Some('=') => {
-                        self.chars.next();
-                        self.seek += 1;
-                        self.start += 1;
-                        self.column += 1;
-                        break Some(Ok(Lexeme {
-                            line: self.line,
-                            column: self.column - 1,
-                            start: self.start,
-                            lexeme_type: LexemeType::Eq,
-                        }));
-                    }
-                    _ => {
-                        break Some(Ok(Lexeme {
-                            line: self.line,
-                            column: self.column,
-                            start: self.start,
-                            lexeme_type: LexemeType::Assign,
-                        }));
-                    }
-                },
-                '(' => {
-                    break Some(Ok(Lexeme {
-                        line: self.line,
-                        column: self.column,
-                        start: self.start,
-                        lexeme_type: LexemeType::LParen,
-                    }));
-                }
-                ')' => {
-                    break Some(Ok(Lexeme {
-                        line: self.line,
-                        column: self.column,
-                        start: self.start,
-                        lexeme_type: LexemeType::RParen,
-                    }));
-                }
-                '[' => {
-                    break Some(Ok(Lexeme {
-                        line: self.line,
-                        column: self.column,
-                        start: self.start,
-                        lexeme_type: LexemeType::LSquare,
-                    }));
-                }
-                ']' => {
-                    break Some(Ok(Lexeme {
-                        line: self.line,
-                        column: self.column,
-                        start: self.start,
-                        lexeme_type: LexemeType::RSquare,
-                    }));
-                }
-                '{' => {
-                    break Some(Ok(Lexeme {
-                        line: self.line,
-                        column: self.column,
-                        start: self.start,
-                        lexeme_type: LexemeType::LCurly,
-                    }));
-                }
-                '}' => {
-                    break Some(Ok(Lexeme {
-                        line: self.line,
-                        column: self.column,
-                        start: self.start,
-                        lexeme_type: LexemeType::RCurly,
-                    }));
-                }
-                ';' => {
-                    break Some(Ok(Lexeme {
-                        line: self.line,
-                        column: self.column,
-                        start: self.start,
-                        lexeme_type: LexemeType::SemiColon,
-                    }));
-                }
-                ':' => match self.chars.peek() {
-                    Some(':') => {
-                        self.chars.next();
-                        self.seek += 1;
-                        self.start += 1;
-                        self.column += 1;
-                        break Some(Ok(Lexeme {
-                            line: self.line,
-                            column: self.column - 1,
-                            start: self.start,
-                            lexeme_type: LexemeType::DoubleColon,
-                        }));
-                    }
-                    _ => {
-                        break Some(Ok(Lexeme {
-                            line: self.line,
-                            column: self.column,
-                            start: self.start,
-                            lexeme_type: LexemeType::Colon,
-                        }));
-                    }
-                },
-                ',' => {
-                    break Some(Ok(Lexeme {
-                        line: self.line,
-                        column: self.column,
-                        start: self.start,
-                        lexeme_type: LexemeType::Comma,
-                    }));
-                }
-                '.' => {
-                    if self.chars.peek() != Some(&'.') {
-                        {
-                            break Some(Ok(Lexeme {
-                                line: self.line,
-                                column: self.column,
-                                start: self.start,
-                                lexeme_type: LexemeType::Dot,
-                            }));
-                        }
-                    }
-                    self.chars.next();
-                    self.seek += 1;
-                    self.column += 1;
-
-                    if self.chars.peek() != Some(&'.') {
-                        {
-                            break Some(Ok(Lexeme {
-                                line: self.line,
-                                column: self.column,
-                                start: self.start,
-                                lexeme_type: LexemeType::Concat,
-                            }));
-                        }
-                    }
-                    self.chars.next();
-                    self.seek += 1;
-                    self.column += 1;
-
-                    break Some(Ok(Lexeme {
-                        line: self.line,
-                        column: self.column - 2,
-                        start: self.start - 1,
-                        lexeme_type: LexemeType::Dots,
-                    }));
-                }
-                short_string_start @ '"' | short_string_start @ '\'' => {
-                    while let Some(c) = self.chars.peek().copied() {
-                        match c {
-                            c if c == short_string_start => {
-                                let start = self.start;
-                                let end = self.seek;
-
-                                self.chars.next();
-                                self.seek += 1;
-                                self.start = self.seek - 1;
-                                self.column += 1;
-                                let output_str = &self.program[(start + 1)..end];
-                                break 'lexer Some(Ok(Lexeme {
-                                    line: self.line,
-                                    column: self.column,
-                                    start,
-                                    // Skipping the start " or '
-                                    lexeme_type: LexemeType::String(output_str),
-                                }));
-                            }
-                            '\\' => match self.chars.peek().copied() {
-                                Some('\n') => {
-                                    self.chars.next();
-                                    self.seek += 1;
-                                    self.line += 1;
-                                    self.column = 0;
-                                }
-                                Some('a') | Some('b') | Some('f') | Some('n') | Some('r')
-                                | Some('t') | Some('v') | Some('\\') | Some('"') | Some('\'') => {
-                                    self.chars.next();
-                                    self.seek += 1;
-                                    self.column += 1;
-                                }
-                                _ => {
-                                    break 'lexer Some(Err(Error {
-                                        kind: ErrorKind::ProhibtedControlCharacterOnString,
-                                        line: self.line,
-                                        column: self.column,
-                                    }));
-                                }
-                            },
-                            c => {
-                                self.seek += c.len_utf8();
-                                self.column += 1;
-                                self.chars.next();
-                            }
-                        }
-                    }
-                    break Some(Err(Error {
+                Err(StateError::EofAtString) => {
+                    return Some(Err(Error {
                         kind: ErrorKind::EofAtString,
-                        line: self.line,
-                        column: self.column,
+                        line: self.lines.len() - 1,
+                        column: self.lines.last().copied().unwrap_or_default(),
                     }));
                 }
-                'a'..='z' | 'A'..='Z' | '_' => {
-                    while let Some(c) = self.chars.peek().copied() {
-                        match c {
-                            'a'..='z' | 'A'..='Z' | '_' | '0'..='9' => {
-                                self.chars.next();
-                                self.seek += 1;
-                                self.column += 1;
-                            }
-                            _ => {
-                                let start = self.start;
-                                let name = &self.program[start..self.seek];
-                                break 'lexer self.make_name(name, start);
-                            }
-                        }
-                    }
-                }
-                '0' => match self.chars.peek() {
-                    Some('x' | 'X') => {
-                        unimplemented!("Lexer reached an unimplemented token");
-                    }
-                    Some('0'..='7') => {
-                        break Some(Err(Error {
-                            kind: ErrorKind::OctalNotSupported,
-                            line: self.line,
-                            column: self.column,
-                        }));
-                    }
-                    Some('8' | '9') => {
-                        break Some(Err(Error {
-                            kind: ErrorKind::LeadingZero,
-                            line: self.line,
-                            column: self.column,
-                        }));
-                    }
-                    _ => {
-                        break Some(
-                            self.program[self.start..self.seek]
-                                .parse()
-                                .map(|i| Lexeme {
-                                    line: self.line,
-                                    column: self.column,
-                                    start: self.start,
-                                    lexeme_type: LexemeType::Integer(i),
-                                })
-                                .map_err(|_err| Error {
-                                    kind: ErrorKind::ParseInt,
-                                    line: self.line,
-                                    column: self.column,
-                                }),
-                        );
-                    }
-                },
-                '1'..='9' => {
-                    let mut is_float = false;
-                    while let Some(c) = self.chars.peek().copied() {
-                        match c {
-                            '0'..='9' => {
-                                self.chars.next();
-                                self.seek += 1;
-                                self.column += 1;
-                            }
-                            '.' => {
-                                if is_float {
-                                    break 'lexer Some(Err(Error {
-                                        kind: ErrorKind::MalformedFloat,
-                                        line: self.line,
-                                        column: self.column,
-                                    }));
-                                } else {
-                                    self.chars.next();
-                                    self.seek += 1;
-                                    self.column += 1;
-                                    is_float = true;
-                                }
-                            }
-                            'e' | 'E' => {
-                                unimplemented!("Lexer reached an unimplemented token");
-                            }
-                            _ => {
-                                if is_float {
-                                    break 'lexer Some(
-                                        self.program[self.start..self.seek]
-                                            .parse()
-                                            .map(|i| Lexeme {
-                                                line: self.line,
-                                                column: self.column,
-                                                start: self.start,
-                                                lexeme_type: LexemeType::Float(i),
-                                            })
-                                            .map_err(|_err| Error {
-                                                kind: ErrorKind::ParseFloat,
-                                                line: self.line,
-                                                column: self.column,
-                                            }),
-                                    );
-                                } else {
-                                    break 'lexer Some(
-                                        self.program[self.start..self.seek]
-                                            .parse()
-                                            .map(|i| Lexeme {
-                                                line: self.line,
-                                                column: self.column,
-                                                start: self.start,
-                                                lexeme_type: LexemeType::Integer(i),
-                                            })
-                                            .map_err(|_err| Error {
-                                                kind: ErrorKind::ParseInt,
-                                                line: self.line,
-                                                column: self.column,
-                                            }),
-                                    );
-                                }
-                            }
-                        }
-                    }
-                }
-                ' ' | '\t' | '\r' => {}
-                '\n' => {
-                    self.line += 1;
-                    self.column = 0;
-                }
-                _ => {
-                    unimplemented!("Lexer reached an unimplemented token");
+                Err(
+                    err @ (StateError::EscapedChar(_)
+                    | StateError::HexCharacter(_)
+                    | StateError::AsciiOutOfBounds(_)),
+                ) => {
+                    log::error!("{}", err);
+                    return Some(Err(Error {
+                        kind: ErrorKind::ProhibtedControlCharacterOnString,
+                        line: self.lines.len() - 1,
+                        column: self.lines.last().copied().unwrap_or_default(),
+                    }));
                 }
             }
         }

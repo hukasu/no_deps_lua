@@ -366,8 +366,7 @@ print "hello again...""#,
             lexeme_type: LexemeType::Name("print")
         }))
     );
-    assert_eq!(lex.line, 0);
-    assert_eq!(lex.column, 5);
+    assert_eq!(lex.lines.as_slice(), &[6]);
     assert_eq!(
         lex.next(),
         Some(Ok(Lexeme {
@@ -377,8 +376,7 @@ print "hello again...""#,
             lexeme_type: LexemeType::String("hello world")
         }))
     );
-    assert_eq!(lex.line, 0);
-    assert_eq!(lex.column, 19);
+    assert_eq!(lex.lines.as_slice(), &[19]);
     assert_eq!(
         lex.next(),
         Some(Ok(Lexeme {
@@ -388,8 +386,7 @@ print "hello again...""#,
             lexeme_type: LexemeType::Name("print")
         }))
     );
-    assert_eq!(lex.line, 1);
-    assert_eq!(lex.column, 5);
+    assert_eq!(lex.lines.as_slice(), &[20, 6]);
     assert_eq!(
         lex.next(),
         Some(Ok(Lexeme {
@@ -408,8 +405,7 @@ print "hello again...""#,
             lexeme_type: LexemeType::Eof
         }))
     );
-    assert_eq!(lex.line, 1);
-    assert_eq!(lex.column, 22);
+    assert_eq!(lex.lines.as_slice(), &[20, 22]);
     assert!(lex.next().is_none());
     assert_eq!(lex.remaining(), 0);
 

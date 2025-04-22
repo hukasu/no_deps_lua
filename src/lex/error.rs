@@ -40,7 +40,7 @@ impl Display for Error {
                 write!(f, "Floating-point number was malformed.",)
             }
             ErrorKind::ProhibtedControlCharacterOnString => {
-                write!(f, "A control character was found in a comment.",)
+                write!(f, "A control character was found in a string.",)
             }
         }
     }
