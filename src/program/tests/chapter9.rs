@@ -1,4 +1,15 @@
-use crate::{Program, bytecode::Bytecode, program::Local};
+use core::cell::RefCell;
+
+use alloc::{rc::Rc, vec};
+
+use crate::{
+    Error, Lua, Program,
+    bytecode::Bytecode,
+    closure::{Closure, NativeClosureReturn, Upvalue},
+    environment::Environment,
+    program::Local,
+    value::Value,
+};
 
 #[test]
 fn upvalues() {
@@ -729,4 +740,93 @@ print(bars[1](), bars[1](), "|", bars[4](), bars[4]())
     );
 
     crate::Lua::run_program(program).expect("Should run");
+}
+
+#[test]
+fn rust_closure() {
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
+
+    let program = crate::Program::parse(
+        r#"
+local c1 = new_counter()
+local c2 = new_counter()
+c1()
+c2()
+c2()
+c1()
+"#,
+    )
+    .unwrap();
+
+    super::compare_program(
+        &program,
+        &[
+            Bytecode::variadic_arguments_prepare(0),
+            // local c1 = new_counter()
+            Bytecode::get_uptable(0, 0, 0),
+            Bytecode::call(0, 1, 2),
+            // local c2 = new_counter()
+            Bytecode::get_uptable(1, 0, 0),
+            Bytecode::call(1, 1, 2),
+            // c1()
+            Bytecode::move_bytecode(2, 0),
+            Bytecode::call(2, 1, 1),
+            // c2()
+            Bytecode::move_bytecode(2, 1),
+            Bytecode::call(2, 1, 1),
+            // c2()
+            Bytecode::move_bytecode(2, 1),
+            Bytecode::call(2, 1, 1),
+            // c1()
+            Bytecode::move_bytecode(2, 0),
+            Bytecode::call(2, 1, 1),
+            // EOF
+            Bytecode::return_bytecode(2, 1, 1),
+        ],
+        &["new_counter".into()],
+        &[
+            Local::new("c1".into(), 4, 15),
+            Local::new("c2".into(), 6, 15),
+        ],
+        &["_ENV".into()],
+        0,
+    );
+
+    fn new_counter(vm: &mut Lua) -> NativeClosureReturn {
+        let Value::Integer(start_count) = vm.get_upvalue(0)? else {
+            return Err(Error::ExpectedTable);
+        };
+        vm.set_stack(
+            0,
+            Value::Closure(Rc::new(Closure::new_native(
+                count,
+                vec![Rc::new(RefCell::new(Upvalue::Closed(Value::Integer(
+                    start_count,
+                ))))],
+            ))),
+        )?;
+        vm.set_upvalue(0, start_count + 1000)?;
+        Ok(1)
+    }
+
+    fn count(vm: &mut Lua) -> NativeClosureReturn {
+        let Value::Integer(count) = vm.get_upvalue(0)? else {
+            return Err(Error::ExpectedTable);
+        };
+        log::info!("Counted to {}", count);
+        vm.set_upvalue(0, count + 1)?;
+        Ok(0)
+    }
+
+    let mut env = Environment::default();
+    env.push(
+        "new_counter",
+        Value::Closure(Rc::new(Closure::new_native(
+            new_counter,
+            vec![Rc::new(RefCell::new(Upvalue::Closed(Value::Integer(0))))],
+        ))),
+    )
+    .unwrap();
+
+    crate::Lua::run_program_with_env(program, env).unwrap();
 }
