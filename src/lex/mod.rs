@@ -196,16 +196,13 @@ impl<'a> Iterator for Lex<'a> {
             }
 
             let Some(char) = self.chars.next() else {
-                if self.start != self.seek {
-                    let start = self.start;
-
+                let start = self.start;
+                let name = &self.program[start..self.seek];
+                if !name.trim().is_empty() {
                     self.start = self.seek;
-                    let name = &self.program[start..self.seek];
-
                     break self.make_name(name, start);
                 } else {
                     self.start = usize::MAX;
-
                     break Some(Ok(Lexeme {
                         line: self.line,
                         column: self.column,
