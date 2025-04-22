@@ -2621,7 +2621,9 @@ impl<'a> Parser<'a> {
             20 => make_reduction_push!(20, self, StatForexp),
             21 => make_reduction_push!(21, self, StatForexp, 2, Comma, Exp),
             22 => {
-                make_reduction_push!(22, self, Stat, 7, For, Namelist, In, Explist, Do, Block, End)
+                make_reduction_push!(
+                    22, self, Stat, 7, For, Namelist, In, Explist, Do, Block, End
+                )
             }
             23 => make_reduction_push!(23, self, Stat, 3, Function, Funcname, Funcbody),
             24 => make_reduction_push!(24, self, Stat, 4, Local, Function, Name, Funcbody),

@@ -1,6 +1,6 @@
 use alloc::boxed::Box;
 
-use super::{exp_desc::ExpDesc, Bytecode, Error};
+use super::{Bytecode, Error, exp_desc::ExpDesc};
 
 // TODO compile time optimizations
 

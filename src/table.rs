@@ -1,8 +1,8 @@
 use alloc::vec::Vec;
 
 use crate::{
-    value::{Value, ValueKey},
     Error,
+    value::{Value, ValueKey},
 };
 
 #[derive(Debug, PartialEq)]
