@@ -7,7 +7,11 @@ use core::{
 use alloc::{rc::Rc, vec::Vec};
 
 use crate::{
-    closure::Closure, ext::FloatExt, function::Function, stack_str::StackStr, table::Table, Lua,
+    closure::{Closure, NativeClosure},
+    ext::FloatExt,
+    function::Function,
+    stack_str::StackStr,
+    table::Table,
 };
 
 const SHORT_STRING_LEN: usize = 23;
@@ -123,8 +127,8 @@ impl From<Rc<Function>> for Value {
     }
 }
 
-impl From<for<'a> fn(&'a mut Lua) -> i32> for Value {
-    fn from(function: fn(&mut Lua) -> i32) -> Self {
+impl From<NativeClosure> for Value {
+    fn from(function: NativeClosure) -> Self {
         Self::Closure(Rc::new(Closure::new_native(function, Vec::new())))
     }
 }

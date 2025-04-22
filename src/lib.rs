@@ -17,6 +17,7 @@ mod value;
 extern crate alloc;
 
 use alloc::{rc::Rc, vec, vec::Vec};
+use closure::NativeClosure;
 use core::{
     cell::RefCell,
     cmp::Ordering,
@@ -48,15 +49,15 @@ impl Lua {
         table.table.extend([
             (
                 ValueKey("assert".into()),
-                Value::from(std::lib_assert as fn(&mut Lua) -> i32),
+                Value::from(std::lib_assert as NativeClosure),
             ),
             (
                 ValueKey("print".into()),
-                Value::from(std::lib_print as fn(&mut Lua) -> i32),
+                Value::from(std::lib_print as NativeClosure),
             ),
             (
                 ValueKey("type".into()),
-                Value::from(std::lib_type as fn(&mut Lua) -> i32),
+                Value::from(std::lib_type as NativeClosure),
             ),
             (
                 ValueKey("warn".into()),

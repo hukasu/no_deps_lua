@@ -17,7 +17,7 @@ use arguments::{A, Ax, B, Bx, BytecodeArgument, C, K, Sb, Sbx, Sc, Sj};
 
 use crate::{
     Lua,
-    closure::{Closure, FunctionType, Upvalue},
+    closure::{Closure, FunctionType, NativeClosure, Upvalue},
     function::Function,
     table::Table,
     value::{Value, ValueKey},
@@ -2136,7 +2136,7 @@ impl Bytecode {
         func_index: usize,
         args: usize,
         out_params: usize,
-        func: fn(&mut Lua) -> i32,
+        func: NativeClosure,
     ) -> Result<(), Error> {
         log::trace!("Calling native function");
 

@@ -4,6 +4,8 @@ use alloc::{rc::Rc, vec::Vec};
 
 use crate::{Error, Lua, Program, function::Function, value::Value};
 
+pub type NativeClosure = fn(&mut Lua) -> i32;
+
 #[derive(Debug)]
 pub struct Closure {
     closure_type: FunctionType,
@@ -18,10 +20,7 @@ impl Closure {
         }
     }
 
-    pub const fn new_native(
-        function: fn(&mut Lua) -> i32,
-        upvalues: Vec<Rc<RefCell<Upvalue>>>,
-    ) -> Self {
+    pub const fn new_native(function: NativeClosure, upvalues: Vec<Rc<RefCell<Upvalue>>>) -> Self {
         Self {
             closure_type: FunctionType::Native(function),
             upvalues,
@@ -79,7 +78,7 @@ impl Closure {
 
 #[derive(Debug, Clone)]
 pub enum FunctionType {
-    Native(fn(&mut Lua) -> i32),
+    Native(NativeClosure),
     Lua(Rc<Function>),
 }
 
