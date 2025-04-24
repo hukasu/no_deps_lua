@@ -962,3 +962,185 @@ f('after')
 
     crate::Lua::run_program(program).unwrap();
 }
+
+#[test]
+fn generic_for() {
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
+
+    let program = crate::Program::parse(
+        r#"
+local function iter(t, i)
+    i = i + 1
+    local v = t[i]
+    if v then
+        return i, v
+    end
+end
+
+local function my_ipairs(t)
+    return iter, t, 0
+end
+
+local z = {'hello', 123, 456}
+for i,v in my_ipairs(z) do
+	print(i, v)
+end
+
+for i,v in iter,z,0 do
+	print(i, v)
+end
+
+for i,v in my_ipairs(z) do
+	print(i, v)
+	i = i+1 -- update ctrl-var during loop
+end
+"#,
+    )
+    .unwrap();
+
+    super::compare_program(
+        &program,
+        &[
+            Bytecode::variadic_arguments_prepare(0),
+            // local function iter(t, i)
+            Bytecode::closure(0, 0u8),
+            // local function my_ipairs(t)
+            Bytecode::closure(1, 1u8),
+            // local z = {'hello', 123, 456}
+            Bytecode::new_table(2, 0, 3),
+            // EXTRAARG
+            Bytecode::load_constant(3, 0u8),
+            Bytecode::load_integer(4, 123i16),
+            Bytecode::load_integer(5, 456i16),
+            Bytecode::set_list(2, 3, 0),
+            // for i,v in my_ipairs(z) do
+            Bytecode::move_bytecode(3, 1),
+            Bytecode::move_bytecode(4, 2),
+            Bytecode::call(3, 2, 5),
+            Bytecode::generic_for_prepare(3, 4u8),
+            // 	print(i, v)
+            Bytecode::get_uptable(9, 0, 1),
+            Bytecode::move_bytecode(10, 7),
+            Bytecode::move_bytecode(11, 8),
+            Bytecode::call(9, 3, 1),
+            // end
+            Bytecode::generic_for_call(3, 2),
+            Bytecode::generic_for_loop(3, 6u8),
+            Bytecode::close(3),
+            // for i,v in iter,z,0 do
+            Bytecode::move_bytecode(3, 0),
+            Bytecode::move_bytecode(4, 2),
+            Bytecode::load_integer(5, 0i8),
+            Bytecode::load_nil(6, 0),
+            Bytecode::generic_for_prepare(3, 4u8),
+            // 	print(i, v)
+            Bytecode::get_uptable(9, 0, 1),
+            Bytecode::move_bytecode(10, 7),
+            Bytecode::move_bytecode(11, 8),
+            Bytecode::call(9, 3, 1),
+            // end
+            Bytecode::generic_for_call(3, 2),
+            Bytecode::generic_for_loop(3, 6u8),
+            Bytecode::close(3),
+            // for i,v in my_ipairs(z) do
+            Bytecode::move_bytecode(3, 1),
+            Bytecode::move_bytecode(4, 2),
+            Bytecode::call(3, 2, 5),
+            Bytecode::generic_for_prepare(3, 5u8),
+            // 	print(i, v)
+            Bytecode::get_uptable(9, 0, 1),
+            Bytecode::move_bytecode(10, 7),
+            Bytecode::move_bytecode(11, 8),
+            Bytecode::call(9, 3, 1),
+            // 	i = i+1 -- update ctrl-var during loop
+            Bytecode::add_integer(7, 7, 1),
+            // MMBINI
+            // end
+            Bytecode::generic_for_call(3, 2),
+            Bytecode::generic_for_loop(3, 7u8),
+            Bytecode::close(3),
+            // EOF
+            Bytecode::return_bytecode(3, 1, 1),
+        ],
+        &["hello".into(), "print".into()],
+        // TODO Update when MMBINI is implementend
+        &[
+            Local::new("iter".into(), 3, 45),
+            Local::new("my_ipairs".into(), 4, 45),
+            Local::new("z".into(), 9, 45),
+            Local::new("?for_iterator".into(), 12, 19),
+            Local::new("?for_state".into(), 12, 19),
+            Local::new("?for_control".into(), 12, 19),
+            Local::new("?for_closing_value".into(), 12, 19),
+            Local::new("i".into(), 13, 17),
+            Local::new("v".into(), 13, 17),
+            Local::new("?for_iterator".into(), 24, 31),
+            Local::new("?for_state".into(), 24, 31),
+            Local::new("?for_control".into(), 24, 31),
+            Local::new("?for_closing_value".into(), 24, 31),
+            Local::new("i".into(), 25, 29),
+            Local::new("v".into(), 25, 29),
+            Local::new("?for_iterator".into(), 35, 43),
+            Local::new("?for_state".into(), 35, 43),
+            Local::new("?for_control".into(), 35, 43),
+            Local::new("?for_closing_value".into(), 35, 43),
+            Local::new("i".into(), 36, 41),
+            Local::new("v".into(), 36, 41),
+        ],
+        &["_ENV".into()],
+        2,
+    );
+
+    let closure = super::get_closure_program(&program, 0);
+    super::compare_program(
+        closure,
+        &[
+            // local function iter(t, i)
+            //     i = i + 1
+            Bytecode::add_integer(1, 1, 1),
+            // MMBINI
+            //     local v = t[i]
+            Bytecode::get_table(2, 0, 1),
+            //     if v then
+            Bytecode::test(2, false),
+            Bytecode::jump(3i8),
+            //         return i, v
+            Bytecode::move_bytecode(3, 1),
+            Bytecode::move_bytecode(4, 2),
+            Bytecode::return_bytecode(3, 3, 0),
+            //     end
+            // end
+            Bytecode::zero_return(),
+        ],
+        &[],
+        // TODO Update when MMBINI is implementend
+        &[
+            Local::new("t".into(), 1, 9),
+            Local::new("i".into(), 1, 9),
+            Local::new("v".into(), 3, 9),
+        ],
+        &[],
+        0,
+    );
+
+    let closure = super::get_closure_program(&program, 1);
+    super::compare_program(
+        closure,
+        &[
+            // local function my_ipairs(t)
+            //     return iter, t, 0
+            Bytecode::get_upvalue(1, 0),
+            Bytecode::move_bytecode(2, 0),
+            Bytecode::load_integer(3, 0i8),
+            Bytecode::return_bytecode(1, 4, 0),
+            // end
+            Bytecode::zero_return(),
+        ],
+        &[],
+        &[Local::new("t".into(), 1, 6)],
+        &["iter".into()],
+        0,
+    );
+
+    crate::Lua::run_program(program).unwrap();
+}
