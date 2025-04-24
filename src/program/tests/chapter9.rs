@@ -830,3 +830,135 @@ c1()
 
     crate::Lua::run_program_with_env(program, env).unwrap();
 }
+
+#[test]
+fn goto() {
+    let _ = simplelog::SimpleLogger::init(log::LevelFilter::Info, simplelog::Config::default());
+
+    let program = crate::Program::parse(
+        r#"
+local f
+local first = true
+
+::again::
+
+-- step.1
+if f then -- set after goto
+    -- step.4
+    f('first')
+    f('first')
+    f('first')
+    first = false
+end
+
+-- step.2 and step.5
+local i = 0 -- this local variable should be closed on goto
+f = function (prefix)
+    i = i + 1
+    print(prefix, i)
+end
+
+if first then
+    -- step.3
+    goto again -- close `local i`
+end
+
+-- step.6
+-- `f` is a new closure, with a new `i`
+-- so the following calls should print: 1,2,3
+f('after')
+f('after')
+f('after')
+"#,
+    )
+    .unwrap();
+
+    super::compare_program(
+        &program,
+        &[
+            Bytecode::variadic_arguments_prepare(0),
+            // local f
+            Bytecode::load_nil(0, 0),
+            // local first = true
+            Bytecode::load_true(1),
+            // if f then
+            Bytecode::test(0, false),
+            Bytecode::jump(10i8),
+            //     f('first')
+            Bytecode::move_bytecode(2, 0),
+            Bytecode::load_constant(3, 0u8),
+            Bytecode::call(2, 2, 1),
+            //     f('first')
+            Bytecode::move_bytecode(2, 0),
+            Bytecode::load_constant(3, 0u8),
+            Bytecode::call(2, 2, 1),
+            //     f('first')
+            Bytecode::move_bytecode(2, 0),
+            Bytecode::load_constant(3, 0u8),
+            Bytecode::call(2, 2, 1),
+            //     first = false
+            Bytecode::load_false(1),
+            // end
+            // local i = 0
+            Bytecode::load_integer(2, 0i8),
+            // f = function (prefix)
+            Bytecode::closure(0, 0u8), // Optimized out one move
+            // if first then
+            Bytecode::test(1, false),
+            Bytecode::jump(2i8),
+            //     goto again
+            Bytecode::close(2),
+            Bytecode::jump(-18i8),
+            // end
+            // f('after')
+            Bytecode::move_bytecode(3, 0),
+            Bytecode::load_constant(4, 1u8),
+            Bytecode::call(3, 2, 1),
+            // f('after')
+            Bytecode::move_bytecode(3, 0),
+            Bytecode::load_constant(4, 1u8),
+            Bytecode::call(3, 2, 1),
+            // f('after')
+            Bytecode::move_bytecode(3, 0),
+            Bytecode::load_constant(4, 1u8),
+            Bytecode::call(3, 2, 1),
+            // EOF
+            Bytecode::return_bytecode(3, 1, 1),
+        ],
+        &["first".into(), "after".into()],
+        &[
+            Local::new("f".into(), 3, 32),
+            Local::new("first".into(), 4, 32),
+            Local::new("i".into(), 17, 32),
+        ],
+        &["_ENV".into()],
+        1,
+    );
+
+    let closure = super::get_closure_program(&program, 0);
+    super::compare_program(
+        closure,
+        &[
+            // function (prefix)
+            Bytecode::get_upvalue(1, 0),
+            //     i = i + 1
+            Bytecode::add_integer(1, 1, 1),
+            // MMBINI
+            Bytecode::set_upvalue(0, 1),
+            //     print(prefix, i)
+            Bytecode::get_uptable(1, 1, 0),
+            Bytecode::move_bytecode(2, 0),
+            Bytecode::get_upvalue(3, 0),
+            Bytecode::call(1, 3, 1),
+            // end
+            Bytecode::zero_return(),
+        ],
+        &["print".into()],
+        // TODO Update when MMBINI is implementend
+        &[Local::new("prefix".into(), 1, 9)],
+        &["i".into(), "_ENV".into()],
+        0,
+    );
+
+    crate::Lua::run_program(program).unwrap();
+}
