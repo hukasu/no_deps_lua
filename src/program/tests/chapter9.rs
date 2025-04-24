@@ -116,7 +116,7 @@ foo()
             Bytecode::get_upvalue(2, 3),
             Bytecode::get_upvalue(3, 4),
             Bytecode::get_upvalue(4, 5),
-            Bytecode::set_upvalue(2, 4),
+            Bytecode::set_upvalue(4, 2),
             Bytecode::set_uptable(0, 0, 3, false),
             Bytecode::move_bytecode(0, 2),
             //     print(l1, g1, up1)
@@ -288,7 +288,7 @@ f1()
             Bytecode::get_upvalue(0, 1),
             Bytecode::add_integer(0, 0, 1),
             // MMBINI
-            Bytecode::set_upvalue(1, 0),
+            Bytecode::set_upvalue(0, 1),
             // end
             Bytecode::zero_return(),
         ],
@@ -944,7 +944,7 @@ f('after')
             //     i = i + 1
             Bytecode::add_integer(1, 1, 1),
             // MMBINI
-            Bytecode::set_upvalue(0, 1),
+            Bytecode::set_upvalue(1, 0),
             //     print(prefix, i)
             Bytecode::get_uptable(1, 1, 0),
             Bytecode::move_bytecode(2, 0),

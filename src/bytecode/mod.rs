@@ -168,14 +168,14 @@ impl Bytecode {
     /// `SETUPVAL`  
     /// Sets a upvalue with value on stack
     ///
-    /// `upvalue`: Upvalue to set  
     /// `value`: Value on to set upvalue to
-    pub fn set_upvalue(upvalue: impl Into<A>, value: impl Into<B>) -> Bytecode {
+    /// `upvalue`: Upvalue to set  
+    pub fn set_upvalue(value: impl Into<A>, upvalue: impl Into<B>) -> Bytecode {
         Bytecode {
             bytecode: Self::encode_abck(
                 OpCode::SetUpValue,
-                upvalue.into(),
                 value.into(),
+                upvalue.into(),
                 C::ZERO,
                 K::ZERO,
             ),
@@ -1120,7 +1120,7 @@ impl Bytecode {
     }
 
     fn execute_set_upvalue(&self, vm: &mut Lua) -> Result<(), Error> {
-        let (upvalue, value, _, _) = self.decode_abck();
+        let (value, upvalue, _, _) = self.decode_abck();
 
         let value = vm.get_stack(*value).cloned()?;
         vm.set_upvalue(usize::from(*upvalue), value)?;

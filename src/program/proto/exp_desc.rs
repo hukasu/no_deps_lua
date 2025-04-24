@@ -1265,8 +1265,8 @@ impl<'a> ExpDesc<'a> {
                 .proto_mut()
                 .byte_codes
                 .push(Bytecode::set_upvalue(
-                    u8::try_from(*upvalue)?,
                     u8::try_from(*local)?,
+                    u8::try_from(*upvalue)?,
                 ));
         } else {
             let (stack_loc, stack_top) = compile_stack.compile_context_mut().reserve_stack_top();
@@ -1274,7 +1274,7 @@ impl<'a> ExpDesc<'a> {
             compile_stack
                 .proto_mut()
                 .byte_codes
-                .push(Bytecode::set_upvalue(u8::try_from(*upvalue)?, stack_loc));
+                .push(Bytecode::set_upvalue(stack_loc, u8::try_from(*upvalue)?));
             compile_stack.compile_context_mut().stack_top -= 1;
         }
         Ok(())
