@@ -1146,15 +1146,26 @@ impl Bytecode {
         let (dst, table, src, _) = self.decode_abck();
 
         if let Value::Table(table) = vm.get_stack(*table)?.clone() {
-            let key = ValueKey::from(vm.get_stack(*src)?.clone());
-            let bin_search = (*table)
-                .borrow()
-                .table
-                .binary_search_by_key(&&key, |a| &a.0);
+            let key = vm.get_stack(*src)?.clone();
+            let value = match key {
+                Value::Integer(index @ 1..) => table
+                    .borrow()
+                    .array
+                    .get(usize::try_from(index - 1)?)
+                    .cloned()
+                    .unwrap_or(Value::Nil),
+                key => {
+                    let key = ValueKey::from(key);
+                    let bin_search = (*table)
+                        .borrow()
+                        .table
+                        .binary_search_by_key(&&key, |a| &a.0);
 
-            let value = match bin_search {
-                Ok(i) => (*table).borrow().table[i].1.clone(),
-                Err(_) => Value::Nil,
+                    match bin_search {
+                        Ok(i) => (*table).borrow().table[i].1.clone(),
+                        Err(_) => Value::Nil,
+                    }
+                }
             };
             vm.set_stack(*dst, value)
         } else {
