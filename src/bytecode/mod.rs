@@ -1912,20 +1912,8 @@ impl Bytecode {
         let prev_func_index = top_stack.function_index;
         vm.drop_stack_frame(func_index_usize, vm.stack.len() - tail_start);
 
-        let func = &vm.get_stack(u8::try_from(prev_func_index)?)?;
-        if let Value::Closure(closure) = func {
-            match closure.closure_type() {
-                FunctionType::Native(closure) => {
-                    Self::run_native_function(vm, prev_func_index, args, out_params, *closure)
-                }
-                FunctionType::Lua(closure) => {
-                    let closure = closure.clone();
-                    Self::setup_closure(vm, prev_func_index, args, out_params, closure.as_ref())
-                }
-            }
-        } else {
-            Err(Error::InvalidFunction((*func).clone()))
-        }
+        let func = vm.get_stack(u8::try_from(prev_func_index)?)?.clone();
+        Self::run_closure(func, vm, prev_func_index, args, out_params)
     }
 
     fn execute_return(&self, vm: &mut Lua) -> Result<(), Error> {
