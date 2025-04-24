@@ -1153,6 +1153,56 @@ impl<'a> CompileStack<'a> {
         }
     }
 
+    fn namelist(&mut self, namelist: &Token<'a>) -> Result<NameList<'a>, Error> {
+        match namelist.tokens.as_slice() {
+            make_deconstruct!(
+                _name(TokenType::Name(name)),
+                namelist_cont(TokenType::NamelistCont)
+            ) => {
+                let mut namelist = NameList::new();
+                namelist.push((*name).into());
+
+                Self::namelist_cont(namelist_cont, &mut namelist)?;
+
+                Ok(namelist)
+            }
+            _ => {
+                unreachable!(
+                    "Namelist did not match any of the productions. Had {:#?}.",
+                    namelist
+                        .tokens
+                        .iter()
+                        .map(|t| &t.token_type)
+                        .collect::<Vec<_>>()
+                );
+            }
+        }
+    }
+
+    fn namelist_cont(namelist_cont: &Token<'a>, namelist: &mut NameList) -> Result<(), Error> {
+        match namelist_cont.tokens.as_slice() {
+            [] => Ok(()),
+            make_deconstruct!(
+                _comma(TokenType::Comma),
+                _name(TokenType::Name(name)),
+                namelist_cont(TokenType::NamelistCont)
+            ) => {
+                namelist.push((*name).into());
+                Self::namelist_cont(namelist_cont, namelist)
+            }
+            _ => {
+                unreachable!(
+                    "NamelistCont did not match any of the productions. Had {:#?}.",
+                    namelist_cont
+                        .tokens
+                        .iter()
+                        .map(|t| &t.token_type)
+                        .collect::<Vec<_>>()
+                );
+            }
+        }
+    }
+
     fn explist(&mut self, explist: &Token<'a>) -> Result<ExpList<'a>, Error> {
         match explist.tokens.as_slice() {
             make_deconstruct!(exp(TokenType::Exp), explist_cont(TokenType::ExplistCont)) => {
