@@ -72,7 +72,7 @@ impl<'a> CompileContext<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct GotoLabel<'a> {
     pub name: &'a str,
     pub bytecode: usize,

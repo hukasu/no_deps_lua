@@ -268,6 +268,20 @@ impl<'a> CompileStack<'a> {
                     compile_context,
                 } = self.frame_mut();
 
+                // Close a captured local on a backwards goto
+                if let Some(label) = compile_context
+                    .labels
+                    .iter()
+                    .find(|label| label.name == *name)
+                    .cloned()
+                {
+                    if compile_context.clear_captures_above(label.nvar) {
+                        proto
+                            .byte_codes
+                            .push(Bytecode::close(u8::try_from(label.nvar)?));
+                    }
+                }
+
                 let bytecode = proto.byte_codes.len();
                 proto.byte_codes.push(Bytecode::jump(Sj::ZERO));
 
