@@ -2382,9 +2382,8 @@ impl Debug for Bytecode {
             OpCode::LoadConstant
             | OpCode::ForPrepare
             | OpCode::ForLoop
-            | OpCode::TailForPrepare
-            | OpCode::TailForCall
-            | OpCode::TailForLoop
+            | OpCode::GenericForPrepare
+            | OpCode::GenericForLoop
             | OpCode::Closure => {
                 let (a, bx) = self.decode_abx();
                 write!(f, "{:?}({}, {})", op, *a, *bx)
@@ -2453,7 +2452,7 @@ impl Debug for Bytecode {
                     if k == K::ONE { "k" } else { "" }
                 )
             }
-            OpCode::VariadicArguments => {
+            OpCode::VariadicArguments | OpCode::GenericForCall => {
                 let (a, _, c, _) = self.decode_abck();
                 write!(f, "{:?}({}, {})", op, *a, *c)
             }
