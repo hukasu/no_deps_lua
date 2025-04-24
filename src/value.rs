@@ -7,7 +7,7 @@ use core::{
 use alloc::{rc::Rc, vec::Vec};
 
 use crate::{
-    closure::{Closure, NativeClosure},
+    closure::{Closure, FunctionType, NativeClosure},
     ext::FloatExt,
     function::Function,
     stack_str::StackStr,
@@ -146,7 +146,27 @@ impl Debug for Value {
                 let t = table.borrow();
                 write!(f, "Table({}:{})", t.array.len(), t.table.len())
             }
-            Self::Closure(closure) => write!(f, "Closure({:?})", closure),
+            Self::Closure(closure) => match closure.closure_type() {
+                FunctionType::Lua(_) => {
+                    write!(
+                        f,
+                        "Closure({:?}, bytecodes: {}, constants: {}, locals: {}, upvalues: {})",
+                        Rc::as_ptr(closure),
+                        closure.program().byte_codes.len(),
+                        closure.program().constants.len(),
+                        closure.program().locals.len(),
+                        closure.program().upvalues.len(),
+                    )
+                }
+                FunctionType::Native(native) => {
+                    write!(
+                        f,
+                        "Closure({:?}, native_function: {:?})",
+                        Rc::as_ptr(closure),
+                        native,
+                    )
+                }
+            },
         }
     }
 }
