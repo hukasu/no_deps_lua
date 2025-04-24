@@ -539,13 +539,88 @@ impl<'a> CompileStack<'a> {
             }
             make_deconstruct!(
                 _for(TokenType::For),
-                _namelist(TokenType::Namelist),
+                namelist(TokenType::Namelist),
                 _in(TokenType::In),
-                _explist(TokenType::Explist),
+                explist(TokenType::Explist),
                 _do(TokenType::Do),
-                _block(TokenType::Block),
+                block(TokenType::Block),
                 _end(TokenType::End)
-            ) => unimplemented!("stat production"),
+            ) => {
+                // Cache stack top from before the start of the for
+                let rewind_stack_top = self.compile_context_mut().stack_top;
+
+                // Discharge expression list into for control variables
+                let explist = self.explist(explist)?;
+                let for_state = vec![ExpDesc::NewLocal; 4];
+                ExpDesc::ExpList(for_state.to_vec()).discharge(&ExpDesc::ExpList(explist), self)?;
+
+                // Reserve for control variables
+                // Names can't start with `?`, so using it for internal symbols
+                for for_var in [
+                    "?for_iterator",
+                    "?for_state",
+                    "?for_control",
+                    "?for_closing_value",
+                ] {
+                    self.open_local(for_var);
+                }
+
+                // Push dummy bytecode
+                let jump_to_end = self.proto_mut().byte_codes.len();
+                self.proto_mut()
+                    .byte_codes
+                    .push(Bytecode::generic_for_prepare(rewind_stack_top, Bx::ZERO));
+
+                // Reserve for iteration variables
+                let stack_top_after_control = self.compile_context_mut().stack_top;
+                let namelist = self.namelist(namelist)?;
+                for for_var in &namelist {
+                    let _ = self.compile_context_mut().reserve_stack_top();
+                    self.open_local(for_var);
+                }
+
+                // Discharge block
+                let cache_var_args = self.compile_context_mut().var_args.take();
+                self.block(block)?;
+                self.compile_context_mut().var_args = cache_var_args;
+
+                // Update dummy bytecode with proper jump
+                let end_of_block = self.proto_mut().byte_codes.len();
+                self.proto_mut().byte_codes[jump_to_end] = Bytecode::generic_for_prepare(
+                    rewind_stack_top,
+                    Bx::try_from(end_of_block - (jump_to_end + 1))?,
+                );
+
+                // Close iteration variables
+                self.close_locals(usize::from(stack_top_after_control));
+
+                // Push for iterator update bytecodes
+                self.proto_mut().byte_codes.push(Bytecode::generic_for_call(
+                    rewind_stack_top,
+                    C::try_from(namelist.len())?,
+                ));
+
+                // Push loop back to top
+                let end_of_for = self.proto_mut().byte_codes.len();
+                self.proto_mut().byte_codes.push(Bytecode::generic_for_loop(
+                    rewind_stack_top,
+                    Bx::try_from(end_of_for - jump_to_end)?,
+                ));
+
+                // Close control variables
+                self.close_locals(usize::from(rewind_stack_top));
+
+                // Close captures
+                // FIXME: Does this always happen?
+                self.proto_mut()
+                    .byte_codes
+                    .push(Bytecode::close(rewind_stack_top));
+
+                // Rewind stack top
+                self.compile_context_mut().stack_top = rewind_stack_top;
+
+                Ok(())
+            }
             make_deconstruct!(
                 _function(TokenType::Function),
                 funcname(TokenType::Funcname),
