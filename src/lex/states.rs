@@ -372,7 +372,6 @@ impl State {
     }
 
     fn string_consume(&mut self, c: char, start_quotes: char) -> Option<Self> {
-        log::trace!("{:?} {:?} {:?}", self, c, start_quotes);
         match c {
             quotes @ ('"' | '\'') => {
                 if quotes == start_quotes {
