@@ -1,19 +1,17 @@
 pub mod arguments;
 mod opcode;
 
+use alloc::{
+    rc::Rc,
+    string::{String, ToString},
+    vec::Vec,
+};
 use core::{
     cell::RefCell,
     cmp::Ordering,
     fmt::{Debug, Display},
     ops::Deref,
 };
-
-use alloc::{
-    rc::Rc,
-    string::{String, ToString},
-    vec::Vec,
-};
-use arguments::{A, Ax, B, Bx, BytecodeArgument, C, K, Sb, Sbx, Sc, Sj};
 
 use crate::{
     Lua,
@@ -25,6 +23,7 @@ use crate::{
 
 use super::Error;
 
+use self::arguments::{A, Ax, B, Bx, BytecodeArgument, C, K, Sb, Sbx, Sc, Sj};
 pub use self::opcode::OpCode;
 
 #[derive(Clone, Copy, PartialEq)]
@@ -994,6 +993,48 @@ impl Bytecode {
         Bytecode {
             bytecode: Self::encode_abx(OpCode::ForPrepare, counter.into(), jump.into()),
             function: Self::execute_for_prepare,
+        }
+    }
+
+    /// `TFORPREP`  
+    /// Prepare iterator of for loop
+    ///
+    /// `register`: Location on the stack of the first state  
+    /// `jump`: Number of byte codes to jump to reach end of for loop
+    pub fn generic_for_prepare(register: impl Into<A>, jump: impl Into<Bx>) -> Bytecode {
+        Bytecode {
+            bytecode: Self::encode_abx(OpCode::GenericForPrepare, register.into(), jump.into()),
+            function: Self::execute_generic_for_prepare,
+        }
+    }
+
+    /// `TFORCALL`  
+    /// Advances iterator of for loop
+    ///
+    /// `register`: Location on the stack of the first state  
+    /// `arg_count`: Number of arguments used on iteration
+    pub fn generic_for_call(register: impl Into<A>, arg_count: impl Into<C>) -> Bytecode {
+        Bytecode {
+            bytecode: Self::encode_abck(
+                OpCode::GenericForCall,
+                register.into(),
+                B::ZERO,
+                arg_count.into(),
+                K::ZERO,
+            ),
+            function: Self::execute_generic_for_call,
+        }
+    }
+
+    /// `TFORLOOP`  
+    /// Jump to start of for loop
+    ///
+    /// `register`: Location of the table on the stack  
+    /// `jump`: Number of items on the stack to store  
+    pub fn generic_for_loop(register: impl Into<A>, jump: impl Into<Bx>) -> Bytecode {
+        Bytecode {
+            bytecode: Self::encode_abx(OpCode::GenericForLoop, register.into(), jump.into()),
+            function: Self::execute_generic_for_loop,
         }
     }
 
@@ -2001,6 +2042,44 @@ impl Bytecode {
                 vm.jump(isize::try_from(*jmp)? + 1)?;
             }
             Ok(())
+        }
+    }
+
+    fn execute_generic_for_prepare(&self, vm: &mut Lua) -> Result<(), Error> {
+        let (_for_stack, jmp) = self.decode_abx();
+
+        // TODO do whatever it is that the official implementation do to upvalues
+
+        vm.jump(isize::try_from(*jmp).map_err(|_| Error::InvalidJump)?)
+    }
+
+    fn execute_generic_for_call(&self, vm: &mut Lua) -> Result<(), Error> {
+        let (for_stack, _, args_count, _) = self.decode_abck();
+
+        let iterator = vm.get_stack(*for_stack)?.clone();
+        vm.set_stack(*for_stack + 4, iterator.clone())?;
+        let state = vm.get_stack(*for_stack + 1)?.clone();
+        vm.set_stack(*for_stack + 5, state)?;
+        let control = vm.get_stack(*for_stack + 2)?.clone();
+        vm.set_stack(*for_stack + 6, control)?;
+        Self::run_closure(
+            iterator,
+            vm,
+            usize::from(*for_stack + 4),
+            2,
+            usize::from(*args_count),
+        )
+    }
+
+    fn execute_generic_for_loop(&self, vm: &mut Lua) -> Result<(), Error> {
+        let (for_stack, jmp) = self.decode_abx();
+
+        let test = vm.get_stack(*for_stack + 4)?.clone();
+        vm.set_stack(*for_stack + 2, test.clone())?;
+        if test == Value::Nil {
+            Ok(())
+        } else {
+            vm.jump(-(isize::try_from(*jmp).map_err(|_| Error::InvalidJump)?))
         }
     }
 
