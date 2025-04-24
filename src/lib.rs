@@ -122,10 +122,21 @@ impl Lua {
             open_upvalue.borrow_mut().close(self);
         }
 
-        let returns = self
+        let mut return_values = self
             .stack
             .drain(start..(start + returns))
             .collect::<Vec<_>>();
+
+        if popped_stack.out_params == 0 {
+        } else if popped_stack.out_params == 1 {
+            return_values.clear();
+        } else {
+            match returns.cmp(&(popped_stack.out_params - 1)) {
+                Ordering::Greater => return_values.truncate(popped_stack.out_params),
+                Ordering::Equal => (),
+                Ordering::Less => return_values.resize(popped_stack.out_params - 1, Value::Nil),
+            }
+        };
 
         if !self.stack_frame.is_empty() {
             let top_stack = self.get_stack_frame();
@@ -135,7 +146,7 @@ impl Lua {
         } else {
             self.stack.clear();
         }
-        self.stack.extend(returns);
+        self.stack.extend(return_values);
     }
 
     fn set_stack(&mut self, dst: u8, value: Value) -> Result<(), Error> {
