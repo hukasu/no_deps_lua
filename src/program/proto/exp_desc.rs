@@ -948,6 +948,24 @@ impl<'a> ExpDesc<'a> {
                         compile_stack,
                     )
                 }
+                (_, Self::Name(key)) => {
+                    let Some(key) = compile_stack
+                        .view()
+                        .find_name(key)
+                        .or_else(|| compile_stack.view().capture_name(key))
+                        .or_else(|| compile_stack.view().capture_environment(key))
+                    else {
+                        unreachable!("Should always fallback to Global.");
+                    };
+                    self.discharge(
+                        &Self::TableAccess {
+                            table: table.clone(),
+                            key: Box::new(key),
+                            record: false,
+                        },
+                        compile_stack,
+                    )
+                }
                 (table @ Self::Upvalue(_), Self::String(key)) => {
                     let global = compile_stack.proto_mut().push_constant(*key)?;
 
