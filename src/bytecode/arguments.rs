@@ -40,6 +40,7 @@ pub enum BytecodeArgumentError {
     SjTooSmall(i32),
     InvalidK(u8),
     FloatNotInteger(f64),
+    Downcast(&'static str, &'static str),
 }
 
 impl Display for BytecodeArgumentError {
@@ -82,6 +83,9 @@ impl Display for BytecodeArgumentError {
             }
             Self::FloatNotInteger(value) => {
                 write!(f, "Float {} can't be expressed as an integer.", value)
+            }
+            Self::Downcast(src, dst) => {
+                write!(f, "Could not downcast `{}` to `{}`.", src, dst)
             }
         }
     }
@@ -265,6 +269,16 @@ impl TryFrom<u32> for Bx {
         } else {
             Err(BytecodeArgumentError::BxTooLarge(value))
         }
+    }
+}
+
+impl TryFrom<usize> for Bx {
+    type Error = BytecodeArgumentError;
+
+    fn try_from(value: usize) -> Result<Self, Self::Error> {
+        u32::try_from(value)
+            .map_err(|_| BytecodeArgumentError::Downcast("usize", "u32"))
+            .and_then(|value| value.try_into())
     }
 }
 
