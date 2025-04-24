@@ -403,6 +403,16 @@ impl From<u8> for C {
     }
 }
 
+impl TryFrom<usize> for C {
+    type Error = BytecodeArgumentError;
+
+    fn try_from(value: usize) -> Result<Self, Self::Error> {
+        u8::try_from(value)
+            .map(|value| value.into())
+            .map_err(|_| BytecodeArgumentError::Downcast("usize", "u8"))
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Sc(i8);
 
