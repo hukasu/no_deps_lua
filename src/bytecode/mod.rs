@@ -1882,28 +1882,11 @@ impl Bytecode {
         let in_items = usize::from(*in_items);
         let out_params = usize::from(*out);
 
-        let func = &vm.get_stack(*func_index)?;
-        if let Value::Closure(closure) = func {
-            match closure.closure_type() {
-                FunctionType::Native(closure) => {
-                    Self::run_native_function(vm, func_index_usize, in_items, out_params, *closure)
-                }
-                FunctionType::Lua(closure) => {
-                    let closure = closure.clone();
-                    Self::setup_closure(
-                        vm,
-                        func_index_usize,
-                        in_items,
-                        out_params,
-                        closure.as_ref(),
-                    )
-                }
-            }
-        } else {
-            Err(Error::InvalidFunction((*func).clone()))
-        }
+        let func = vm.get_stack(*func_index)?.clone();
+        Self::run_closure(func, vm, func_index_usize, in_items, out_params)?;
 
         // TODO deal with c
+        Ok(())
     }
 
     fn execute_tail_call(&self, vm: &mut Lua) -> Result<(), Error> {
@@ -2133,6 +2116,28 @@ impl Bytecode {
                 lhs.static_type_name(),
                 rhs.static_type_name(),
             ))
+        }
+    }
+
+    fn run_closure(
+        func: Value,
+        vm: &mut Lua,
+        func_index: usize,
+        in_items: usize,
+        out_params: usize,
+    ) -> Result<(), Error> {
+        if let Value::Closure(closure) = func {
+            match closure.closure_type() {
+                FunctionType::Native(closure) => {
+                    Self::run_native_function(vm, func_index, in_items, out_params, *closure)
+                }
+                FunctionType::Lua(closure) => {
+                    let closure = closure.clone();
+                    Self::setup_closure(vm, func_index, in_items, out_params, closure.as_ref())
+                }
+            }
+        } else {
+            Err(Error::InvalidFunction(func))
         }
     }
 
